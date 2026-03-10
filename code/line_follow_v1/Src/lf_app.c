@@ -77,10 +77,10 @@ static void process_recovery(uint32_t now_ms)
     int16_t turn = g_lf_config.recover_turn_speed;
 
     if (s_app.last_seen_dir < 0) {
-        /* 最后在线偏左，说明车更可能偏到右边，恢复阶段优先右转回线。 */
-        LF_Chassis_SetCommand(turn, (int16_t)(-turn));
-    } else {
+        /* 最后在线偏左，恢复阶段优先向该侧搜索，保持与 RUNNING 修正方向一致。 */
         LF_Chassis_SetCommand((int16_t)(-turn), turn);
+    } else {
+        LF_Chassis_SetCommand(turn, (int16_t)(-turn));
     }
 
     LF_Sensor_ReadFrame(&s_app.last_frame);

@@ -12,7 +12,7 @@
 
 1. 总体设计与实现规划 [basic_design.md](docs/basic_design.md)。
 2. 巡线子系统设计文档 [line_following.md](docs/line_following.md)
-3. 巡线一期代码（可扩展框架）[firmware/line_follow_v1/README.md](firmware/line_follow_v1/README.md)
+3. 巡线一期代码（可扩展框架）[code/line_follow_v1/README.md](code/line_follow_v1/README.md)
 
 ## Usage
 
@@ -52,7 +52,7 @@
 
 按你的实际接线修改：
 
-`firmware/line_follow_v1/Inc/lf_port_stm32f4_hal.h`
+`code/line_follow_v1/Inc/lf_port_stm32f4_hal.h`
 
 至少确认以下宏：
 
@@ -120,7 +120,7 @@ STM32_Programmer_CLI -c port=SWD -w build/<your_project>.elf -v -rst
 1. 上电后程序会进入自动标定（原地小幅左右转向）。
 2. 标定结束后进入巡线运行状态。
 3. 若方向反了，仅修改 `lf_port_stm32f4_hal.h` 中的前进方向电平宏。
-4. 若能跑但抖动大，优先调 `firmware/line_follow_v1/Src/lf_config.c` 的：
+4. 若能跑但抖动大，优先调 `code/line_follow_v1/Src/lf_config.c` 的：
    1. `base_speed`
    2. `kp`
    3. `kd`
