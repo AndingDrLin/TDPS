@@ -74,3 +74,40 @@ Src/
 
 1. `LF_Hook_OnReservedCheckpoint(...)`：后续接 LoRa 发送窗口触发。
 2. `LF_Hook_OnReservedObstacleWindow()`：后续接雷达决策窗口触发。
+
+
+## 6. 自动化回归测试（离线）
+
+单次回归（快速）：
+
+```bash
+bash scripts/run_line_follow_autotest.sh
+```
+
+稳定性回归（多 seed）：
+
+```bash
+bash scripts/run_line_follow_stability.sh
+```
+
+单次脚本可选参数：
+
+```bash
+bash scripts/run_line_follow_autotest.sh <duration_sec> <dt_sec> <line_threshold> <report_path> <base_seed>
+```
+
+稳定性脚本可选参数：
+
+```bash
+bash scripts/run_line_follow_stability.sh <duration_sec> <dt_sec> <line_threshold> <seed_start> <runs> <report_dir>
+```
+
+说明：
+
+1. 脚本会自动编译 `code/line_follow_v1/tests/lf_autotest_harness.c`。
+2. 默认跑 8 个场景：`circle_baseline`、`figure8_baseline`、`patio_baseline`、`patio_left_offset`、`patio_right_offset`、`patio_noisy`、`patio_motor_bias`、`patio_stress`。
+3. `patio_*` 是按真实赛道图抽象出的代理场景，覆盖长直道、蛇形段、转接弯和干扰扰动（噪声/掉线/电机不一致）。
+4. 单次默认报告输出：`code/line_follow_v1/tests/reports/single_run/last_autotest_report.json`。
+5. 稳定性报告默认输出目录：`code/line_follow_v1/tests/reports/stability_runs`。
+6. `base_seed` 用于复现实验；改 seed 可以做稳定性回归。
+7. 退出码：`0`=通过，`1`=检测到问题（如检测率不足/最长丢线过长/综合分不足），`2`=参数或执行错误。
