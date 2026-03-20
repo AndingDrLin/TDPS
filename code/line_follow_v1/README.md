@@ -1,41 +1,67 @@
-# Line Follow V1 (STM32)
+# line_follow_v1
 
-这个版本是“巡线一期最小可用实现”：
+`line_follow_v1` 是巡线主链路的最小可用实现，目标是先把“稳定可跑 + 可回归”做扎实，再在同一框架上扩展 LoRa 和雷达逻辑。
 
-1. 支持光照标定。
-2. 支持基础 PID 巡线（直线 + 简单曲线）。
-3. 支持丢线恢复。
-4. 预留 LoRa/雷达扩展钩子，不影响当前主流程。
+## 功能边界
 
-## 1. 目录说明
+当前实现包含：
+
+- 传感器标定（启动后自动进入标定窗口）
+- 基于位置偏差的 PID 巡线
+- 丢线恢复与恢复超时停车
+- 统一平台抽象层（PAL）
+- 离线仿真回归（测试代码位于 `TDPS-Simulator/sim_tests`）
+
+当前实现不包含：
+
+- LoRa 通信业务逻辑
+- 雷达避障业务逻辑
+
+以上两项通过 `lf_future_hooks` 预留扩展点接入。
+
+## 目录
 
 ```text
-Inc/
-  lf_config.h                // 参数定义（只声明）
-  lf_platform.h              // 平台抽象接口
-  lf_port_stm32f4_hal.h      // STM32F4 HAL 端口映射（你们需要修改）
-  lf_sensor.h                // 传感器与标定
-  lf_control.h               // PID 控制
-  lf_chassis.h               // 底盘输出
-  lf_future_hooks.h          // 后续任务预留钩子
-  lf_app.h                   // 应用状态机
-Src/
-  lf_config.c                // 参数集中配置（你们主要调这个）
-  lf_sensor.c
-  lf_control.c
-  lf_chassis.c
-  lf_app.c
-  lf_future_hooks.c
-  lf_platform_stm32f4_hal.c  // 实机端口
-  lf_platform_stub.c         // 非 HAL 环境下的编译兜底
-  main.c
+code/line_follow_v1/
+├── Inc/
+│   ├── lf_app.h
+│   ├── lf_chassis.h
+│   ├── lf_config.h
+│   ├── lf_control.h
+│   ├── lf_future_hooks.h
+│   ├── lf_platform.h
+│   ├── lf_port_stm32f4_hal.h
+│   └── lf_sensor.h
+└── Src/
+    ├── lf_app.c
+    ├── lf_chassis.c
+    ├── lf_config.c
+    ├── lf_control.c
+    ├── lf_future_hooks.c
+    ├── lf_platform_stm32f4_hal.c
+    ├── lf_platform_stub.c
+    ├── lf_sensor.c
+    └── main.c
 ```
 
-## 2. 参数集中位置
+## 运行时状态机
 
-所有调参集中在：
+`LF_AppState` 定义于 `Inc/lf_app.h`：
 
-`Src/lf_config.c`
+- `WAIT_START`：等待按键或自动启动延时
+- `CALIBRATING`：左右摆动采样，更新 min/max
+- `RUNNING`：正常巡线
+- `RECOVERING`：丢线后按最后方向搜索
+- `STOPPED`：恢复超时后停车
+- `FAULT`：异常保护态
+
+## 调参入口
+
+所有关键参数集中在 `Src/lf_config.c` 的 `g_lf_config`：
+
+- 速度与控制：`base_speed`、`kp`、`ki`、`kd`
+- 判线与滤波：`line_detect_min_sum`、`sensor_filter_alpha`
+- 恢复策略：`recover_turn_speed`、`recover_timeout_ms`
 
 建议调参顺序：
 
@@ -43,71 +69,69 @@ Src/
 2. `kp`
 3. `kd`
 4. `line_detect_min_sum`
-5. `recover_turn_speed` / `recover_timeout_ms`
+5. 恢复参数
 
-## 3. 直接烧录接入步骤（CubeIDE / HAL）
+## STM32CubeIDE 接入步骤
 
-1. 将 `Inc/*` 和 `Src/*` 加入你的 STM32Cube 工程。
-2. 在工程编译宏中添加：`LF_USE_STM32F4_HAL_PORT`
-3. 在 `Inc/lf_port_stm32f4_hal.h` 中按实际接线修改：
-   1. PWM 定时器和通道
-   2. 左右电机方向脚
-   3. LED / 启动按钮
-   4. 串口句柄（可选）
-4. 在你自己的板级文件中提供：
-   1. `volatile uint16_t g_lf_sensor_dma_buffer[LF_SENSOR_COUNT];`
-   2. `LF_Port_SystemClock_Config(void)`
-   3. `LF_Port_Peripheral_Init(void)`（可直接调用 CubeMX 生成的 `MX_*_Init`）
-5. 确保 ADC 已配置为 DMA 连续采样，前 `LF_SENSOR_COUNT` 个槽位对应巡线传感器。
-6. 上电后程序会自动进入标定，再进入巡线运行。
+### 1. 拷贝源码
 
-## 4. 软件工程约束
+- 把 `Inc/` 头文件加入工程 include 路径。
+- 把 `Src/` 源文件加入工程（通常不使用本目录 `main.c`）。
 
-1. ISR 不做复杂控制，只做外设搬运和快速标志更新。
-2. 状态机统一由 `LF_App_RunStep` 驱动，避免模块抢占写电机。
-3. 后续功能必须优先走 `lf_future_hooks`，避免污染巡线主链路。
-4. 每次调参只改 `lf_config.c`，并记录“参数 -> 场景 -> 结果”。
+### 2. 打开 HAL 端口宏
 
-## 5. 后续扩展入口
+在编译宏中添加：
 
-在 `lf_future_hooks.c` 中提供了弱符号空实现，可覆盖：
-
-1. `LF_Hook_OnReservedCheckpoint(...)`：后续接 LoRa 发送窗口触发。
-2. `LF_Hook_OnReservedObstacleWindow()`：后续接雷达决策窗口触发。
-
-
-## 6. 自动化回归测试（离线）
-
-单次回归（快速）：
-
-```bash
-bash scripts/run_line_follow_autotest.sh
+```c
+LF_USE_STM32F4_HAL_PORT
 ```
 
-稳定性回归（多 seed）：
+### 3. 修改板级映射
 
-```bash
-bash scripts/run_line_follow_stability.sh
+按接线修改：`Inc/lf_port_stm32f4_hal.h`
+
+至少确认：
+
+- ADC 句柄
+- 左右 PWM 定时器与通道
+- 左右方向 GPIO
+- LED / 启动按钮 GPIO
+- 调试串口（可选）
+
+### 4. 提供板级符号
+
+在你的工程中提供：
+
+```c
+volatile uint16_t g_lf_sensor_dma_buffer[LF_SENSOR_COUNT];
+void LF_Port_SystemClock_Config(void);
+void LF_Port_Peripheral_Init(void);
 ```
 
-单次脚本可选参数：
+说明：`LF_Port_SystemClock_Config` 和 `LF_Port_Peripheral_Init` 在 HAL 端口中为弱符号，可由用户工程覆盖。
 
-```bash
-bash scripts/run_line_follow_autotest.sh <duration_sec> <dt_sec> <line_threshold> <report_path> <base_seed>
-```
+### 5. 外设要求
 
-稳定性脚本可选参数：
+- ADC：DMA 连续采样，缓冲长度 `>= LF_SENSOR_COUNT`
+- PWM：左右电机各 1 路
+- GPIO：方向脚、LED、按钮
 
-```bash
-bash scripts/run_line_follow_stability.sh <duration_sec> <dt_sec> <line_threshold> <seed_start> <runs> <report_dir>
-```
+### 6. 编译与上板
 
-说明：
+- 在 CubeIDE 中 `Clean` -> `Build`
+- 上板后观察：启动 -> 标定 -> RUNNING
 
-1. 脚本会自动编译 `code/line_follow_v1/tests/lf_autotest_harness.c`。
-2. 默认跑 8 个场景：`circle_baseline`、`figure8_baseline`、`patio_baseline`、`patio_left_offset`、`patio_right_offset`、`patio_noisy`、`patio_motor_bias`、`patio_stress`。
-3. `patio_*` 是按真实赛道图抽象出的代理场景，覆盖长直道、蛇形段、转接弯和干扰扰动（噪声/掉线/电机不一致）。
-4. 单次默认报告输出：`code/line_follow_v1/tests/reports/single_run/last_autotest_report.json`。
-5. 稳定性报告默认输出目录：`code/line_follow_v1/tests/reports/stability_runs`。
-6. `base_seed` 用于复现实验；改 seed 可以做稳定性回归。
-7. 退出码：`0`=通过，`1`=检测到问题（如检测率不足/最长丢线过长/综合分不足），`2`=参数或执行错误。
+## 扩展点（LoRa / 雷达）
+
+接口定义：`Inc/lf_future_hooks.h`
+
+- `LF_Hook_OnReservedCheckpoint(uint32_t checkpoint_id)`
+- `LF_Hook_OnReservedObstacleWindow(void)`
+
+默认实现为弱符号空函数，后续在其他源文件中提供同名非弱符号函数即可覆盖。
+
+## 相关文档
+
+- 仓库入口：`README.md`
+- 仿真测试：`TDPS-Simulator/sim_tests/line_follow_v1/README.md`
+- 回归流程：`docs/testing/quickstart_3min.md`

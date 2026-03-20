@@ -1,8 +1,10 @@
-# Generated outputs for line_follow_v1 automated tests
+# Legacy generated outputs (before simulator refactor)
 code/line_follow_v1/tests/.lf_autotest_runner
 code/line_follow_v1/tests/reports/
-
-# Legacy output locations (kept ignored for compatibility)
+code/line_follow_v1/tests/*.log
 code/line_follow_v1/tests/artifacts/
 code/line_follow_v1/tests/stability_reports/
 code/line_follow_v1/tests/last_autotest_report*.json
+
+# Simulator artifacts (fallback when TDPS-Simulator is not treated as sub-repo)
+TDPS-Simulator/artifacts/

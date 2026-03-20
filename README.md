@@ -1,152 +1,101 @@
-# TDPS Project
+# TDPS
 
-> 基于 STM32 的智能小车项目：巡线 + LoRa 通信 + 雷达避障
+`TDPS` 是一个基于 STM32 的智能小车项目仓库。当前可直接使用的主线是 `line_follow_v1` 巡线系统，以及配套的离线回归测试（CLI-first）。
 
-## Tasks
+## 当前范围
 
-- **任务 1：巡线行驶**：沿黑线稳定通过弯道与路口，到达终点。
-- **任务 2：无线通信**：在指定拱门区域通过 LoRa 发送队伍与计时信息。
-- **任务 3：避障通行**：使用 24 GHz 及以上雷达判断障碍左右并选择空侧通过。
+- 巡线控制主流程：标定、巡线、丢线恢复、超时停车。
+- 离线回归：`quick`、`stability`、`run-config` 三类命令。
+- STM32F4 HAL 端口：可直接接入 Cube 工程。
+- LoRa 与雷达：保留事件钩子，未在本仓库实现具体业务逻辑。
 
-## Content
+## 快速开始
 
-1. 总体设计与实现规划 [basic_design.md](docs/basic_design.md)。
-2. 巡线子系统设计文档 [line_following.md](docs/line_following.md)
-3. 巡线一期代码（可扩展框架）[code/line_follow_v1/README.md](code/line_follow_v1/README.md)
-
-## Usage
-
-本章节给出烧录编译程序的完整步骤，默认使用 STM32CubeIDE + HAL 工程。
-
-### 1. 前置要求
-
-1. 已安装 `STM32CubeIDE`（建议 1.14+）。
-2. 已安装 `STM32CubeProgrammer`（可选，用于命令行烧录）。
-3. 有一套可识别的 ST-LINK 下载器和驱动。
-4. 已有或新建一个与主控匹配的 Cube 工程（如 `STM32F407VET6`）。
-
-### 2. 添加源代码
-
-1. 将 `code/line_follow_v1/Inc` 目录下所有头文件复制到你的工程 `Core/Inc`（或加入为额外 include 目录）。
-2. 将 `code/line_follow_v1/Src` 目录下除 `main.c` 外的源码复制到你的工程 `Core/Src`。
-3. 不要同时保留两份 `main.c`，推荐继续使用 Cube 生成的 `main.c`，在其中调用巡线框架。
-4. 在工程编译宏中添加 `LF_USE_STM32F4_HAL_PORT`。
-5. 确保 `lf_platform_stm32f4_hal.c` 被编译；`lf_platform_stub.c` 可保留（该宏启用后会自动失效）。
-
-### 3. 设置外设参数
-
-1. `ADC1 + DMA`：
-   1. 打开扫描转换，通道数设置为传感器数量（当前默认 4 路）。
-   2. DMA 设为 `Circular` 模式，持续更新传感器缓冲。
-2. `TIM PWM`：
-   1. 启用 2 个 PWM 通道（默认代码示例为 `TIM3 CH1/CH2`）。
-   2. 推荐 PWM 频率 10~20 kHz，避免电机啸叫。
-3. `GPIO`：
-   1. 左右电机方向脚配置为推挽输出。
-   2. 状态灯脚配置为输出。
-   3. 启动按键脚配置为输入（根据接线选择上拉/下拉）。
-4. `USART`（可选）：
-   1. 用于调试输出（默认示例 `USART1`）。
-
-### 4. 硬件映射
-
-按你的实际接线修改：
-
-`code/line_follow_v1/Inc/lf_port_stm32f4_hal.h`
-
-至少确认以下宏：
-
-1. ADC 句柄与 DMA 缓冲区。
-2. 左右电机 PWM 定时器与通道。
-3. 左右电机方向 GPIO。
-4. LED 与按钮 GPIO。
-5. 串口句柄（若启用调试串口）。
-
-### 5. 调整 `main.c` 文件
-
-在你的 Cube `main.c` 中加入：
-
-```c
-#include "lf_app.h"
-#include "lf_platform.h"
-
-volatile uint16_t g_lf_sensor_dma_buffer[LF_SENSOR_COUNT];
-
-void LF_Port_SystemClock_Config(void) {
-    SystemClock_Config();
-}
-
-void LF_Port_Peripheral_Init(void) {
-    MX_GPIO_Init();
-    MX_DMA_Init();
-    MX_ADC1_Init();
-    MX_TIM3_Init();
-    MX_USART1_UART_Init(); // 可选
-}
-
-int main(void) {
-    LF_Platform_BoardInit();
-    LF_App_Init();
-    while (1) {
-        LF_App_RunStep();
-    }
-}
-```
-
-说明：`LF_Port_SystemClock_Config` 和 `LF_Port_Peripheral_Init` 是弱符号覆盖点，用来接管你现有 Cube 初始化流程。
-
-### 6. 编译
-
-1. 在 CubeIDE 中执行 `Project -> Clean`。
-2. 执行 `Project -> Build Project`。
-3. 确认无编译报错后，检查生成的 `.elf` 文件。
-
-### 7. 烧录
-
-方式 A（CubeIDE）：
-
-1. ST-LINK 连接开发板和电脑。
-2. `Run -> Run Configurations... -> STM32 Cortex-M C/C++ Application`。
-3. 选择工程后点击 `Run`（或 `Debug`）。
-
-方式 B（命令行，可选）：
+在仓库根目录执行：
 
 ```bash
-STM32_Programmer_CLI -c port=SWD -w build/<your_project>.elf -v -rst
+# 1) 查看命令
+bash TDPS-Simulator/scripts/line_follow_cli.sh help
+
+# 2) 单次门禁（quick）
+bash TDPS-Simulator/scripts/line_follow_cli.sh quick
+
+# 3) 20-seed 稳定性门禁（stability）
+bash TDPS-Simulator/scripts/line_follow_cli.sh stability 15 0.01 0.12 20260319 20 \
+  TDPS-Simulator/artifacts/line_follow_v1/reports/stability_runs
 ```
 
-### 8. 检查清单
+默认环境：`bash` + `gcc`（用于构建 `TDPS-Simulator/artifacts/line_follow_v1/bin/lf_autotest_runner`）。
 
-1. 上电后程序会进入自动标定（原地小幅左右转向）。
-2. 标定结束后进入巡线运行状态。
-3. 若方向反了，仅修改 `lf_port_stm32f4_hal.h` 中的前进方向电平宏。
-4. 若能跑但抖动大，优先调 `code/line_follow_v1/Src/lf_config.c` 的：
-   1. `base_speed`
-   2. `kp`
-   3. `kd`
-   4. `line_detect_min_sum`
+## 门禁标准
 
-### 9. 常见问题
+### quick（单次）
 
-1. 电机不转：
-   1. 检查 PWM 定时器是否启动。
-   2. 检查电机驱动使能脚与方向脚电平是否正确。
-2. 传感器值不变化：
-   1. 检查 ADC 通道顺序和 DMA 缓冲映射。
-   2. 检查传感器供电与地线共地。
-3. 频繁丢线：
-   1. 延长标定时间 `calibration_duration_ms`。
-   2. 降低 `base_speed`，增大 `line_detect_min_sum` 的鲁棒区间。
-4. 小车左右摆振明显：
-   1. 先减小 `kp`。
-   2. 再适当增大 `kd`。
-   3. 保持 `ki = 0`，稳定后再小幅引入积分。
+- `overallScore >= 82`
+- `avgLineDetectionRate >= 0.94`
+- `maxLongestLostSec <= 0.35`
+- 无 runtime error
+- 所有场景 `score >= 70`
 
-## Reference
+### stability（多 seed）
 
-1. [SayanSeth/Line-Follower-Robot](https://github.com/SayanSeth/Line-Follower-Robot)
-2. [sametoguten/STM32-Line-Follower-with-PID](https://github.com/sametoguten/STM32-Line-Follower-with-PID)
-3. [navidadelpour/line-follower-robot](https://github.com/navidadelpour/line-follower-robot)
-4. [FredBill1/RT1064_Smartcar](https://github.com/FredBill1/RT1064_Smartcar)
-5. [ittuann/Enterprise_E](https://github.com/ittuann/Enterprise_E)
-6. [Awesome-IntelligentCarRace](https://ittuann.github.io/Awesome-IntelligentCarRace/)
+- `minScore >= 80`
+- `minDetectPercent >= 93`
+- `maxLostSec <= 0.40`
+
+### 退出码约定
+
+- `0`：通过
+- `1`：门禁失败
+- `2`：参数错误 / I/O 错误 / 报告写入失败
+
+## 文档导航
+
+### 使用与回归
+
+- [3 分钟上手（CLI）](docs/testing/quickstart_3min.md)
+- [10 分钟完整回归（CLI）](docs/testing/full_regression_10min.md)
+- [CLI 迁移说明](docs/testing/migration.md)
+- [报告字段定义（Schema）](docs/testing/report_schema.md)
+- [基线冻结记录](docs/testing/baseline.md)
+
+### 代码说明
+
+- [line_follow_v1 模块说明](code/line_follow_v1/README.md)
+- [line_follow_v1 仿真测试说明](TDPS-Simulator/sim_tests/line_follow_v1/README.md)
+
+### 设计文档
+
+- [总体设计](docs/basic_design.md)
+- [巡线子系统设计](docs/line_following.md)
+
+## 目录结构
+
+```text
+TDPS/
+├── code/line_follow_v1/          # 巡线一期固件实现
+├── docs/                         # 设计与回归文档
+├── TDPS-Simulator/
+│   ├── scripts/                  # 仿真测试 CLI 与构建脚本
+│   ├── sim_tests/                # 离线仿真测试代码（common + suite）
+│   └── artifacts/                # 仿真产物（bin / reports / logs）
+└── slides/                       # 课题展示材料
+```
+
+## 板级接入（STM32CubeIDE）
+
+实机烧录请直接看：[`code/line_follow_v1/README.md`](code/line_follow_v1/README.md)
+
+核心要求：
+
+- 编译宏启用 `LF_USE_STM32F4_HAL_PORT`
+- 按接线修改 `Inc/lf_port_stm32f4_hal.h`
+- 在工程中提供 `g_lf_sensor_dma_buffer`、`LF_Port_SystemClock_Config`、`LF_Port_Peripheral_Init`
+
+## 生成物
+
+以下产物统一输出到 `TDPS-Simulator/artifacts/line_follow_v1/`：
+
+- `bin/lf_autotest_runner`
+- `reports/`
+- `logs/*.log`
