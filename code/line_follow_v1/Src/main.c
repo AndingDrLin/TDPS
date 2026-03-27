@@ -1,19 +1,39 @@
 #include "lf_app.h"
 #include "lf_platform.h"
+#include "wireless_hooks.h"
 
 /*
- * 入口文件（巡线一期）
+ * 主程序入口（巡线 + 无线通信集成版）
+ * 
  * 设计原则：
- * 1. 只保留一个清晰主循环，所有业务逻辑由 LF_App_RunStep 管理。
- * 2. 中断里只做采样搬运和标志置位，控制算法统一在主循环周期执行。
- * 3. 后续接入 LoRa/雷达时不改主循环结构，只扩展 hook。
+ * 1. 保持巡线主循环清晰稳定
+ * 2. 无线通信作为独立任务在主循环中处理
+ * 3. 使用 LF_Hook_* 扩展点实现无线功能集成
+ * 
+ * 集成功能：
+ * - 标定/巡线状态无线上报
+ * - 远程车辆控制（启动/停止/速度设置）
+ * - 实时状态监控
  */
+
 int main(void)
 {
     LF_Platform_BoardInit();
+    
+    Wireless_Hooks_Init();
     LF_App_Init();
-
+    
+    LF_Platform_DebugPrint("System Initialized - Line Following + Wireless Ready\r\n");
+    
     while (1) {
         LF_App_RunStep();
+        
+        Wireless_App_Process();
+        
+        Wireless_Hooks_Process();
+        
+        Wireless_Hooks_ProcessCommands();
+        
+        LF_Platform_DelayMs(1);
     }
 }
