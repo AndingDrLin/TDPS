@@ -4,10 +4,10 @@
  */
 
 #include "wl_app.h"
-#include "wl_platform.h"
-#include "wl_lora.h"
-#include "wl_protocol.h"
 #include "wl_config.h"
+#include "wl_lora.h"
+#include "wl_platform.h"
+#include "wl_protocol.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -18,14 +18,20 @@
 
 static WL_App_State s_state = WL_APP_STATE_IDLE;
 
-/** 比赛开始时的毫秒时间戳（0 表示尚未开始）。 */
+/** 比赛开始时的毫秒时间戳。 */
 static uint32_t s_race_start_ms = 0;
+
+/** 比赛是否已启动。 */
+static bool s_race_started = false;
 
 /** 上一次 LoRa 发射的时间戳（用于节流控制）。 */
 static uint32_t s_last_tx_ms = 0;
 
+/** 是否已经成功发送过至少一条检查点报文。 */
+static bool s_has_tx = false;
+
 /** 最近一次操作的状态文本。 */
-static char s_status_text[64] = "空闲";
+static char s_status_text[64] = "IDLE";
 
 /* ------------------------------------------------------------------ */
 /*  内部辅助函数                                                       */
@@ -36,10 +42,11 @@ static void _send_checkpoint(uint32_t checkpoint_id)
 {
     uint32_t now = WL_Platform_GetMillis();
 
-    /* 节流：两次发射间隔不小于 WL_TX_MIN_INTERVAL_MS */
-    if ((now - s_last_tx_ms) < g_wl_config.tx_min_interval_ms) {
+    /* 节流：首包不节流；后续两次发射间隔不小于 WL_TX_MIN_INTERVAL_MS */
+    if (s_has_tx &&
+        ((uint32_t)(now - s_last_tx_ms) < g_wl_config.tx_min_interval_ms)) {
         snprintf(s_status_text, sizeof(s_status_text),
-                 "CP%u 节流中，跳过", (unsigned)checkpoint_id);
+                 "CP%u throttled", (unsigned)checkpoint_id);
         WL_Platform_DebugPrint("[App] ");
         WL_Platform_DebugPrint(s_status_text);
         WL_Platform_DebugPrint("\r\n");
@@ -48,17 +55,19 @@ static void _send_checkpoint(uint32_t checkpoint_id)
 
     /* 计算已过时间 */
     uint32_t elapsed = 0;
-    if (s_race_start_ms > 0) {
-        elapsed = now - s_race_start_ms;
+    if (s_race_started) {
+        elapsed = (uint32_t)(now - s_race_start_ms);
     }
 
     /* 构造报文 */
     char msg[WL_MSG_MAX_LEN];
-    uint16_t len = WL_Protocol_BuildCheckpointMsg(msg, sizeof(msg),
+    uint16_t len = WL_Protocol_BuildCheckpointMsg(msg,
+                                                   (uint16_t)sizeof(msg),
                                                    checkpoint_id,
                                                    elapsed);
-    if (len == 0) {
-        snprintf(s_status_text, sizeof(s_status_text), "报文构造失败");
+    if (len == 0U) {
+        snprintf(s_status_text, sizeof(s_status_text), "build message failed");
+        WL_Platform_DebugPrint("[App] build checkpoint message failed\r\n");
         return;
     }
 
@@ -67,13 +76,16 @@ static void _send_checkpoint(uint32_t checkpoint_id)
 
     if (st == WL_LORA_OK) {
         s_last_tx_ms = now;
+        s_has_tx = true;
         snprintf(s_status_text, sizeof(s_status_text),
-                 "CP%u 已发送 (%ums)",
-                 (unsigned)checkpoint_id, (unsigned)elapsed);
+                 "CP%u sent (%ums)",
+                 (unsigned)checkpoint_id,
+                 (unsigned)elapsed);
     } else {
         snprintf(s_status_text, sizeof(s_status_text),
-                 "CP%u 发送失败(err=%d)",
-                 (unsigned)checkpoint_id, (int)st);
+                 "CP%u send failed(err=%d)",
+                 (unsigned)checkpoint_id,
+                 (int)st);
     }
 
     WL_Platform_DebugPrint("[App] ");
@@ -90,12 +102,20 @@ bool WL_App_Init(void)
     /* 初始化平台层 */
     WL_Platform_Init();
 
+    s_state = WL_APP_STATE_IDLE;
+    s_race_start_ms = 0;
+    s_race_started = false;
+    s_last_tx_ms = 0;
+    s_has_tx = false;
+    snprintf(s_status_text, sizeof(s_status_text), "init");
+
     /* 初始化 LoRa 模块 */
     WL_LoRa_Status st = WL_LoRa_Init();
     if (st != WL_LORA_OK) {
         s_state = WL_APP_STATE_ERROR;
         snprintf(s_status_text, sizeof(s_status_text),
-                 "LoRa 初始化失败(err=%d)", (int)st);
+                 "LoRa init failed(err=%d)",
+                 (int)st);
         WL_Platform_DebugPrint("[App] ");
         WL_Platform_DebugPrint(s_status_text);
         WL_Platform_DebugPrint("\r\n");
@@ -103,36 +123,42 @@ bool WL_App_Init(void)
     }
 
     s_state = WL_APP_STATE_READY;
-    snprintf(s_status_text, sizeof(s_status_text), "就绪，等待比赛开始");
-    WL_Platform_DebugPrint("[App] 初始化完成\r\n");
+    snprintf(s_status_text, sizeof(s_status_text), "ready");
+    WL_Platform_DebugPrint("[App] init done\r\n");
     return true;
 }
 
 void WL_App_Tick(void)
 {
-    /* 目前 tick 函数预留用于：
-     * - 周期性心跳报文（如需要）
-     * - 检查模块状态
-     * - 处理接收数据
-     * 当前版本为事件驱动（由 NotifyCheckpoint 触发），此处暂无额外逻辑。
-     */
-    (void)0;
+    /* 当前版本为事件触发，不做周期任务。 */
 }
 
 void WL_App_StartRace(void)
 {
+    if (s_state != WL_APP_STATE_READY && s_state != WL_APP_STATE_FINISHED) {
+        return;
+    }
+
     s_race_start_ms = WL_Platform_GetMillis();
+    s_race_started = true;
+    s_last_tx_ms = 0;
+    s_has_tx = false;
     s_state = WL_APP_STATE_RUNNING;
-    snprintf(s_status_text, sizeof(s_status_text), "比赛开始");
-    WL_Platform_DebugPrint("[App] 比赛计时开始\r\n");
+    snprintf(s_status_text, sizeof(s_status_text), "race started");
+    WL_Platform_DebugPrint("[App] race started\r\n");
 }
 
 void WL_App_StopRace(void)
 {
+    if (s_state != WL_APP_STATE_RUNNING) {
+        return;
+    }
+
     s_state = WL_APP_STATE_FINISHED;
     uint32_t elapsed = WL_App_GetElapsedMs();
     snprintf(s_status_text, sizeof(s_status_text),
-             "比赛结束 (总计 %ums)", (unsigned)elapsed);
+             "race finished (%ums)",
+             (unsigned)elapsed);
     WL_Platform_DebugPrint("[App] ");
     WL_Platform_DebugPrint(s_status_text);
     WL_Platform_DebugPrint("\r\n");
@@ -140,16 +166,17 @@ void WL_App_StopRace(void)
 
 uint32_t WL_App_GetElapsedMs(void)
 {
-    if (s_race_start_ms == 0) {
+    if (!s_race_started) {
         return 0;
     }
-    return WL_Platform_GetMillis() - s_race_start_ms;
+
+    return (uint32_t)(WL_Platform_GetMillis() - s_race_start_ms);
 }
 
 void WL_App_NotifyCheckpoint(uint32_t checkpoint_id)
 {
-    if (s_state != WL_APP_STATE_RUNNING && s_state != WL_APP_STATE_READY) {
-        WL_Platform_DebugPrint("[App] 非比赛状态，忽略检查点通知\r\n");
+    if (s_state != WL_APP_STATE_RUNNING) {
+        WL_Platform_DebugPrint("[App] ignore checkpoint outside running\r\n");
         return;
     }
 

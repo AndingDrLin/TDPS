@@ -35,6 +35,9 @@ void LF_App_Init(void);
 /* 应用层周期执行（建议在 while(1) 中持续调用）。 */
 void LF_App_RunStep(void);
 
+/* 外部事件：通知经过检查点，内部转发到预留 hook。 */
+void LF_App_NotifyCheckpoint(uint32_t checkpoint_id);
+
 /* 外部查询当前状态。 */
 const LF_AppContext *LF_App_GetContext(void);
 

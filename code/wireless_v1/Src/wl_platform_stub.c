@@ -8,12 +8,11 @@
 
 #ifndef WL_USE_STM32F1_HAL_PORT
 
-#include "wl_platform.h"
 #include "wl_config.h"
+#include "wl_platform.h"
 
 #include <stdio.h>
 #include <string.h>
-#include <time.h>
 
 /* ------------------------------------------------------------------ */
 /*  模拟毫秒计数器                                                     */
@@ -25,9 +24,16 @@ static uint32_t stub_millis = 0;
 /*  模拟 UART 接收缓冲区                                               */
 /* ------------------------------------------------------------------ */
 
-static uint8_t  stub_rx_buf[WL_UART_RX_BUF_SIZE];
+static uint8_t stub_rx_buf[WL_UART_RX_BUF_SIZE];
 static uint16_t stub_rx_len = 0;
 static uint16_t stub_rx_pos = 0;
+
+/* ------------------------------------------------------------------ */
+/*  最近一次 UART 发送缓存（供自动化测试断言）                          */
+/* ------------------------------------------------------------------ */
+
+static uint8_t stub_last_tx_buf[WL_UART_TX_BUF_SIZE];
+static uint16_t stub_last_tx_len = 0;
 
 /* ------------------------------------------------------------------ */
 /*  PAL 接口桩实现                                                     */
@@ -38,7 +44,8 @@ void WL_Platform_Init(void)
     stub_millis = 0;
     stub_rx_len = 0;
     stub_rx_pos = 0;
-    printf("[桩] WL_Platform_Init 完成\n");
+    stub_last_tx_len = 0;
+    printf("[Stub] WL_Platform_Init done\n");
 }
 
 uint32_t WL_Platform_GetMillis(void)
@@ -53,7 +60,15 @@ void WL_Platform_DelayMs(uint32_t ms)
 
 void WL_Platform_UART_Send(const uint8_t *data, uint16_t len)
 {
-    printf("[桩] UART 发送 %u 字节: ", len);
+    stub_last_tx_len = len;
+    if (stub_last_tx_len > WL_UART_TX_BUF_SIZE) {
+        stub_last_tx_len = WL_UART_TX_BUF_SIZE;
+    }
+    if (stub_last_tx_len > 0U) {
+        memcpy(stub_last_tx_buf, data, stub_last_tx_len);
+    }
+
+    printf("[Stub] UART TX %u bytes: ", len);
     for (uint16_t i = 0; i < len; i++) {
         if (data[i] >= 0x20 && data[i] < 0x7F) {
             putchar(data[i]);
@@ -64,7 +79,7 @@ void WL_Platform_UART_Send(const uint8_t *data, uint16_t len)
     printf("\n");
 
     /* 模拟 AT 指令响应：如果发送的是 "AT" 开头，自动填充 "AT_OK\r\n" */
-    if (len >= 2 && data[0] == 'A' && data[1] == 'T') {
+    if (len >= 2U && data[0] == 'A' && data[1] == 'T') {
         const char *resp = "AT_OK\r\n";
         uint16_t rlen = (uint16_t)strlen(resp);
         if (rlen <= WL_UART_RX_BUF_SIZE) {
@@ -103,28 +118,51 @@ bool WL_Platform_ReadAUX(void)
 
 void WL_Platform_DebugPrint(const char *msg)
 {
-    printf("[调试] %s", msg);
+    printf("[Debug] %s", msg);
 }
 
 /* ------------------------------------------------------------------ */
 /*  桩专用辅助函数（供测试代码调用）                                     */
 /* ------------------------------------------------------------------ */
 
-/** 手动推进模拟时钟（毫秒）。 */
 void WL_Stub_AdvanceMillis(uint32_t ms)
 {
     stub_millis += ms;
 }
 
-/** 向模拟 UART 接收缓冲区注入数据（模拟模块返回的响应）。 */
 void WL_Stub_InjectRxData(const uint8_t *data, uint16_t len)
 {
     if (len > WL_UART_RX_BUF_SIZE) {
         len = WL_UART_RX_BUF_SIZE;
     }
+
     memcpy(stub_rx_buf, data, len);
     stub_rx_len = len;
     stub_rx_pos = 0;
+}
+
+void WL_Stub_ClearLastTx(void)
+{
+    stub_last_tx_len = 0;
+}
+
+uint16_t WL_Stub_GetLastTx(uint8_t *buf, uint16_t max_len)
+{
+    uint16_t copy_len = stub_last_tx_len;
+    if (copy_len > max_len) {
+        copy_len = max_len;
+    }
+
+    if (copy_len > 0U && buf != NULL) {
+        memcpy(buf, stub_last_tx_buf, copy_len);
+    }
+
+    return copy_len;
+}
+
+uint16_t WL_Stub_GetLastTxLen(void)
+{
+    return stub_last_tx_len;
 }
 
 #endif /* !WL_USE_STM32F1_HAL_PORT */

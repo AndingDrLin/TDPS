@@ -186,3 +186,8 @@ const LF_AppContext *LF_App_GetContext(void)
 {
     return &s_app;
 }
+
+void LF_App_NotifyCheckpoint(uint32_t checkpoint_id)
+{
+    LF_Hook_OnReservedCheckpoint(checkpoint_id);
+}
