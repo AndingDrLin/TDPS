@@ -18,6 +18,10 @@ typedef struct {
     float filtered[LF_SENSOR_COUNT];
     uint16_t filtered_u16[LF_SENSOR_COUNT];
     uint32_t signal_sum;
+    uint16_t peak_value;
+    uint8_t peak_index;
+    float line_confidence;
+    int8_t edge_hint; /* -1: left stronger, +1: right stronger, 0: unknown */
     int32_t position;
     bool line_detected;
 } LF_SensorFrame;

@@ -27,8 +27,16 @@ const WL_Config g_wl_config = {
     .mode_switch_delay_ms   = WL_MODE_SWITCH_DELAY_MS,
     .power_on_delay_ms      = WL_POWER_ON_DELAY_MS,
     .tx_min_interval_ms     = WL_TX_MIN_INTERVAL_MS,
+    .tx_timeout_ms          = WL_TX_TIMEOUT_MS,
+    .ack_timeout_ms         = WL_ACK_TIMEOUT_MS,
+    .tx_retry_max           = WL_TX_RETRY_MAX,
+    .ack_enable             = WL_ACK_ENABLE,
+    .status_report_period_ms = WL_STATUS_REPORT_PERIOD_MS,
 
     /* 检查点 */
     .checkpoint_arch_2_1    = WL_CHECKPOINT_ARCH_2_1,
     .checkpoint_arch_2_2    = WL_CHECKPOINT_ARCH_2_2,
+
+    /* 队列参数 */
+    .tx_queue_size          = WL_TX_QUEUE_SIZE,
 };

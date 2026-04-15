@@ -15,7 +15,7 @@ TEAM=<id>,NAME=<name>,CP=<checkpoint>,TIME=<ms>\n
 - `wireless_v1`：
   - `wl_app`: 状态机（READY/RUNNING/FINISHED）
   - `wl_protocol`: 报文打包
-  - `wl_lora`: AT 配置 + 透传发送
+  - `wl_lora`: AT 配置 + 异步发送队列 + 超时重试 + 可选 ACK
   - `wl_platform_*`: STM32 实现 / PC 桩实现
 - `line_follow_v1`：
   - `wireless_hooks.c`: 负责初始化无线、启动比赛计时、转发检查点事件
@@ -30,6 +30,17 @@ TEAM=<id>,NAME=<name>,CP=<checkpoint>,TIME=<ms>\n
 约束：
 - 仅在 `RUNNING` 状态发送检查点报文。
 - 首包不节流，后续发送间隔 `>= WL_TX_MIN_INTERVAL_MS`。
+- LoRa 收发通过 `WL_App_Tick()` 非阻塞推进，不阻塞巡线控制闭环。
+
+## 异步发送与重试
+
+- 检查点消息使用 `WL_LoRa_EnqueueString()` 入队。
+- `WL_LoRa_Tick()` 负责：
+  - 检查发送节流与 AUX 就绪状态
+  - 发送事务超时判定（`WL_TX_TIMEOUT_MS`）
+  - ACK 等待与超时（`WL_ACK_TIMEOUT_MS`，可选）
+  - 失败重试（`WL_TX_RETRY_MAX`）
+- 链路状态通过 `WL_LoRa_GetLinkStatus()` 查询：队列深度、重试次数、成功/失败计数。
 
 ## 自动化测试
 
@@ -40,8 +51,14 @@ bash TDPS-Simulator/scripts/run_wireless_autotest.sh
 ```
 
 包含：
-- `wl_stub_autotest`：初始化、报文内容、节流、停止状态
-- `lf_wireless_integration_autotest`：巡线检查点触发链路
+- `wl_async_autotest`：发送、超时、重试、ACK 路径
+- `lf_radar_lora_integration_autotest`：巡线 + 雷达 + LoRa 联动回归
+
+雷达解析专项：
+
+```bash
+bash TDPS-Simulator/scripts/run_radar_autotest.sh
+```
 
 附加回归：
 

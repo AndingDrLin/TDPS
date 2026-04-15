@@ -24,6 +24,17 @@ typedef enum {
     WL_LORA_ERR_PARAM,      /**< 参数错误 */
 } WL_LoRa_Status;
 
+typedef struct {
+    uint16_t queue_depth;
+    uint16_t queue_dropped;
+    uint16_t retry_count;
+    uint16_t tx_success_count;
+    uint16_t tx_fail_count;
+    bool waiting_ack;
+    bool ack_enabled;
+    WL_LoRa_Status last_error;
+} WL_LoRa_LinkStatus;
+
 /* ------------------------------------------------------------------ */
 /*  初始化与配置                                                       */
 /* ------------------------------------------------------------------ */
@@ -84,6 +95,28 @@ WL_LoRa_Status WL_LoRa_Send(const uint8_t *data, uint16_t len);
  * @return WL_LORA_OK 成功，其他值为错误码。
  */
 WL_LoRa_Status WL_LoRa_SendString(const char *str);
+
+/* ------------------------------------------------------------------ */
+/*  异步发送服务（非阻塞主循环）                                        */
+/* ------------------------------------------------------------------ */
+
+/* 初始化异步发送服务状态（应在 WL_LoRa_Init 成功后调用）。 */
+void WL_LoRa_ServiceInit(void);
+
+/* 入队发送数据，实际发射由 WL_LoRa_Tick 在主循环中驱动。 */
+WL_LoRa_Status WL_LoRa_Enqueue(const uint8_t *data, uint16_t len);
+
+/* 入队发送字符串（不含 '\0'）。 */
+WL_LoRa_Status WL_LoRa_EnqueueString(const char *str);
+
+/* 非阻塞驱动发送、超时重试、可选 ACK。 */
+void WL_LoRa_Tick(void);
+
+/* 运行时开关 ACK 等待逻辑。 */
+void WL_LoRa_SetAckEnabled(bool enable);
+
+/* 查询异步服务状态。 */
+const WL_LoRa_LinkStatus *WL_LoRa_GetLinkStatus(void);
 
 /* ------------------------------------------------------------------ */
 /*  状态查询                                                           */

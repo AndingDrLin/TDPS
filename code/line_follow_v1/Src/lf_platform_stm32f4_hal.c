@@ -86,6 +86,17 @@ void LF_Platform_ReadLineSensorRaw(uint16_t out_raw[LF_SENSOR_COUNT])
     }
 }
 
+uint16_t LF_Platform_RadarRead(uint8_t *out_buf, uint16_t max_len)
+{
+    /*
+     * TODO: 接入 HLK-LD2410S 串口中断环形缓冲后，在此返回可读字节。
+     * 当前先保持非阻塞空实现，避免影响巡线主闭环节拍。
+     */
+    (void)out_buf;
+    (void)max_len;
+    return 0U;
+}
+
 void LF_Platform_SetMotorCommand(int16_t left_cmd, int16_t right_cmd)
 {
     set_single_motor(left_cmd,

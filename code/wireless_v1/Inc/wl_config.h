@@ -12,6 +12,7 @@
 #ifndef WL_CONFIG_H
 #define WL_CONFIG_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 /* ------------------------------------------------------------------ */
@@ -71,6 +72,21 @@
 /** 两次 LoRa 发射之间的最小间隔（毫秒），避免信道拥堵。 */
 #define WL_TX_MIN_INTERVAL_MS       500U
 
+/** 发送事务超时（毫秒）。 */
+#define WL_TX_TIMEOUT_MS            800U
+
+/** ACK 等待超时（毫秒）。 */
+#define WL_ACK_TIMEOUT_MS           300U
+
+/** 发送失败重试次数上限。 */
+#define WL_TX_RETRY_MAX             2U
+
+/** ACK 校验开关（默认关闭，待网关联调后启用）。 */
+#define WL_ACK_ENABLE               false
+
+/** 状态上报节拍（毫秒）。 */
+#define WL_STATUS_REPORT_PERIOD_MS  1000U
+
 /* ------------------------------------------------------------------ */
 /*  检查点 ID（由巡线系统定义，经过拱门时触发无线发射）                    */
 /* ------------------------------------------------------------------ */
@@ -93,6 +109,9 @@
 
 /** UART 发送缓冲区大小（字节）。 */
 #define WL_UART_TX_BUF_SIZE        256U
+
+/** 异步发送队列深度。 */
+#define WL_TX_QUEUE_SIZE            16U
 
 /* ------------------------------------------------------------------ */
 /*  运行时配置结构体                                                    */
@@ -121,10 +140,18 @@ typedef struct {
     uint32_t    mode_switch_delay_ms;
     uint32_t    power_on_delay_ms;
     uint32_t    tx_min_interval_ms;
+    uint32_t    tx_timeout_ms;
+    uint32_t    ack_timeout_ms;
+    uint8_t     tx_retry_max;
+    bool        ack_enable;
+    uint32_t    status_report_period_ms;
 
     /* 检查点 */
     uint32_t    checkpoint_arch_2_1;
     uint32_t    checkpoint_arch_2_2;
+
+    /* 队列参数 */
+    uint16_t    tx_queue_size;
 } WL_Config;
 
 /** 全局配置实例（定义于 wl_config.c）。 */

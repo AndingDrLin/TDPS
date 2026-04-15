@@ -55,3 +55,19 @@ bash TDPS-Simulator/scripts/line_follow_cli.sh stability 15 0.01 0.12 20260319 2
 - `minScore >= 80`
 - `minDetectPercent >= 93`
 - `maxLostSec <= 0.40`
+
+## 可选：雷达与无线专项
+
+```bash
+# 雷达帧解析与避障触发
+bash TDPS-Simulator/scripts/run_radar_autotest.sh
+
+# LoRa 异步发送/重试 + 三模块联动桩测试
+bash TDPS-Simulator/scripts/run_wireless_autotest.sh
+```
+
+## 可选：一键系统回归
+
+```bash
+bash TDPS-Simulator/scripts/run_system_autotest.sh
+```

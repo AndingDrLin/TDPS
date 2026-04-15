@@ -11,7 +11,7 @@
  * 2. 建议每次只调整 1~2 个参数，并在实验日志中记录“参数 -> 结果”映射。
  */
 
-#define LF_SENSOR_COUNT (4U)
+#define LF_SENSOR_COUNT (8U)
 
 typedef struct {
     /* 主循环节拍（ms）。建议保持固定周期执行控制算法。 */
@@ -58,6 +58,17 @@ typedef struct {
     /* 丢线恢复参数。 */
     int16_t recover_turn_speed;
     uint32_t recover_timeout_ms;
+
+    /* 雷达串口参数与避障阈值（HLK-LD2410S，默认值待实机确认）。 */
+    bool radar_enable;
+    uint32_t radar_uart_baudrate;
+    uint16_t radar_trigger_distance_mm;
+    uint16_t radar_release_distance_mm;
+    uint8_t radar_debounce_frames;
+    uint16_t radar_frame_timeout_ms;
+
+    /* 避障减速速度（WARN 状态下生效）。 */
+    int16_t obstacle_warn_speed;
 } LF_Config;
 
 /* 全局只读参数实例。 */

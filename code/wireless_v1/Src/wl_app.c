@@ -30,6 +30,9 @@ static uint32_t s_last_tx_ms = 0;
 /** 是否已经成功发送过至少一条检查点报文。 */
 static bool s_has_tx = false;
 
+/** 最近一次状态上报时间戳。 */
+static uint32_t s_last_status_report_ms = 0;
+
 /** 最近一次操作的状态文本。 */
 static char s_status_text[64] = "IDLE";
 
@@ -72,7 +75,7 @@ static void _send_checkpoint(uint32_t checkpoint_id)
     }
 
     /* 通过 LoRa 发射 */
-    WL_LoRa_Status st = WL_LoRa_SendString(msg);
+    WL_LoRa_Status st = WL_LoRa_EnqueueString(msg);
 
     if (st == WL_LORA_OK) {
         s_last_tx_ms = now;
@@ -93,6 +96,41 @@ static void _send_checkpoint(uint32_t checkpoint_id)
     WL_Platform_DebugPrint("\r\n");
 }
 
+static void _send_periodic_status(void)
+{
+    uint32_t now = WL_Platform_GetMillis();
+    char payload[80];
+    char msg[WL_MSG_MAX_LEN];
+    uint16_t len;
+    const WL_LoRa_LinkStatus *link = WL_LoRa_GetLinkStatus();
+
+    if (g_wl_config.status_report_period_ms == 0U) {
+        return;
+    }
+
+    if ((uint32_t)(now - s_last_status_report_ms) < g_wl_config.status_report_period_ms) {
+        return;
+    }
+
+    s_last_status_report_ms = now;
+
+    snprintf(payload,
+             sizeof(payload),
+             "STATE=%d,Q=%u,S=%u,F=%u,R=%u",
+             (int)s_state,
+             (unsigned)link->queue_depth,
+             (unsigned)link->tx_success_count,
+             (unsigned)link->tx_fail_count,
+             (unsigned)link->retry_count);
+
+    len = WL_Protocol_BuildCustomMsg(msg, (uint16_t)sizeof(msg), payload);
+    if (len == 0U) {
+        return;
+    }
+
+    (void)WL_LoRa_Enqueue((const uint8_t *)msg, len);
+}
+
 /* ------------------------------------------------------------------ */
 /*  公共接口实现                                                       */
 /* ------------------------------------------------------------------ */
@@ -107,6 +145,7 @@ bool WL_App_Init(void)
     s_race_started = false;
     s_last_tx_ms = 0;
     s_has_tx = false;
+    s_last_status_report_ms = 0;
     snprintf(s_status_text, sizeof(s_status_text), "init");
 
     /* 初始化 LoRa 模块 */
@@ -122,6 +161,9 @@ bool WL_App_Init(void)
         return false;
     }
 
+    WL_LoRa_ServiceInit();
+    WL_LoRa_SetAckEnabled(g_wl_config.ack_enable);
+
     s_state = WL_APP_STATE_READY;
     snprintf(s_status_text, sizeof(s_status_text), "ready");
     WL_Platform_DebugPrint("[App] init done\r\n");
@@ -130,7 +172,11 @@ bool WL_App_Init(void)
 
 void WL_App_Tick(void)
 {
-    /* 当前版本为事件触发，不做周期任务。 */
+    WL_LoRa_Tick();
+
+    if (s_state == WL_APP_STATE_RUNNING) {
+        _send_periodic_status();
+    }
 }
 
 void WL_App_StartRace(void)
@@ -143,6 +189,7 @@ void WL_App_StartRace(void)
     s_race_started = true;
     s_last_tx_ms = 0;
     s_has_tx = false;
+    s_last_status_report_ms = WL_Platform_GetMillis();
     s_state = WL_APP_STATE_RUNNING;
     snprintf(s_status_text, sizeof(s_status_text), "race started");
     WL_Platform_DebugPrint("[App] race started\r\n");

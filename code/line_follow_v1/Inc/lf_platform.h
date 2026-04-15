@@ -25,6 +25,12 @@ void LF_Platform_DelayMs(uint32_t ms);
 /* 读取巡线传感器原始值。范围由 ADC 分辨率决定（如 0~4095）。 */
 void LF_Platform_ReadLineSensorRaw(uint16_t out_raw[LF_SENSOR_COUNT]);
 
+/*
+ * 非阻塞读取雷达串口缓存。
+ * 返回实际读取字节数；无数据时返回 0。
+ */
+uint16_t LF_Platform_RadarRead(uint8_t *out_buf, uint16_t max_len);
+
 /* 写入电机命令（-1000~1000）。正负号表示方向，绝对值表示速度。 */
 void LF_Platform_SetMotorCommand(int16_t left_cmd, int16_t right_cmd);
 

@@ -23,6 +23,181 @@
 #define CMD_BUF_SIZE    64
 #define RESP_BUF_SIZE   128
 #define DBG_BUF_SIZE    192
+#define ACK_BUF_SIZE    32
+#define ACK_TOKEN_UPPER "ACK"
+#define ACK_TOKEN_LOWER "ack"
+
+typedef struct {
+    uint8_t payload[WL_TX_PAYLOAD_MAX];
+    uint16_t len;
+} WL_TxItem;
+
+typedef struct {
+    WL_TxItem queue[WL_TX_QUEUE_SIZE];
+    uint16_t head;
+    uint16_t tail;
+    uint16_t count;
+
+    bool tx_active;
+    bool current_sent;
+    bool waiting_ack;
+    bool ack_received;
+    bool ack_enabled;
+
+    WL_TxItem current;
+    uint8_t retries_used;
+    uint32_t tx_start_ms;
+    uint32_t last_tx_ms;
+
+    char ack_line[ACK_BUF_SIZE];
+    uint8_t ack_line_len;
+
+    WL_LoRa_LinkStatus link;
+} WL_LoRaService;
+
+static WL_LoRaService s_service;
+
+static uint16_t service_queue_capacity(void)
+{
+    uint16_t cap = (uint16_t)g_wl_config.tx_queue_size;
+
+    if (cap == 0U || cap > WL_TX_QUEUE_SIZE) {
+        cap = WL_TX_QUEUE_SIZE;
+    }
+    return cap;
+}
+
+static void service_sync_link_snapshot(void)
+{
+    s_service.link.queue_depth = s_service.count;
+    s_service.link.waiting_ack = s_service.waiting_ack;
+    s_service.link.ack_enabled = s_service.ack_enabled;
+}
+
+static void service_reset_active_tx(void)
+{
+    s_service.tx_active = false;
+    s_service.current_sent = false;
+    s_service.waiting_ack = false;
+    s_service.ack_received = false;
+    s_service.retries_used = 0U;
+    s_service.ack_line_len = 0U;
+}
+
+static void service_finish_success(void)
+{
+    s_service.link.tx_success_count += 1U;
+    s_service.link.last_error = WL_LORA_OK;
+    service_reset_active_tx();
+    service_sync_link_snapshot();
+}
+
+static void service_finish_fail(WL_LoRa_Status err)
+{
+    s_service.link.tx_fail_count += 1U;
+    s_service.link.last_error = err;
+    service_reset_active_tx();
+    service_sync_link_snapshot();
+}
+
+static bool service_pop_queue(WL_TxItem *out)
+{
+    uint16_t cap;
+
+    if (out == NULL || s_service.count == 0U) {
+        return false;
+    }
+
+    cap = service_queue_capacity();
+    *out = s_service.queue[s_service.head];
+    s_service.head = (uint16_t)((s_service.head + 1U) % cap);
+    s_service.count -= 1U;
+    service_sync_link_snapshot();
+    return true;
+}
+
+static WL_LoRa_Status service_push_queue(const uint8_t *data, uint16_t len)
+{
+    uint16_t cap;
+
+    if (data == NULL || len == 0U || len > WL_TX_PAYLOAD_MAX) {
+        return WL_LORA_ERR_PARAM;
+    }
+
+    cap = service_queue_capacity();
+    if (s_service.count >= cap) {
+        s_service.link.queue_dropped += 1U;
+        s_service.link.last_error = WL_LORA_ERR_BUSY;
+        service_sync_link_snapshot();
+        return WL_LORA_ERR_BUSY;
+    }
+
+    memset(s_service.queue[s_service.tail].payload, 0, sizeof(s_service.queue[s_service.tail].payload));
+    memcpy(s_service.queue[s_service.tail].payload, data, len);
+    s_service.queue[s_service.tail].len = len;
+
+    s_service.tail = (uint16_t)((s_service.tail + 1U) % cap);
+    s_service.count += 1U;
+    s_service.link.last_error = WL_LORA_OK;
+    service_sync_link_snapshot();
+    return WL_LORA_OK;
+}
+
+static void service_note_ack_line(void)
+{
+    s_service.ack_line[s_service.ack_line_len] = '\0';
+    if (strstr(s_service.ack_line, ACK_TOKEN_UPPER) != NULL ||
+        strstr(s_service.ack_line, ACK_TOKEN_LOWER) != NULL) {
+        s_service.ack_received = true;
+    }
+    s_service.ack_line_len = 0U;
+}
+
+static void service_poll_rx(void)
+{
+    uint8_t rx[16];
+    uint16_t n;
+
+    do {
+        uint16_t i;
+        n = WL_Platform_UART_Receive(rx, (uint16_t)sizeof(rx));
+        for (i = 0U; i < n; ++i) {
+            uint8_t b = rx[i];
+
+            if (b == (uint8_t)'\r' || b == (uint8_t)'\n') {
+                if (s_service.ack_line_len > 0U) {
+                    service_note_ack_line();
+                }
+                continue;
+            }
+
+            if (s_service.ack_line_len + 1U < ACK_BUF_SIZE) {
+                s_service.ack_line[s_service.ack_line_len++] = (char)b;
+            } else {
+                s_service.ack_line_len = 0U;
+            }
+        }
+    } while (n > 0U);
+}
+
+static bool service_schedule_retry(uint32_t now_ms, WL_LoRa_Status reason)
+{
+    if (s_service.retries_used < g_wl_config.tx_retry_max) {
+        s_service.retries_used += 1U;
+        s_service.link.retry_count += 1U;
+        s_service.current_sent = false;
+        s_service.waiting_ack = false;
+        s_service.ack_received = false;
+        s_service.tx_start_ms = now_ms;
+        s_service.ack_line_len = 0U;
+        s_service.link.last_error = reason;
+        service_sync_link_snapshot();
+        return true;
+    }
+
+    service_finish_fail(reason);
+    return false;
+}
 
 /* ------------------------------------------------------------------ */
 /*  等待 AUX 就绪                                                      */
@@ -258,4 +433,109 @@ WL_LoRa_Status WL_LoRa_SendString(const char *str)
     }
 
     return WL_LoRa_Send((const uint8_t *)str, (uint16_t)strlen(str));
+}
+
+void WL_LoRa_ServiceInit(void)
+{
+    memset(&s_service, 0, sizeof(s_service));
+    s_service.ack_enabled = g_wl_config.ack_enable;
+    s_service.link.last_error = WL_LORA_OK;
+    service_sync_link_snapshot();
+}
+
+WL_LoRa_Status WL_LoRa_Enqueue(const uint8_t *data, uint16_t len)
+{
+    return service_push_queue(data, len);
+}
+
+WL_LoRa_Status WL_LoRa_EnqueueString(const char *str)
+{
+    if (str == NULL) {
+        return WL_LORA_ERR_PARAM;
+    }
+    return WL_LoRa_Enqueue((const uint8_t *)str, (uint16_t)strlen(str));
+}
+
+void WL_LoRa_SetAckEnabled(bool enable)
+{
+    s_service.ack_enabled = enable;
+    if (!enable && s_service.waiting_ack) {
+        service_finish_success();
+        return;
+    }
+    service_sync_link_snapshot();
+}
+
+const WL_LoRa_LinkStatus *WL_LoRa_GetLinkStatus(void)
+{
+    return &s_service.link;
+}
+
+void WL_LoRa_Tick(void)
+{
+    uint32_t now_ms = WL_Platform_GetMillis();
+
+    service_poll_rx();
+
+    if (!s_service.tx_active) {
+        if (s_service.count == 0U) {
+            service_sync_link_snapshot();
+            return;
+        }
+
+        if (s_service.last_tx_ms != 0U &&
+            ((uint32_t)(now_ms - s_service.last_tx_ms) < g_wl_config.tx_min_interval_ms)) {
+            service_sync_link_snapshot();
+            return;
+        }
+
+        if (!service_pop_queue(&s_service.current)) {
+            service_sync_link_snapshot();
+            return;
+        }
+
+        s_service.tx_active = true;
+        s_service.current_sent = false;
+        s_service.waiting_ack = false;
+        s_service.ack_received = false;
+        s_service.retries_used = 0U;
+        s_service.tx_start_ms = now_ms;
+    }
+
+    if (!s_service.current_sent) {
+        if (!WL_Platform_ReadAUX()) {
+            if ((uint32_t)(now_ms - s_service.tx_start_ms) >= g_wl_config.tx_timeout_ms) {
+                (void)service_schedule_retry(now_ms, WL_LORA_ERR_BUSY);
+            }
+            service_sync_link_snapshot();
+            return;
+        }
+
+        WL_Platform_UART_Send(s_service.current.payload, s_service.current.len);
+        s_service.last_tx_ms = now_ms;
+        s_service.current_sent = true;
+        s_service.tx_start_ms = now_ms;
+
+        if (s_service.ack_enabled) {
+            s_service.waiting_ack = true;
+        } else {
+            service_finish_success();
+            return;
+        }
+    }
+
+    if (s_service.waiting_ack) {
+        if (s_service.ack_received) {
+            service_finish_success();
+            return;
+        }
+
+        if ((uint32_t)(now_ms - s_service.tx_start_ms) >= g_wl_config.ack_timeout_ms) {
+            (void)service_schedule_retry(now_ms, WL_LORA_ERR_TIMEOUT);
+            service_sync_link_snapshot();
+            return;
+        }
+    }
+
+    service_sync_link_snapshot();
 }

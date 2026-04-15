@@ -11,8 +11,8 @@ const LF_Config g_lf_config = {
     .calibration_switch_interval_ms = 300U,
     .calibration_spin_speed = 180,
     .sensor_filter_alpha = 0.35f,
-    .line_detect_min_sum = 700U,
-    .sensor_weights = {-1500, -500, 500, 1500},
+    .line_detect_min_sum = 780U,
+    .sensor_weights = {-1750, -1250, -750, -250, 250, 750, 1250, 1750},
     
     // 需要调整的PID参数
     .kp = 0.42f,
@@ -25,4 +25,14 @@ const LF_Config g_lf_config = {
     .motor_deadband = 120,
     .recover_turn_speed = 220,
     .recover_timeout_ms = 900U,
+
+    /* TODO: 根据 HLK-LD2410S 实机固件参数确认默认波特率与触发距离。 */
+    .radar_enable = true,
+    .radar_uart_baudrate = 256000U,
+    .radar_trigger_distance_mm = 450U,
+    .radar_release_distance_mm = 650U,
+    .radar_debounce_frames = 3U,
+    .radar_frame_timeout_ms = 120U,
+
+    .obstacle_warn_speed = 220,
 };

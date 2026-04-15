@@ -7,17 +7,19 @@
 当前实现包含：
 
 - 传感器标定（启动后自动进入标定窗口）
+- 8 路灰度输入（标定、归一化、低通滤波、加权位置估计）
 - 基于位置偏差的 PID 巡线
 - 丢线恢复与恢复超时停车
+- 雷达串口帧解析（非阻塞）与避障状态输出（CLEAR/WARN/BLOCK）
 - 统一平台抽象层（PAL）
 - 离线仿真回归（测试代码位于 `TDPS-Simulator/sim_tests`）
 
 当前实现不包含：
 
-- LoRa 通信业务逻辑
-- 雷达避障业务逻辑
+- LD2410S 完整官方协议全字段解析（当前为保守默认帧）
+- 实机雷达串口端口映射（HAL 端口中保留 TODO）
 
-以上两项通过 `lf_future_hooks` 预留扩展点接入。
+LoRa 通信由 `wireless_v1` 与 `wireless_hooks` 侧接入，主控制环保持非阻塞。
 
 ## 目录
 
@@ -31,6 +33,7 @@ code/line_follow_v1/
 │   ├── lf_future_hooks.h
 │   ├── lf_platform.h
 │   ├── lf_port_stm32f4_hal.h
+│   ├── lf_radar.h
 │   └── lf_sensor.h
 └── Src/
     ├── lf_app.c
@@ -40,7 +43,9 @@ code/line_follow_v1/
     ├── lf_future_hooks.c
     ├── lf_platform_stm32f4_hal.c
     ├── lf_platform_stub.c
+    ├── lf_radar.c
     ├── lf_sensor.c
+    ├── wireless_hooks.c
     └── main.c
 ```
 
@@ -62,6 +67,9 @@ code/line_follow_v1/
 - 速度与控制：`base_speed`、`kp`、`ki`、`kd`
 - 判线与滤波：`line_detect_min_sum`、`sensor_filter_alpha`
 - 恢复策略：`recover_turn_speed`、`recover_timeout_ms`
+- 雷达阈值：`radar_trigger_distance_mm`、`radar_release_distance_mm`
+- 雷达去抖：`radar_debounce_frames`、`radar_frame_timeout_ms`
+- 避障减速：`obstacle_warn_speed`
 
 建议调参顺序：
 
@@ -115,11 +123,14 @@ void LF_Port_Peripheral_Init(void);
 - ADC：DMA 连续采样，缓冲长度 `>= LF_SENSOR_COUNT`
 - PWM：左右电机各 1 路
 - GPIO：方向脚、LED、按钮
+- 雷达 UART：建议中断 + 环形缓冲，平台层通过 `LF_Platform_RadarRead()` 非阻塞读取
 
 ### 6. 编译与上板
 
 - 在 CubeIDE 中 `Clean` -> `Build`
 - 上板后观察：启动 -> 标定 -> RUNNING
+
+说明：`LF_SENSOR_COUNT` 默认已升级为 `8`，若需与旧硬件兼容可在分支中临时回退为 `4`。
 
 ## 扩展点（LoRa / 雷达）
 

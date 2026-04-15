@@ -28,12 +28,36 @@ static uint8_t stub_rx_buf[WL_UART_RX_BUF_SIZE];
 static uint16_t stub_rx_len = 0;
 static uint16_t stub_rx_pos = 0;
 
+/* 是否自动注入 AT_OK 响应。 */
+static bool stub_auto_at_response = true;
+
+/* AUX 引脚模拟状态。 */
+static bool stub_aux_ready = true;
+
 /* ------------------------------------------------------------------ */
 /*  最近一次 UART 发送缓存（供自动化测试断言）                          */
 /* ------------------------------------------------------------------ */
 
 static uint8_t stub_last_tx_buf[WL_UART_TX_BUF_SIZE];
 static uint16_t stub_last_tx_len = 0;
+static uint32_t stub_tx_count = 0U;
+
+static void stub_compact_rx(void)
+{
+    if (stub_rx_pos == 0U) {
+        return;
+    }
+
+    if (stub_rx_pos >= stub_rx_len) {
+        stub_rx_len = 0U;
+        stub_rx_pos = 0U;
+        return;
+    }
+
+    memmove(stub_rx_buf, &stub_rx_buf[stub_rx_pos], (size_t)(stub_rx_len - stub_rx_pos));
+    stub_rx_len = (uint16_t)(stub_rx_len - stub_rx_pos);
+    stub_rx_pos = 0U;
+}
 
 /* ------------------------------------------------------------------ */
 /*  PAL 接口桩实现                                                     */
@@ -44,7 +68,10 @@ void WL_Platform_Init(void)
     stub_millis = 0;
     stub_rx_len = 0;
     stub_rx_pos = 0;
+    stub_auto_at_response = true;
+    stub_aux_ready = true;
     stub_last_tx_len = 0;
+    stub_tx_count = 0U;
     printf("[Stub] WL_Platform_Init done\n");
 }
 
@@ -60,6 +87,11 @@ void WL_Platform_DelayMs(uint32_t ms)
 
 void WL_Platform_UART_Send(const uint8_t *data, uint16_t len)
 {
+    if (data == NULL || len == 0U) {
+        return;
+    }
+
+    stub_tx_count += 1U;
     stub_last_tx_len = len;
     if (stub_last_tx_len > WL_UART_TX_BUF_SIZE) {
         stub_last_tx_len = WL_UART_TX_BUF_SIZE;
@@ -79,13 +111,13 @@ void WL_Platform_UART_Send(const uint8_t *data, uint16_t len)
     printf("\n");
 
     /* 模拟 AT 指令响应：如果发送的是 "AT" 开头，自动填充 "AT_OK\r\n" */
-    if (len >= 2U && data[0] == 'A' && data[1] == 'T') {
+    if (stub_auto_at_response && len >= 2U && data[0] == 'A' && data[1] == 'T') {
         const char *resp = "AT_OK\r\n";
         uint16_t rlen = (uint16_t)strlen(resp);
-        if (rlen <= WL_UART_RX_BUF_SIZE) {
-            memcpy(stub_rx_buf, resp, rlen);
-            stub_rx_len = rlen;
-            stub_rx_pos = 0;
+        stub_compact_rx();
+        if ((uint16_t)(stub_rx_len + rlen) <= WL_UART_RX_BUF_SIZE) {
+            memcpy(&stub_rx_buf[stub_rx_len], resp, rlen);
+            stub_rx_len = (uint16_t)(stub_rx_len + rlen);
         }
     }
 }
@@ -112,8 +144,7 @@ void WL_Platform_UART_FlushRx(void)
 
 bool WL_Platform_ReadAUX(void)
 {
-    /* 桩实现始终返回高电平（模块就绪） */
-    return true;
+    return stub_aux_ready;
 }
 
 void WL_Platform_DebugPrint(const char *msg)
@@ -132,6 +163,12 @@ void WL_Stub_AdvanceMillis(uint32_t ms)
 
 void WL_Stub_InjectRxData(const uint8_t *data, uint16_t len)
 {
+    if (data == NULL) {
+        stub_rx_len = 0U;
+        stub_rx_pos = 0U;
+        return;
+    }
+
     if (len > WL_UART_RX_BUF_SIZE) {
         len = WL_UART_RX_BUF_SIZE;
     }
@@ -139,6 +176,30 @@ void WL_Stub_InjectRxData(const uint8_t *data, uint16_t len)
     memcpy(stub_rx_buf, data, len);
     stub_rx_len = len;
     stub_rx_pos = 0;
+}
+
+void WL_Stub_AppendRxData(const uint8_t *data, uint16_t len)
+{
+    uint16_t append_len;
+
+    if (data == NULL || len == 0U) {
+        return;
+    }
+
+    stub_compact_rx();
+    if (stub_rx_len >= WL_UART_RX_BUF_SIZE) {
+        return;
+    }
+
+    append_len = len;
+    if ((uint16_t)(stub_rx_len + append_len) > WL_UART_RX_BUF_SIZE) {
+        append_len = (uint16_t)(WL_UART_RX_BUF_SIZE - stub_rx_len);
+    }
+
+    if (append_len > 0U) {
+        memcpy(&stub_rx_buf[stub_rx_len], data, append_len);
+        stub_rx_len = (uint16_t)(stub_rx_len + append_len);
+    }
 }
 
 void WL_Stub_ClearLastTx(void)
@@ -163,6 +224,31 @@ uint16_t WL_Stub_GetLastTx(uint8_t *buf, uint16_t max_len)
 uint16_t WL_Stub_GetLastTxLen(void)
 {
     return stub_last_tx_len;
+}
+
+void WL_Stub_ResetTxCount(void)
+{
+    stub_tx_count = 0U;
+}
+
+uint32_t WL_Stub_GetTxCount(void)
+{
+    return stub_tx_count;
+}
+
+void WL_Stub_SetAuxReady(bool ready)
+{
+    stub_aux_ready = ready;
+}
+
+bool WL_Stub_GetAuxReady(void)
+{
+    return stub_aux_ready;
+}
+
+void WL_Stub_SetAutoAtResponse(bool enable)
+{
+    stub_auto_at_response = enable;
 }
 
 #endif /* !WL_USE_STM32F1_HAL_PORT */

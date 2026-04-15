@@ -91,6 +91,10 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
     uint32_t i;
     int64_t weighted_sum = 0;
     uint32_t signal_sum = 0U;
+    uint32_t left_sum = 0U;
+    uint32_t right_sum = 0U;
+    uint16_t peak_value = 0U;
+    uint8_t peak_index = 0U;
 
     if (out_frame == NULL) {
         return;
@@ -109,11 +113,34 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
         out_frame->filtered[i] = filt;
         out_frame->filtered_u16[i] = clamp_u16((int32_t)filt, 0U, 1000U);
 
+        if (out_frame->filtered_u16[i] > peak_value) {
+            peak_value = out_frame->filtered_u16[i];
+            peak_index = (uint8_t)i;
+        }
+
+        if (i < (LF_SENSOR_COUNT / 2U)) {
+            left_sum += out_frame->filtered_u16[i];
+        } else {
+            right_sum += out_frame->filtered_u16[i];
+        }
+
         signal_sum += out_frame->filtered_u16[i];
         weighted_sum += (int64_t)g_lf_config.sensor_weights[i] * (int64_t)out_frame->filtered_u16[i];
     }
 
     out_frame->signal_sum = signal_sum;
+    out_frame->peak_value = peak_value;
+    out_frame->peak_index = peak_index;
+    out_frame->line_confidence = (float)peak_value / 1000.0f;
+
+    if (left_sum > (right_sum + 8U)) {
+        out_frame->edge_hint = -1;
+    } else if (right_sum > (left_sum + 8U)) {
+        out_frame->edge_hint = +1;
+    } else {
+        out_frame->edge_hint = 0;
+    }
+
     out_frame->line_detected = (signal_sum >= g_lf_config.line_detect_min_sum);
 
     if (out_frame->line_detected && signal_sum > 0U) {

@@ -41,10 +41,22 @@ void LF_Platform_ReadLineSensorRaw(uint16_t out_raw[LF_SENSOR_COUNT])
      * 真实硬件端口应返回 ADC 原始值。
      */
     for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
-        out_raw[i] = 2000U;
+        out_raw[i] = 1500U;
     }
-    out_raw[1] = 3200U;
-    out_raw[2] = 3200U;
+
+    if (LF_SENSOR_COUNT >= 8U) {
+        out_raw[2] = 2500U;
+        out_raw[3] = 3300U;
+        out_raw[4] = 3300U;
+        out_raw[5] = 2500U;
+    }
+}
+
+uint16_t LF_Platform_RadarRead(uint8_t *out_buf, uint16_t max_len)
+{
+    (void)out_buf;
+    (void)max_len;
+    return 0U;
 }
 
 void LF_Platform_SetMotorCommand(int16_t left_cmd, int16_t right_cmd)

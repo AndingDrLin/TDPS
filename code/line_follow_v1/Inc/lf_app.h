@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "lf_control.h"
+#include "lf_radar.h"
 #include "lf_sensor.h"
 
 typedef enum {
@@ -26,6 +27,9 @@ typedef struct {
     int8_t last_seen_dir; /* -1 左侧，+1 右侧。 */
     LF_PIDState pid;
     LF_SensorFrame last_frame;
+    LF_RadarObstacleState obstacle_state;
+    uint16_t obstacle_distance_mm;
+    uint32_t radar_parse_error_count;
     bool calibration_ok;
 } LF_AppContext;
 
