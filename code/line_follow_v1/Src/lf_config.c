@@ -11,6 +11,12 @@ const LF_Config g_lf_config = {
     .calibration_switch_interval_ms = 300U,
     .calibration_spin_speed = 180,
     .sensor_filter_alpha = 0.35f,
+    .sensor_input_mode = LF_SENSOR_INPUT_ANALOG_ADC,
+    .sensor_invert_polarity = false,
+    .sensor_digital_threshold = 2048U,
+    /* TODO(8-LP): 实机确认 X1~X8 黑线有效电平，必要时改为 true。 */
+    .sensor_digital_active_high = false,
+    .sensor_use_dynamic_calibration = true,
     .line_detect_min_sum = 780U,
     .sensor_weights = {-1750, -1250, -750, -250, 250, 750, 1250, 1750},
     

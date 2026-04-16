@@ -71,6 +71,32 @@ code/line_follow_v1/
 - 雷达去抖：`radar_debounce_frames`、`radar_frame_timeout_ms`
 - 避障减速：`obstacle_warn_speed`
 
+## Yahboom 8-LP 适配要点
+
+根据 8-LP 文档，模块支持 GPIO / UART / I2C 三种输出模式：
+
+- GPIO(10pin)：高低电平数字量
+- UART(4pin)：协议读取（可返回模拟量和数字量）
+- I2C(4pin)：协议读取（数字量）
+
+当前代码已支持：
+
+- `sensor_input_mode = LF_SENSOR_INPUT_ANALOG_ADC`（默认，兼容现有仿真与 ADC 方案）
+- `sensor_input_mode = LF_SENSOR_INPUT_DIGITAL_GPIO`（8-LP 10pin 数字量模式）
+- `sensor_digital_active_high` 可配置“在线有效电平”极性
+- `sensor_invert_polarity` 可配置模拟量黑白极性翻转
+
+当前预留（TODO）：
+
+- `LF_SENSOR_INPUT_UART_PROTOCOL`
+- `LF_SENSOR_INPUT_I2C_PROTOCOL`
+
+上板时建议先做一次极性确认：
+
+1. 固定传感器对准白底，记录 X1~X8 电平。
+2. 固定传感器对准黑线，记录 X1~X8 电平。
+3. 若“黑线=低电平”，将 `sensor_digital_active_high` 设为 `false`；反之设为 `true`。
+
 建议调参顺序：
 
 1. `base_speed`

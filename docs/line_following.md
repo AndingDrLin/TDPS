@@ -19,6 +19,15 @@
 - 采用加权位置计算偏差（左负右正）
 - 输出辅助信号：`peak_value`、`line_confidence`、`edge_hint`
 
+与 Yahboom 8-LP 的接口匹配策略：
+
+- GPIO 模式：通过 `LF_SENSOR_INPUT_DIGITAL_GPIO` 读取 8 路高低电平。
+- ADC 模式：保留原 `LF_SENSOR_INPUT_ANALOG_ADC` 路径。
+- UART/I2C 模式：已预留配置枚举，协议读取后续扩展。
+- 极性通过配置解决：
+	- `sensor_digital_active_high`（数字模式）
+	- `sensor_invert_polarity`（模拟模式）
+
 相关文件：
 
 - `Src/lf_sensor.c`
@@ -66,6 +75,14 @@
 3. `kd`
 4. `line_detect_min_sum`
 5. `recover_turn_speed` / `recover_timeout_ms`
+
+8-LP 相关关键参数：
+
+- `sensor_input_mode`
+- `sensor_digital_threshold`
+- `sensor_digital_active_high`
+- `sensor_invert_polarity`
+- `sensor_use_dynamic_calibration`
 
 调参要求：
 

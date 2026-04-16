@@ -18,6 +18,16 @@
 __weak void LF_Port_SystemClock_Config(void) {}
 __weak void LF_Port_Peripheral_Init(void) {}
 
+/*
+ * 用户可覆盖该弱函数以读取 8-LP 的 X1~X8 GPIO 电平。
+ * 返回 true 表示 out_level 有效，false 表示未实现。
+ */
+__weak bool LF_Port_ReadLineSensorDigital(uint8_t out_level[LF_SENSOR_COUNT])
+{
+    (void)out_level;
+    return false;
+}
+
 static GPIO_PinState invert_pin_state(GPIO_PinState s)
 {
     return (s == GPIO_PIN_SET) ? GPIO_PIN_RESET : GPIO_PIN_SET;
@@ -62,7 +72,9 @@ void LF_Platform_BoardInit(void)
     HAL_TIM_PWM_Start(&LF_PORT_LEFT_PWM_TIMER_HANDLE, LF_PORT_LEFT_PWM_CHANNEL);
     HAL_TIM_PWM_Start(&LF_PORT_RIGHT_PWM_TIMER_HANDLE, LF_PORT_RIGHT_PWM_CHANNEL);
 
-    HAL_ADC_Start_DMA(&LF_PORT_ADC_HANDLE, (uint32_t *)g_lf_sensor_dma_buffer, LF_SENSOR_COUNT);
+    if (g_lf_config.sensor_input_mode == LF_SENSOR_INPUT_ANALOG_ADC) {
+        HAL_ADC_Start_DMA(&LF_PORT_ADC_HANDLE, (uint32_t *)g_lf_sensor_dma_buffer, LF_SENSOR_COUNT);
+    }
 }
 
 uint32_t LF_Platform_GetMillis(void)
@@ -78,9 +90,22 @@ void LF_Platform_DelayMs(uint32_t ms)
 void LF_Platform_ReadLineSensorRaw(uint16_t out_raw[LF_SENSOR_COUNT])
 {
     size_t i;
+
     if (out_raw == NULL) {
         return;
     }
+
+    if (g_lf_config.sensor_input_mode == LF_SENSOR_INPUT_DIGITAL_GPIO) {
+        uint8_t level[LF_SENSOR_COUNT];
+
+        if (LF_Port_ReadLineSensorDigital(level)) {
+            for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
+                out_raw[i] = (level[i] != 0U) ? 4095U : 0U;
+            }
+            return;
+        }
+    }
+
     for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
         out_raw[i] = g_lf_sensor_dma_buffer[i];
     }

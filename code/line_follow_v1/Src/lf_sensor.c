@@ -33,6 +33,13 @@ static uint16_t normalize_with_calib(uint16_t raw, uint16_t min_v, uint16_t max_
     return clamp_u16(((int32_t)(raw - min_v) * 1000) / (int32_t)(max_v - min_v), 0U, 1000U);
 }
 
+static uint16_t normalize_digital_level(uint16_t raw)
+{
+    bool level_high = (raw >= g_lf_config.sensor_digital_threshold);
+    bool active = g_lf_config.sensor_digital_active_high ? level_high : (!level_high);
+    return active ? 1000U : 0U;
+}
+
 void LF_Sensor_Init(void)
 {
     uint32_t i;
@@ -48,6 +55,17 @@ void LF_Sensor_Init(void)
 void LF_Sensor_StartCalibration(void)
 {
     uint32_t i;
+
+    if (!g_lf_config.sensor_use_dynamic_calibration ||
+        g_lf_config.sensor_input_mode == LF_SENSOR_INPUT_DIGITAL_GPIO) {
+        for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
+            s_calib.min_raw[i] = 0U;
+            s_calib.max_raw[i] = 4095U;
+        }
+        s_calib.calibrated = true;
+        return;
+    }
+
     for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
         s_calib.min_raw[i] = UINT16_MAX;
         s_calib.max_raw[i] = 0U;
@@ -59,6 +77,11 @@ void LF_Sensor_UpdateCalibration(void)
 {
     uint16_t raw[LF_SENSOR_COUNT];
     uint32_t i;
+
+    if (!g_lf_config.sensor_use_dynamic_calibration ||
+        g_lf_config.sensor_input_mode == LF_SENSOR_INPUT_DIGITAL_GPIO) {
+        return;
+    }
 
     LF_Platform_ReadLineSensorRaw(raw);
 
@@ -76,6 +99,12 @@ void LF_Sensor_EndCalibration(void)
 {
     uint32_t i;
     bool ok = true;
+
+    if (!g_lf_config.sensor_use_dynamic_calibration ||
+        g_lf_config.sensor_input_mode == LF_SENSOR_INPUT_DIGITAL_GPIO) {
+        s_calib.calibrated = true;
+        return;
+    }
 
     for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
         if (s_calib.max_raw[i] <= s_calib.min_raw[i] + 20U) {
@@ -104,7 +133,17 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
     LF_Platform_ReadLineSensorRaw(out_frame->raw);
 
     for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
-        uint16_t norm = normalize_with_calib(out_frame->raw[i], s_calib.min_raw[i], s_calib.max_raw[i]);
+        uint16_t norm;
+
+        if (g_lf_config.sensor_input_mode == LF_SENSOR_INPUT_DIGITAL_GPIO) {
+            norm = normalize_digital_level(out_frame->raw[i]);
+        } else {
+            norm = normalize_with_calib(out_frame->raw[i], s_calib.min_raw[i], s_calib.max_raw[i]);
+            if (g_lf_config.sensor_invert_polarity) {
+                norm = (uint16_t)(1000U - norm);
+            }
+        }
+
         float filt = g_lf_config.sensor_filter_alpha * (float)norm +
                      (1.0f - g_lf_config.sensor_filter_alpha) * s_filtered[i];
 

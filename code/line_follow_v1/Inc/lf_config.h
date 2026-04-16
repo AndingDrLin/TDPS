@@ -13,6 +13,20 @@
 
 #define LF_SENSOR_COUNT (8U)
 
+typedef enum {
+    /* 直接采集每路模拟量（ADC）。 */
+    LF_SENSOR_INPUT_ANALOG_ADC = 0,
+
+    /* 8 路 GPIO 高低电平（Yahboom 8-LP 的 10pin IO 模式）。 */
+    LF_SENSOR_INPUT_DIGITAL_GPIO,
+
+    /* 串口协议读取（Yahboom 8-LP 的 4pin UART 模式，后续扩展）。 */
+    LF_SENSOR_INPUT_UART_PROTOCOL,
+
+    /* I2C 协议读取（Yahboom 8-LP 的 4pin I2C 模式，后续扩展）。 */
+    LF_SENSOR_INPUT_I2C_PROTOCOL,
+} LF_SensorInputMode;
+
 typedef struct {
     /* 主循环节拍（ms）。建议保持固定周期执行控制算法。 */
     uint16_t control_period_ms;
@@ -31,6 +45,21 @@ typedef struct {
 
     /* 低通滤波系数（0~1）。值越大越灵敏，值越小越平滑。 */
     float sensor_filter_alpha;
+
+    /* 传感器输入模式（支持 8-LP 的 GPIO/UART/I2C 三种通信接口）。 */
+    LF_SensorInputMode sensor_input_mode;
+
+    /* 模拟量极性翻转（当“黑线原始值更小”时可置 true）。 */
+    bool sensor_invert_polarity;
+
+    /* GPIO 数字模式阈值（raw >= threshold 视为高电平）。 */
+    uint16_t sensor_digital_threshold;
+
+    /* GPIO 数字模式下“在线”有效电平：true=高电平有效，false=低电平有效。 */
+    bool sensor_digital_active_high;
+
+    /* 是否启用动态标定（数字模式建议关闭）。 */
+    bool sensor_use_dynamic_calibration;
 
     /* 判定“在线上”的最小强度和。 */
     uint16_t line_detect_min_sum;

@@ -32,7 +32,23 @@ void LF_Platform_DelayMs(uint32_t ms)
 void LF_Platform_ReadLineSensorRaw(uint16_t out_raw[LF_SENSOR_COUNT])
 {
     uint32_t i;
+
     if (out_raw == NULL) {
+        return;
+    }
+
+    if (g_lf_config.sensor_input_mode == LF_SENSOR_INPUT_DIGITAL_GPIO) {
+        bool active_high = g_lf_config.sensor_digital_active_high;
+
+        for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
+            out_raw[i] = active_high ? 0U : 4095U;
+        }
+
+        if (LF_SENSOR_COUNT >= 8U) {
+            /* 默认模拟中间两路“在线”。 */
+            out_raw[3] = active_high ? 4095U : 0U;
+            out_raw[4] = active_high ? 4095U : 0U;
+        }
         return;
     }
 
