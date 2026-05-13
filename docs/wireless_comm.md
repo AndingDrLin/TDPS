@@ -47,21 +47,15 @@ TEAM=<id>,NAME=<name>,CP=<checkpoint>,TIME=<ms>\n
 统一入口：
 
 ```bash
-bash TDPS-Simulator/scripts/run_wireless_autotest.sh
+gcc -Ifirmware/Inc -Ifirmware/common -Ifirmware/platform \
+    firmware/Src/{wl_app,wl_lora,wl_protocol,wl_config,wl_platform_stub}.c \
+    firmware/test/test_wl_stub.c -o wl_test
+./wl_test
 ```
 
-包含：
-- `wl_async_autotest`：发送、超时、重试、ACK 路径
-- `lf_radar_lora_integration_autotest`：巡线 + 雷达 + LoRa 联动回归
-
-雷达解析专项：
-
-```bash
-bash TDPS-Simulator/scripts/run_radar_autotest.sh
-```
-
-附加回归：
+附加巡线回归依赖 `TDPS-Simulator` 子模块：
 
 ```bash
 bash TDPS-Simulator/scripts/line_follow_cli.sh quick
+bash TDPS-Simulator/scripts/run_line_follow_autotest.sh
 ```

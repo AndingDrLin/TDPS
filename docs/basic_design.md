@@ -99,4 +99,4 @@
 
 - 设计决策：本文与 `docs/line_following.md`
 - 可执行操作：`README.md` 与 `docs/testing/*`
-- 模块细节：`code/line_follow_v1/README.md`
+- 固件实现：`firmware/`

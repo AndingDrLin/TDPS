@@ -1,38 +1,55 @@
 # TDPS
 
-TDPS 包含两个子系统：
-- `code/line_follow_v1`: Task 1 巡线控制（8 路灰度 + 雷达避障状态接入 + 仿真回归）
-- `code/wireless_v1`: Task 2 无线通信（LoRa 透传 + 异步队列 + 超时重试 + 可选 ACK）
+TDPS 是 Team 15 智能巡线小车固件，目标 MCU 为 **STM32F407VET6**。当前固件统一放在 `firmware/`：
+
+- 巡线控制：8 路灰度传感器、标定、归一化、滤波、PID、丢线恢复
+- 雷达避障：HLK-LD2410S 串口帧解析，输出 `CLEAR/WARN/BLOCK`
+- 无线通信：EWM22A-900BWL22S LoRa 异步队列、超时重试、可选 ACK
 
 ## 快速测试
 
+PC stub 编译（不依赖 STM32 HAL）：
+
 ```bash
-# 巡线 quick 门禁
-bash TDPS-Simulator/scripts/line_follow_cli.sh quick
+gcc -Ifirmware/Inc -Ifirmware/common -Ifirmware/platform \
+    firmware/Src/{lf_app,lf_control,lf_sensor,lf_radar,lf_chassis,lf_config,lf_platform_stub,lf_future_hooks,wireless_hooks,wl_app,wl_lora,wl_protocol,wl_config,wl_platform_stub}.c \
+    firmware/test/test_lf_stub.c -o lf_test -lm
 
-# 雷达帧解析专项
-bash TDPS-Simulator/scripts/run_radar_autotest.sh
-
-# 无线模块 + 巡线集成自动化测试
-bash TDPS-Simulator/scripts/run_wireless_autotest.sh
-
-# 一键全量回归（quick + radar + wireless + integration）
-bash TDPS-Simulator/scripts/run_system_autotest.sh
+ gcc -Ifirmware/Inc -Ifirmware/common -Ifirmware/platform \
+    firmware/Src/{wl_app,wl_lora,wl_protocol,wl_config,wl_platform_stub}.c \
+    firmware/test/test_wl_stub.c -o wl_test
 ```
+
+如本机安装了 CMake：
+
+```bash
+cmake -S firmware -B firmware/build -DTDPS_TARGET_MCU=OFF -DTDPS_BUILD_TESTS=ON
+cmake --build firmware/build
+./firmware/build/test_lf
+./firmware/build/test_wl
+```
+
+Simulator 回归脚本依赖 `TDPS-Simulator` 子模块。当前子模块提供的脚本为：
+
+```bash
+bash TDPS-Simulator/scripts/line_follow_cli.sh quick
+bash TDPS-Simulator/scripts/run_line_follow_autotest.sh
+bash TDPS-Simulator/scripts/run_line_follow_stability.sh
+```
+
+注意：当前 Simulator 子模块仍按旧巡线工程布局生成 runner，完整联动前需要同步更新子模块的源码路径和 8 路传感器假设。
 
 ## 关键行为
 
-- 巡线输入升级为 8 路灰度，支持标定、归一化、滤波、加权位置估计和丢线辅助方向。
-- 雷达采用串口帧解析（保守默认帧格式），输出 `CLEAR/WARN/BLOCK` 避障状态，不阻塞主控制环。
-- 无线发送由异步队列驱动，支持超时重试与可选 ACK，主循环通过 `Tick` 非阻塞推进。
+- 巡线输入固定为 8 路，支持 ADC 模拟量和 8-LP 数字 GPIO 模式。
+- 雷达串口读取由 F407 HAL 端口的中断环形缓冲提供，不阻塞主控制环。
+- 无线发送由异步队列驱动，检查点事件入队后由 `WL_LoRa_Tick()` 非阻塞推进。
 - 集成入口：`LF_App_NotifyCheckpoint(checkpoint_id)`。
 - 报文格式：`TEAM=<id>,NAME=<name>,CP=<checkpoint>,TIME=<ms>\n`。
 
 ## 文档
 
-- 巡线模块说明：`code/line_follow_v1/README.md`
-- 无线模块说明：`code/wireless_v1/README.md`
+- 固件入口：`firmware/`
 - 无线设计文档：`docs/wireless_comm.md`
-- 巡线仿真说明：`TDPS-Simulator/sim_tests/line_follow_v1/README.md`
-- 无线仿真说明：`TDPS-Simulator/sim_tests/wireless_v1/README.md`
-- 联动仿真说明：`TDPS-Simulator/sim_tests/integration/README.md`
+- 巡线说明：`docs/line_following.md`
+- 测试说明：`docs/testing/`

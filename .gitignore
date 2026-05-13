@@ -1,4 +1,34 @@
-# Legacy generated outputs (before simulator refactor)
+# Claude
+CLAUDE.md
+
+# Build outputs
+build/
+firmware/build/
+*.o
+*.elf
+*.bin
+*.hex
+*.map
+*.d
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# IDE metadata
+.vscode/
+.idea/
+.settings/
+Debug/
+Release/
+*.launch
+
+# macOS
+.DS_Store
+
+# Legacy generated outputs
 code/line_follow_v1/tests/.lf_autotest_runner
 code/line_follow_v1/tests/reports/
 code/line_follow_v1/tests/*.log
@@ -6,5 +36,11 @@ code/line_follow_v1/tests/artifacts/
 code/line_follow_v1/tests/stability_reports/
 code/line_follow_v1/tests/last_autotest_report*.json
 
-# Simulator artifacts (fallback when TDPS-Simulator is not treated as sub-repo)
+# Simulator artifacts
 TDPS-Simulator/artifacts/
+
+# Local test binaries
+lf_test
+wl_test
+test_lf
+test_wl

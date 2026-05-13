@@ -56,18 +56,17 @@ bash TDPS-Simulator/scripts/line_follow_cli.sh stability 15 0.01 0.12 20260319 2
 - `minDetectPercent >= 93`
 - `maxLostSec <= 0.40`
 
-## 可选：雷达与无线专项
+## 可选：无线 stub 检查
 
 ```bash
-# 雷达帧解析与避障触发
-bash TDPS-Simulator/scripts/run_radar_autotest.sh
-
-# LoRa 异步发送/重试 + 三模块联动桩测试
-bash TDPS-Simulator/scripts/run_wireless_autotest.sh
+gcc -Ifirmware/Inc -Ifirmware/common -Ifirmware/platform \
+    firmware/Src/{wl_app,wl_lora,wl_protocol,wl_config,wl_platform_stub}.c \
+    firmware/test/test_wl_stub.c -o wl_test
+./wl_test
 ```
 
-## 可选：一键系统回归
+## 可选：巡线稳定性回归
 
 ```bash
-bash TDPS-Simulator/scripts/run_system_autotest.sh
+bash TDPS-Simulator/scripts/run_line_follow_stability.sh
 ```
