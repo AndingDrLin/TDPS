@@ -17,9 +17,10 @@
 extern ADC_HandleTypeDef hadc1;
 extern TIM_HandleTypeDef htim3;
 extern UART_HandleTypeDef huart1;
+extern UART_HandleTypeDef huart2;
 
 /* ===== 传感器 DMA 缓冲（在用户文件中定义） ===== */
-extern volatile uint16_t g_lf_sensor_dma_buffer[LF_SENSOR_COUNT];
+extern volatile uint32_t g_lf_sensor_dma_buffer[LF_SENSOR_COUNT];
 
 /* ===== ADC ===== */
 #define LF_PORT_ADC_HANDLE (hadc1)
@@ -53,5 +54,16 @@ extern volatile uint16_t g_lf_sensor_dma_buffer[LF_SENSOR_COUNT];
 /* ===== 调试串口（可选） ===== */
 #define LF_PORT_ENABLE_DEBUG_UART (1)
 #define LF_PORT_DEBUG_UART_HANDLE (huart1)
+
+/* ===== 雷达串口（默认 USART2，按实际接线修改） ===== */
+#define LF_PORT_RADAR_UART_HANDLE (huart2)
+#define LF_PORT_RADAR_UART_IRQN (USART2_IRQn)
+#define LF_PORT_RADAR_UART_IRQ_PRIORITY (5U)
+#define LF_PORT_RADAR_UART_IRQ_SUB_PRIORITY (0U)
+#define LF_PORT_RADAR_RX_BUFFER_SIZE (512U)
+
+void LF_Port_UartRxCpltCallback(UART_HandleTypeDef *huart);
+void LF_Port_UartErrorCallback(UART_HandleTypeDef *huart);
+void LF_Port_UartTxCpltCallback(UART_HandleTypeDef *huart);
 
 #endif /* LF_PORT_STM32F4_HAL_H */

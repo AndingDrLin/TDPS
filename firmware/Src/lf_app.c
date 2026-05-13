@@ -127,7 +127,7 @@ static void process_recovery(uint32_t now_ms)
         return;
     }
 
-    if ((uint32_t)(now_ms - s_app.recover_start_ms) > g_lf_config.recover_timeout_ms) {
+    if ((uint32_t)(now_ms - s_app.recover_start_ms) >= g_lf_config.recover_timeout_ms) {
         LF_Chassis_Stop();
         set_state(LF_APP_STATE_STOPPED);
         LF_Platform_DebugPrint("Recovery timeout -> STOP\n");
@@ -194,6 +194,13 @@ void LF_App_RunStep(void)
                 calib = LF_Sensor_GetCalibration();
                 s_app.calibration_ok = calib->calibrated;
                 LF_Hook_OnCalibrationComplete(s_app.calibration_ok);
+
+                if (!s_app.calibration_ok) {
+                    LF_Chassis_Stop();
+                    set_state(LF_APP_STATE_FAULT);
+                    LF_Platform_DebugPrint("Calibration failed -> FAULT\n");
+                    return;
+                }
 
                 LF_Control_ResetPid(&s_app.pid);
                 set_state(LF_APP_STATE_RUNNING);

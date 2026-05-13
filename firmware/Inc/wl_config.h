@@ -6,7 +6,7 @@
  * 修改参数时无需改动驱动层或应用层代码。
  *
  * 硬件：EWM22A-900BWL22S（LoRa 850–930 MHz）
- * MCU： STM32F103C8T6
+ * MCU： STM32F407VET6
  */
 
 #ifndef WL_CONFIG_H

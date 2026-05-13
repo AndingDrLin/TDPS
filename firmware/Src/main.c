@@ -4,10 +4,6 @@
 #include "lf_platform.h"
 #include "wireless_hooks.h"
 
-/*
- * 主程序入口（巡线 + 任务2无线通信）
- * 主循环只保留：巡线 step + 无线 tick。
- */
 int main(void)
 {
     bool wireless_ready;
@@ -25,6 +21,6 @@ int main(void)
     while (1) {
         LF_App_RunStep();
         Wireless_Hooks_Tick();
-        LF_Platform_DelayMs(1);
+        LF_Platform_DelayMs(1U);
     }
 }

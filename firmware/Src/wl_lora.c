@@ -48,6 +48,7 @@ typedef struct {
     uint8_t retries_used;
     uint32_t tx_start_ms;
     uint32_t last_tx_ms;
+    uint32_t last_success_ms;
 
     char ack_line[ACK_BUF_SIZE];
     uint8_t ack_line_len;
@@ -88,6 +89,7 @@ static void service_finish_success(void)
 {
     s_service.link.tx_success_count += 1U;
     s_service.link.last_error = WL_LORA_OK;
+    s_service.last_success_ms = WL_Platform_GetMillis();
     service_reset_active_tx();
     service_sync_link_snapshot();
 }
@@ -132,7 +134,6 @@ static WL_LoRa_Status service_push_queue(const uint8_t *data, uint16_t len)
         return WL_LORA_ERR_BUSY;
     }
 
-    memset(s_service.queue[s_service.tail].payload, 0, sizeof(s_service.queue[s_service.tail].payload));
     memcpy(s_service.queue[s_service.tail].payload, data, len);
     s_service.queue[s_service.tail].len = len;
 
@@ -174,7 +175,8 @@ static void service_poll_rx(void)
             if (s_service.ack_line_len + 1U < ACK_BUF_SIZE) {
                 s_service.ack_line[s_service.ack_line_len++] = (char)b;
             } else {
-                s_service.ack_line_len = 0U;
+                s_service.ack_line[ACK_BUF_SIZE - 1U] = '\0';
+                service_note_ack_line();
             }
         }
     } while (n > 0U);
@@ -479,6 +481,12 @@ void WL_LoRa_Tick(void)
 
     if (!s_service.tx_active) {
         if (s_service.count == 0U) {
+            service_sync_link_snapshot();
+            return;
+        }
+
+        if (s_service.last_success_ms != 0U &&
+            ((uint32_t)(now_ms - s_service.last_success_ms) < g_wl_config.tx_min_interval_ms)) {
             service_sync_link_snapshot();
             return;
         }

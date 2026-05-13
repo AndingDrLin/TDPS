@@ -18,6 +18,7 @@ const LF_Config g_lf_config = {
     .sensor_digital_active_high = false,
     .sensor_use_dynamic_calibration = true,
     .line_detect_min_sum = 780U,
+    .edge_hint_threshold = 120U,
     .sensor_weights = {-1750, -1250, -750, -250, 250, 750, 1250, 1750},
     
     // 需要调整的PID参数

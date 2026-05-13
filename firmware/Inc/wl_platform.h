@@ -3,7 +3,7 @@
  * @brief   无线模块平台抽象层（PAL）接口定义。
  *
  * 提供与硬件无关的 UART、GPIO 和定时接口。
- * 具体实现位于 wl_platform_stm32f1.c（真实硬件）或
+ * 具体实现位于 wl_platform_stm32f4.c（真实硬件）或
  * wl_platform_stub.c（离线测试桩）。
  */
 

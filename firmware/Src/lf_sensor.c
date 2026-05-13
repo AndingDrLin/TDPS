@@ -5,21 +5,11 @@
 
 #include "lf_config.h"
 #include "lf_platform.h"
+#include "clamp.h"
 
 static LF_SensorCalibration s_calib;
 static float s_filtered[LF_SENSOR_COUNT];
 static int32_t s_last_position = 0;
-
-static uint16_t clamp_u16(int32_t v, uint16_t lo, uint16_t hi)
-{
-    if (v < (int32_t)lo) {
-        return lo;
-    }
-    if (v > (int32_t)hi) {
-        return hi;
-    }
-    return (uint16_t)v;
-}
 
 static uint16_t normalize_with_calib(uint16_t raw, uint16_t min_v, uint16_t max_v)
 {
@@ -28,9 +18,9 @@ static uint16_t normalize_with_calib(uint16_t raw, uint16_t min_v, uint16_t max_
          * 标定无效或动态范围过小时，回退到 12bit ADC 估算。
          * 该分支用于“首次上电还没标定完成”的安全兜底。
          */
-        return clamp_u16(((int32_t)raw * 1000) / 4095, 0U, 1000U);
+        return TDPS_ClampU16(((int32_t)raw * 1000) / 4095, 0U, 1000U);
     }
-    return clamp_u16(((int32_t)(raw - min_v) * 1000) / (int32_t)(max_v - min_v), 0U, 1000U);
+    return TDPS_ClampU16(((int32_t)(raw - min_v) * 1000) / (int32_t)(max_v - min_v), 0U, 1000U);
 }
 
 static uint16_t normalize_digital_level(uint16_t raw)
@@ -150,7 +140,7 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
         s_filtered[i] = filt;
         out_frame->norm[i] = norm;
         out_frame->filtered[i] = filt;
-        out_frame->filtered_u16[i] = clamp_u16((int32_t)filt, 0U, 1000U);
+        out_frame->filtered_u16[i] = TDPS_ClampU16((int32_t)filt, 0U, 1000U);
 
         if (out_frame->filtered_u16[i] > peak_value) {
             peak_value = out_frame->filtered_u16[i];
@@ -172,9 +162,9 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
     out_frame->peak_index = peak_index;
     out_frame->line_confidence = (float)peak_value / 1000.0f;
 
-    if (left_sum > (right_sum + 8U)) {
+    if (left_sum > (right_sum + g_lf_config.edge_hint_threshold)) {
         out_frame->edge_hint = -1;
-    } else if (right_sum > (left_sum + 8U)) {
+    } else if (right_sum > (left_sum + g_lf_config.edge_hint_threshold)) {
         out_frame->edge_hint = +1;
     } else {
         out_frame->edge_hint = 0;

@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "lf_port_stm32f4_hal.h"
+#include "lf_radar_uart.h"
 
 /*
  * 说明：
@@ -27,6 +28,8 @@ __weak bool LF_Port_ReadLineSensorDigital(uint8_t out_level[LF_SENSOR_COUNT])
     (void)out_level;
     return false;
 }
+
+static volatile bool s_lf_debug_tx_busy = false;
 
 static GPIO_PinState invert_pin_state(GPIO_PinState s)
 {
@@ -73,7 +76,11 @@ void LF_Platform_BoardInit(void)
     HAL_TIM_PWM_Start(&LF_PORT_RIGHT_PWM_TIMER_HANDLE, LF_PORT_RIGHT_PWM_CHANNEL);
 
     if (g_lf_config.sensor_input_mode == LF_SENSOR_INPUT_ANALOG_ADC) {
-        HAL_ADC_Start_DMA(&LF_PORT_ADC_HANDLE, (uint32_t *)g_lf_sensor_dma_buffer, LF_SENSOR_COUNT);
+        HAL_ADC_Start_DMA(&LF_PORT_ADC_HANDLE, g_lf_sensor_dma_buffer, LF_SENSOR_COUNT);
+    }
+
+    if (g_lf_config.radar_enable) {
+        LF_RadarUart_Init();
     }
 }
 
@@ -107,19 +114,13 @@ void LF_Platform_ReadLineSensorRaw(uint16_t out_raw[LF_SENSOR_COUNT])
     }
 
     for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
-        out_raw[i] = g_lf_sensor_dma_buffer[i];
+        out_raw[i] = (uint16_t)(g_lf_sensor_dma_buffer[i] & 0x0FFFU);
     }
 }
 
 uint16_t LF_Platform_RadarRead(uint8_t *out_buf, uint16_t max_len)
 {
-    /*
-     * TODO: 接入 HLK-LD2410S 串口中断环形缓冲后，在此返回可读字节。
-     * 当前先保持非阻塞空实现，避免影响巡线主闭环节拍。
-     */
-    (void)out_buf;
-    (void)max_len;
-    return 0U;
+    return LF_RadarUart_Read(out_buf, max_len);
 }
 
 void LF_Platform_SetMotorCommand(int16_t left_cmd, int16_t right_cmd)
@@ -154,12 +155,36 @@ bool LF_Platform_IsStartButtonPressed(void)
 void LF_Platform_DebugPrint(const char *msg)
 {
 #if LF_PORT_ENABLE_DEBUG_UART
-    if (msg == NULL) {
+    if (msg == NULL || s_lf_debug_tx_busy) {
         return;
     }
-    HAL_UART_Transmit(&LF_PORT_DEBUG_UART_HANDLE, (uint8_t *)msg, (uint16_t)strlen(msg), 30);
+    s_lf_debug_tx_busy = true;
+    if (HAL_UART_Transmit_IT(&LF_PORT_DEBUG_UART_HANDLE, (uint8_t *)msg, (uint16_t)strlen(msg)) != HAL_OK) {
+        s_lf_debug_tx_busy = false;
+    }
 #else
     (void)msg;
+#endif
+}
+
+void LF_Port_UartRxCpltCallback(UART_HandleTypeDef *huart)
+{
+    LF_RadarUart_RxCpltCallback(huart);
+}
+
+void LF_Port_UartErrorCallback(UART_HandleTypeDef *huart)
+{
+    LF_RadarUart_ErrorCallback(huart);
+}
+
+void LF_Port_UartTxCpltCallback(UART_HandleTypeDef *huart)
+{
+#if LF_PORT_ENABLE_DEBUG_UART
+    if (huart != NULL && huart->Instance == LF_PORT_DEBUG_UART_HANDLE.Instance) {
+        s_lf_debug_tx_busy = false;
+    }
+#else
+    (void)huart;
 #endif
 }
 

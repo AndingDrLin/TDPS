@@ -2,11 +2,11 @@
  * @file    wl_platform_stub.c
  * @brief   平台抽象层桩实现（用于离线测试 / PC 端编译）。
  *
- * 当未定义 WL_USE_STM32F1_HAL_PORT 时编译此文件，
+ * 当未定义 WL_USE_STM32F4_HAL_PORT 时编译此文件，
  * 提供 wl_platform.h 中所有接口的空实现或简单模拟。
  */
 
-#ifndef WL_USE_STM32F1_HAL_PORT
+#ifndef WL_USE_STM32F4_HAL_PORT
 
 #include "wl_config.h"
 #include "wl_platform.h"
@@ -251,4 +251,4 @@ void WL_Stub_SetAutoAtResponse(bool enable)
     stub_auto_at_response = enable;
 }
 
-#endif /* !WL_USE_STM32F1_HAL_PORT */
+#endif /* !WL_USE_STM32F4_HAL_PORT */

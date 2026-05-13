@@ -19,8 +19,6 @@ void LF_Platform_BoardInit(void)
 
 uint32_t LF_Platform_GetMillis(void)
 {
-    /* 每次读取自增 1ms，便于离线调试状态机节拍。 */
-    s_fake_ms += 1U;
     return s_fake_ms;
 }
 

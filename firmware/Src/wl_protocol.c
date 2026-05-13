@@ -30,9 +30,8 @@ uint16_t WL_Protocol_BuildCheckpointMsg(char *buf,
                      (unsigned)elapsed_ms);
 
     if (n < 0 || (uint16_t)n >= buf_len) {
-        /* 缓冲区不足，截断处理 */
-        buf[buf_len - 1] = '\0';
-        return (uint16_t)(buf_len - 1);
+        buf[0] = '\0';
+        return 0U;
     }
 
     return (uint16_t)n;
@@ -53,8 +52,8 @@ uint16_t WL_Protocol_BuildCustomMsg(char *buf,
                      text);
 
     if (n < 0 || (uint16_t)n >= buf_len) {
-        buf[buf_len - 1] = '\0';
-        return (uint16_t)(buf_len - 1);
+        buf[0] = '\0';
+        return 0U;
     }
 
     return (uint16_t)n;

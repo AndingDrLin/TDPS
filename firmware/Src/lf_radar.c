@@ -5,6 +5,7 @@
 
 #include "lf_config.h"
 #include "lf_platform.h"
+#include "clamp.h"
 
 #define LF_RADAR_HEADER_SIZE (4U)
 #define LF_RADAR_PAYLOAD_SIZE (4U)
@@ -18,21 +19,11 @@ typedef struct {
     uint8_t payload_index;
     uint8_t payload[LF_RADAR_PAYLOAD_SIZE];
     uint8_t danger_count;
+    uint8_t warn_count;
     uint8_t clear_count;
 } LF_RadarRuntime;
 
 static LF_RadarRuntime s_radar;
-
-static uint8_t clamp_u8(uint32_t v, uint8_t lo, uint8_t hi)
-{
-    if (v < (uint32_t)lo) {
-        return lo;
-    }
-    if (v > (uint32_t)hi) {
-        return hi;
-    }
-    return (uint8_t)v;
-}
 
 static void reset_parser(void)
 {
@@ -43,13 +34,14 @@ static void reset_parser(void)
 static void reset_obstacle_state(void)
 {
     s_radar.danger_count = 0U;
+    s_radar.warn_count = 0U;
     s_radar.clear_count = 0U;
     s_radar.state.obstacle_state = LF_RADAR_OBSTACLE_CLEAR;
 }
 
 static void update_obstacle_state(bool has_target, uint16_t distance_mm)
 {
-    const uint8_t debounce = clamp_u8(g_lf_config.radar_debounce_frames, 1U, 20U);
+    const uint8_t debounce = TDPS_ClampU8(g_lf_config.radar_debounce_frames, 1U, 20U);
 
     if (has_target && distance_mm <= g_lf_config.radar_trigger_distance_mm) {
         if (s_radar.danger_count < 255U) {
@@ -81,11 +73,28 @@ static void update_obstacle_state(bool has_target, uint16_t distance_mm)
     }
 
     if (has_target && distance_mm <= g_lf_config.radar_release_distance_mm) {
-        s_radar.state.obstacle_state = LF_RADAR_OBSTACLE_WARN;
+        if (s_radar.warn_count < 255U) {
+            s_radar.warn_count += 1U;
+        }
+        s_radar.clear_count = 0U;
+        if (s_radar.warn_count >= debounce) {
+            s_radar.state.obstacle_state = LF_RADAR_OBSTACLE_WARN;
+        }
     } else {
-        s_radar.state.obstacle_state = LF_RADAR_OBSTACLE_CLEAR;
+        s_radar.warn_count = 0U;
+        if (s_radar.state.obstacle_state == LF_RADAR_OBSTACLE_WARN) {
+            if (s_radar.clear_count < 255U) {
+                s_radar.clear_count += 1U;
+            }
+            if (s_radar.clear_count >= debounce) {
+                s_radar.state.obstacle_state = LF_RADAR_OBSTACLE_CLEAR;
+                s_radar.clear_count = 0U;
+            }
+        } else {
+            s_radar.state.obstacle_state = LF_RADAR_OBSTACLE_CLEAR;
+            s_radar.clear_count = 0U;
+        }
     }
-    s_radar.clear_count = 0U;
 }
 
 static void consume_frame(uint32_t now_ms)

@@ -64,6 +64,9 @@ typedef struct {
     /* 判定“在线上”的最小强度和。 */
     uint16_t line_detect_min_sum;
 
+    /* 左右半区强度差超过该阈值时，更新丢线恢复方向。 */
+    uint16_t edge_hint_threshold;
+
     /* 传感器横向权重。左负右正。 */
     int16_t sensor_weights[LF_SENSOR_COUNT];
 
