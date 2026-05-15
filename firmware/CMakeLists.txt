@@ -36,6 +36,8 @@ target_compile_options(tdps_core PRIVATE -Wall -Wextra)
 
 if(TDPS_NO_CAR_MODE)
     target_compile_definitions(tdps_core PUBLIC TDPS_NO_CAR_MODE=1)
+else()
+    target_compile_definitions(tdps_core PUBLIC TDPS_NO_CAR_MODE=0)
 endif()
 
 if(TDPS_DEBUG_MONITOR)
@@ -65,10 +67,14 @@ else()
     )
 
     if(TDPS_BUILD_TESTS)
+        enable_testing()
+
         add_executable(test_lf test/test_lf_stub.c)
         target_link_libraries(test_lf PRIVATE tdps_core m)
+        add_test(NAME test_lf COMMAND test_lf)
 
         add_executable(test_wl test/test_wl_stub.c)
         target_link_libraries(test_wl PRIVATE tdps_core)
+        add_test(NAME test_wl COMMAND test_wl)
     endif()
 endif()

@@ -6,10 +6,18 @@
 
 #include "lf_config.h"
 
+typedef enum {
+    LF_SENSOR_CAL_FAILED = 0,
+    LF_SENSOR_CAL_OK,
+    LF_SENSOR_CAL_DEGRADED,
+} LF_SensorCalibrationStatus;
+
 typedef struct {
     uint16_t min_raw[LF_SENSOR_COUNT];
     uint16_t max_raw[LF_SENSOR_COUNT];
     uint16_t bad_mask;
+    uint8_t valid_count;
+    LF_SensorCalibrationStatus status;
     bool calibrated;
 } LF_SensorCalibration;
 

@@ -28,6 +28,7 @@ typedef enum {
     LF_APP_REASON_WAIT_START,
     LF_APP_REASON_CALIBRATION_STARTED,
     LF_APP_REASON_CALIBRATION_FAILED,
+    LF_APP_REASON_CALIBRATION_DEGRADED,
     LF_APP_REASON_CALIBRATION_DONE,
     LF_APP_REASON_LINE_LOST,
     LF_APP_REASON_LINE_RECOVERED,
@@ -65,6 +66,11 @@ typedef struct {
     uint32_t radar_frame_age_ms;
     LF_AppReason reason;
     bool calibration_ok;
+    bool calibration_degraded;
+    uint8_t recover_phase;
+    uint8_t recover_confirm_count;
+    uint32_t recover_phase_start_ms;
+    uint8_t avoid_confirm_count;
 } LF_AppContext;
 
 /* 应用层初始化。 */

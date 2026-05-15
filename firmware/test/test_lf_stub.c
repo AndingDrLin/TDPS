@@ -3,6 +3,7 @@
 #include "lf_platform.h"
 #include "lf_radar.h"
 #include "lf_sensor.h"
+#include "lf_control.h"
 #include "wireless_hooks.h"
 
 #include <stdio.h>
@@ -199,6 +200,54 @@ static int test_sensor_weighted_position_and_edge_hint(void)
            expect_true(frame.edge_hint == 1, "sensor edge hint points right");
 }
 
+static int test_sensor_degraded_calibration_masks_bad_channels(void)
+{
+    const uint16_t low[LF_SENSOR_COUNT] = {900U, 900U, 900U, 900U, 900U, 900U, 900U, 900U};
+    const uint16_t high[LF_SENSOR_COUNT] = {2500U, 2500U, 2500U, 2500U, 2500U, 900U, 900U, 900U};
+    const uint16_t bad_only_high[LF_SENSOR_COUNT] = {900U, 900U, 900U, 900U, 900U, 4095U, 4095U, 4095U};
+    const LF_SensorCalibration *cal;
+    LF_SensorFrame frame;
+    int failures = 0;
+
+    LF_Platform_BoardInit();
+    LF_Sensor_Init();
+    LF_Sensor_StartCalibration();
+    LF_PlatformStub_SetLineSensorRaw(low);
+    LF_Sensor_UpdateCalibration();
+    LF_PlatformStub_SetLineSensorRaw(high);
+    LF_Sensor_UpdateCalibration();
+    LF_Sensor_EndCalibration();
+
+    cal = LF_Sensor_GetCalibration();
+    failures += expect_true(cal->calibrated, "partial bad calibration remains usable");
+    failures += expect_true(cal->status == LF_SENSOR_CAL_DEGRADED, "partial bad calibration is degraded");
+    failures += expect_true(cal->valid_count == 5U, "degraded calibration counts valid sensors");
+    failures += expect_true(cal->bad_mask == 0xE0U, "degraded calibration records bad channels");
+
+    LF_PlatformStub_SetLineSensorRaw(bad_only_high);
+    LF_Sensor_ReadFrame(&frame);
+    failures += expect_true(frame.filtered_u16[5] == 0U && frame.filtered_u16[6] == 0U && frame.filtered_u16[7] == 0U,
+                            "bad channels are masked from processed frame");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_pid_output_slew_limit(void)
+{
+    LF_PIDState pid;
+    int16_t first;
+    int16_t second;
+
+    LF_Control_ResetPid(&pid);
+    first = LF_Control_UpdatePid(2000.0f, 0.01f, &pid);
+    second = LF_Control_UpdatePid(2000.0f, 0.01f, &pid);
+
+    return expect_true(first <= g_lf_config.max_output_delta_per_tick,
+                       "pid first output obeys slew limit") |
+           expect_true((second - first) <= g_lf_config.max_output_delta_per_tick,
+                       "pid output delta obeys slew limit");
+}
+
 static void run_app_for(uint32_t ms)
 {
     uint32_t i;
@@ -223,6 +272,39 @@ static void set_center_line(void)
 {
     const uint16_t raw[LF_SENSOR_COUNT] = {900U, 900U, 2500U, 3300U, 3300U, 2500U, 900U, 900U};
     LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
+static int test_app_degraded_calibration_runs_limited(void)
+{
+    const uint16_t low[LF_SENSOR_COUNT] = {900U, 900U, 900U, 900U, 900U, 900U, 900U, 900U};
+    const uint16_t high[LF_SENSOR_COUNT] = {2500U, 2500U, 2500U, 2500U, 2500U, 900U, 900U, 900U};
+    int16_t left;
+    int16_t right;
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    LF_Platform_BoardInit();
+    LF_DebugMonitor_Init();
+    g_lf_debug_monitor_config.enabled = false;
+    g_lf_debug_monitor_config.no_car_mode = true;
+    (void)Wireless_Hooks_Init();
+    LF_App_Init();
+
+    run_app_for(1300U);
+    LF_PlatformStub_SetLineSensorRaw(low);
+    run_app_for(100U);
+    LF_PlatformStub_SetLineSensorRaw(high);
+    run_app_for(g_lf_config.calibration_duration_ms);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_RUNNING, "degraded calibration enters RUNNING");
+    failures += expect_true(ctx->calibration_degraded, "app records degraded calibration");
+    failures += expect_true(ctx->reason == LF_APP_REASON_CALIBRATION_DEGRADED, "degraded calibration reason recorded");
+
+    LF_DebugMonitor_GetLastMotorCommand(&left, &right);
+    failures += expect_true(left <= g_lf_config.sensor_degraded_max_speed && right <= g_lf_config.sensor_degraded_max_speed,
+                            "degraded calibration limits motor speed");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
 }
 
 static int test_debug_monitor_raw_and_reason(void)
@@ -316,7 +398,7 @@ static int test_app_avoidance(void)
         return 1;
     }
 
-    run_app_step_after(120U);
+    run_app_for(150U);
     ctx = LF_App_GetContext();
     if (expect_true(ctx->state == LF_APP_STATE_AVOID_TURN_OUT, "avoid prep enters turn out")) {
         return 1;
@@ -327,7 +409,7 @@ static int test_app_avoidance(void)
     run_app_step_after(360U);
     ctx = LF_App_GetContext();
     if (ctx->state == LF_APP_STATE_AVOID_REACQUIRE) {
-        run_app_step_after(10U);
+        run_app_for(50U);
     }
     ctx = LF_App_GetContext();
 
@@ -345,6 +427,9 @@ int main(void)
     failures += test_radar_bad_checksum();
     failures += test_radar_timeout_clears_block();
     failures += test_sensor_weighted_position_and_edge_hint();
+    failures += test_sensor_degraded_calibration_masks_bad_channels();
+    failures += test_pid_output_slew_limit();
+    failures += test_app_degraded_calibration_runs_limited();
     failures += test_debug_monitor_raw_and_reason();
     failures += test_app_recovery_timeout();
     failures += test_app_avoidance();

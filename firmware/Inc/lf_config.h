@@ -61,6 +61,12 @@ typedef struct {
     /* 是否启用动态标定（数字模式建议关闭）。 */
     bool sensor_use_dynamic_calibration;
 
+    /* 标定降级：少量通道异常时允许限速运行。 */
+    bool sensor_allow_degraded_calibration;
+    uint8_t sensor_min_valid_count;
+    uint16_t sensor_calibration_min_delta;
+    int16_t sensor_degraded_max_speed;
+
     /* 判定“在线上”的最小强度和。 */
     uint16_t line_detect_min_sum;
 
@@ -80,6 +86,12 @@ typedef struct {
 
     /* PID 输出限幅，避免急剧打角。 */
     int16_t max_correction;
+    int16_t adaptive_slow_speed;
+    int16_t adaptive_error_threshold;
+    float adaptive_confidence_threshold;
+    float derivative_filter_alpha;
+    float integral_limit;
+    int16_t max_output_delta_per_tick;
 
     /* 电机命令绝对值上限。 */
     int16_t max_motor_cmd;
@@ -89,6 +101,12 @@ typedef struct {
 
     /* 丢线恢复参数。 */
     int16_t recover_turn_speed;
+    int16_t recover_backtrack_speed;
+    uint16_t recover_backtrack_ms;
+    int16_t recover_sweep_start_speed;
+    int16_t recover_sweep_max_speed;
+    uint16_t recover_confirm_ticks;
+    float recover_confidence_min;
     uint32_t recover_timeout_ms;
 
     /* 雷达串口参数与避障阈值（HLK-LD2410S，默认值待实机确认）。 */
@@ -107,9 +125,15 @@ typedef struct {
     uint16_t obstacle_confirm_ms;
     uint16_t obstacle_stop_ms;
     uint16_t obstacle_turn_out_ms;
+    uint16_t obstacle_turn_out_min_ms;
     uint16_t obstacle_bypass_ms;
+    uint16_t obstacle_bypass_min_ms;
     uint16_t obstacle_turn_in_ms;
+    uint16_t obstacle_turn_in_min_ms;
     uint16_t obstacle_reacquire_timeout_ms;
+    uint16_t obstacle_safe_distance_mm;
+    uint16_t obstacle_line_reacquire_min_sum;
+    uint8_t obstacle_reacquire_confirm_ticks;
     int16_t obstacle_turn_speed;
     int16_t obstacle_bypass_inner_speed;
     int16_t obstacle_bypass_outer_speed;

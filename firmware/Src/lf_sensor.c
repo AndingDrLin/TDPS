@@ -39,6 +39,8 @@ void LF_Sensor_Init(void)
         s_filtered[i] = 0.0f;
     }
     s_calib.bad_mask = 0U;
+    s_calib.valid_count = 0U;
+    s_calib.status = LF_SENSOR_CAL_FAILED;
     s_calib.calibrated = false;
     s_last_position = 0;
 }
@@ -54,6 +56,8 @@ void LF_Sensor_StartCalibration(void)
             s_calib.max_raw[i] = 4095U;
         }
         s_calib.bad_mask = 0U;
+        s_calib.valid_count = LF_SENSOR_COUNT;
+        s_calib.status = LF_SENSOR_CAL_OK;
         s_calib.calibrated = true;
         return;
     }
@@ -63,6 +67,8 @@ void LF_Sensor_StartCalibration(void)
         s_calib.max_raw[i] = 0U;
     }
     s_calib.bad_mask = 0U;
+    s_calib.valid_count = 0U;
+    s_calib.status = LF_SENSOR_CAL_FAILED;
     s_calib.calibrated = false;
 }
 
@@ -91,23 +97,39 @@ void LF_Sensor_UpdateCalibration(void)
 void LF_Sensor_EndCalibration(void)
 {
     uint32_t i;
-    bool ok = true;
+    uint8_t valid_count = 0U;
+    uint16_t min_delta = g_lf_config.sensor_calibration_min_delta;
 
     if (!g_lf_config.sensor_use_dynamic_calibration ||
         g_lf_config.sensor_input_mode == LF_SENSOR_INPUT_DIGITAL_GPIO) {
         s_calib.bad_mask = 0U;
+        s_calib.valid_count = LF_SENSOR_COUNT;
+        s_calib.status = LF_SENSOR_CAL_OK;
         s_calib.calibrated = true;
         return;
     }
 
     s_calib.bad_mask = 0U;
     for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
-        if (s_calib.max_raw[i] <= s_calib.min_raw[i] + 20U) {
+        if (s_calib.max_raw[i] <= s_calib.min_raw[i] + min_delta) {
             s_calib.bad_mask |= (uint16_t)(1U << i);
-            ok = false;
+        } else {
+            valid_count += 1U;
         }
     }
-    s_calib.calibrated = ok;
+
+    s_calib.valid_count = valid_count;
+    if (valid_count == LF_SENSOR_COUNT) {
+        s_calib.status = LF_SENSOR_CAL_OK;
+        s_calib.calibrated = true;
+    } else if (g_lf_config.sensor_allow_degraded_calibration &&
+               valid_count >= g_lf_config.sensor_min_valid_count) {
+        s_calib.status = LF_SENSOR_CAL_DEGRADED;
+        s_calib.calibrated = true;
+    } else {
+        s_calib.status = LF_SENSOR_CAL_FAILED;
+        s_calib.calibrated = false;
+    }
 }
 
 void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
@@ -129,6 +151,7 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
 
     for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
         uint16_t norm;
+        bool sensor_valid = ((s_calib.bad_mask & (uint16_t)(1U << i)) == 0U);
 
         if (g_lf_config.sensor_input_mode == LF_SENSOR_INPUT_DIGITAL_GPIO) {
             norm = normalize_digital_level(out_frame->raw[i]);
@@ -136,6 +159,9 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
             norm = normalize_with_calib(out_frame->raw[i], s_calib.min_raw[i], s_calib.max_raw[i]);
             if (g_lf_config.sensor_invert_polarity) {
                 norm = (uint16_t)(1000U - norm);
+            }
+            if (!sensor_valid) {
+                norm = 0U;
             }
         }
 

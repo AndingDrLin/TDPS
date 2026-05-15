@@ -6,6 +6,8 @@
 typedef struct {
     float integral;
     float prev_error;
+    float filtered_derivative;
+    float prev_output;
     uint8_t initialized;
 } LF_PIDState;
 

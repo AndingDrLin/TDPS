@@ -10,7 +10,7 @@
 #include "wl_lora.h"
 
 #ifndef TDPS_NO_CAR_MODE
-#define TDPS_NO_CAR_MODE 0
+#define TDPS_NO_CAR_MODE 1
 #endif
 
 #ifndef TDPS_DEBUG_MONITOR_ENABLE
@@ -105,6 +105,8 @@ static const char *reason_name(LF_AppReason reason)
         return "cal_start";
     case LF_APP_REASON_CALIBRATION_FAILED:
         return "cal_failed";
+    case LF_APP_REASON_CALIBRATION_DEGRADED:
+        return "cal_degraded";
     case LF_APP_REASON_CALIBRATION_DONE:
         return "cal_done";
     case LF_APP_REASON_LINE_LOST:
@@ -293,9 +295,11 @@ void LF_DebugMonitor_Tick(void)
         }
         len = snprintf(cal_line,
                        sizeof(cal_line),
-                       "DBGCAL t=%lu ok=%u bad=0x%02X min=%u,%u,%u,%u,%u,%u,%u,%u max=%u,%u,%u,%u,%u,%u,%u,%u\n",
+                       "DBGCAL t=%lu ok=%u status=%u valid=%u bad=0x%02X min=%u,%u,%u,%u,%u,%u,%u,%u max=%u,%u,%u,%u,%u,%u,%u,%u\n",
                        (unsigned long)now_ms,
                        cal->calibrated ? 1U : 0U,
+                       (unsigned int)cal->status,
+                       (unsigned int)cal->valid_count,
                        (unsigned int)cal->bad_mask,
                        (unsigned int)cal->min_raw[0],
                        (unsigned int)cal->min_raw[1],
