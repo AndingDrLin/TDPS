@@ -9,6 +9,7 @@
 typedef struct {
     uint16_t min_raw[LF_SENSOR_COUNT];
     uint16_t max_raw[LF_SENSOR_COUNT];
+    uint16_t bad_mask;
     bool calibrated;
 } LF_SensorCalibration;
 

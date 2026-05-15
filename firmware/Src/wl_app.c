@@ -35,6 +35,7 @@ static uint32_t s_last_status_report_ms = 0;
 
 /** 最近一次操作的状态文本。 */
 static char s_status_text[64] = "IDLE";
+static WL_App_Diag s_diag;
 
 /* ------------------------------------------------------------------ */
 /*  内部辅助函数                                                       */
@@ -48,6 +49,8 @@ static void _send_checkpoint(uint32_t checkpoint_id)
     /* 节流：首包不节流；后续两次发射间隔不小于 WL_TX_MIN_INTERVAL_MS */
     if (s_has_tx &&
         ((uint32_t)(now - s_last_tx_ms) < g_wl_config.tx_min_interval_ms)) {
+        s_diag.checkpoint_throttled_count += 1U;
+        s_diag.last_checkpoint_id = checkpoint_id;
         snprintf(s_status_text, sizeof(s_status_text),
                  "CP%u throttled", (unsigned)checkpoint_id);
         WL_Platform_DebugPrint("[App] ");
@@ -77,7 +80,9 @@ static void _send_checkpoint(uint32_t checkpoint_id)
     /* 通过 LoRa 发射 */
     WL_LoRa_Status st = WL_LoRa_EnqueueString(msg);
 
+    s_diag.last_checkpoint_id = checkpoint_id;
     if (st == WL_LORA_OK) {
+        s_diag.checkpoint_enqueued_count += 1U;
         s_last_tx_ms = now;
         s_has_tx = true;
         snprintf(s_status_text, sizeof(s_status_text),
@@ -85,6 +90,7 @@ static void _send_checkpoint(uint32_t checkpoint_id)
                  (unsigned)checkpoint_id,
                  (unsigned)elapsed);
     } else {
+        s_diag.checkpoint_enqueue_fail_count += 1U;
         snprintf(s_status_text, sizeof(s_status_text),
                  "CP%u send failed(err=%d)",
                  (unsigned)checkpoint_id,
@@ -146,6 +152,7 @@ bool WL_App_Init(void)
     s_last_tx_ms = 0;
     s_has_tx = false;
     s_last_status_report_ms = 0;
+    memset(&s_diag, 0, sizeof(s_diag));
     snprintf(s_status_text, sizeof(s_status_text), "init");
 
     /* 初始化 LoRa 模块 */
@@ -238,4 +245,9 @@ WL_App_State WL_App_GetState(void)
 const char *WL_App_GetLastStatusText(void)
 {
     return s_status_text;
+}
+
+const WL_App_Diag *WL_App_GetDiag(void)
+{
+    return &s_diag;
 }

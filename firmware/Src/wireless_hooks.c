@@ -21,6 +21,12 @@ bool Wireless_Hooks_Init(void)
     return s_wireless_ready;
 }
 
+void Wireless_Hooks_Reset(void)
+{
+    s_wireless_ready = false;
+    s_race_started = false;
+}
+
 void Wireless_Hooks_Tick(void)
 {
     if (!s_wireless_ready) {

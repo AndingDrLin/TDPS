@@ -1,6 +1,7 @@
 #include <stdbool.h>
 
 #include "lf_app.h"
+#include "lf_debug_monitor.h"
 #include "lf_platform.h"
 #include "wireless_hooks.h"
 
@@ -9,6 +10,7 @@ int main(void)
     bool wireless_ready;
 
     LF_Platform_BoardInit();
+    LF_DebugMonitor_Init();
     wireless_ready = Wireless_Hooks_Init();
     LF_App_Init();
 
@@ -21,6 +23,7 @@ int main(void)
     while (1) {
         LF_App_RunStep();
         Wireless_Hooks_Tick();
+        LF_DebugMonitor_Tick();
         LF_Platform_DelayMs(1U);
     }
 }

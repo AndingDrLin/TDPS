@@ -38,6 +38,7 @@ void LF_Sensor_Init(void)
         s_calib.max_raw[i] = 0U;
         s_filtered[i] = 0.0f;
     }
+    s_calib.bad_mask = 0U;
     s_calib.calibrated = false;
     s_last_position = 0;
 }
@@ -52,6 +53,7 @@ void LF_Sensor_StartCalibration(void)
             s_calib.min_raw[i] = 0U;
             s_calib.max_raw[i] = 4095U;
         }
+        s_calib.bad_mask = 0U;
         s_calib.calibrated = true;
         return;
     }
@@ -60,6 +62,7 @@ void LF_Sensor_StartCalibration(void)
         s_calib.min_raw[i] = UINT16_MAX;
         s_calib.max_raw[i] = 0U;
     }
+    s_calib.bad_mask = 0U;
     s_calib.calibrated = false;
 }
 
@@ -92,14 +95,16 @@ void LF_Sensor_EndCalibration(void)
 
     if (!g_lf_config.sensor_use_dynamic_calibration ||
         g_lf_config.sensor_input_mode == LF_SENSOR_INPUT_DIGITAL_GPIO) {
+        s_calib.bad_mask = 0U;
         s_calib.calibrated = true;
         return;
     }
 
+    s_calib.bad_mask = 0U;
     for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
         if (s_calib.max_raw[i] <= s_calib.min_raw[i] + 20U) {
+            s_calib.bad_mask |= (uint16_t)(1U << i);
             ok = false;
-            break;
         }
     }
     s_calib.calibrated = ok;

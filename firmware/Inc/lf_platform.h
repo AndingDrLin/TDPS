@@ -31,6 +31,14 @@ void LF_Platform_ReadLineSensorRaw(uint16_t out_raw[LF_SENSOR_COUNT]);
  */
 uint16_t LF_Platform_RadarRead(uint8_t *out_buf, uint16_t max_len);
 
+#ifndef LF_USE_STM32F4_HAL_PORT
+void LF_PlatformStub_RadarInject(const uint8_t *data, uint16_t len);
+void LF_PlatformStub_RadarClear(void);
+void LF_PlatformStub_SetLineSensorRaw(const uint16_t raw[LF_SENSOR_COUNT]);
+void LF_PlatformStub_ClearLineSensorRaw(void);
+const char *LF_PlatformStub_GetLastDebugLine(void);
+#endif
+
 /* 写入电机命令（-1000~1000）。正负号表示方向，绝对值表示速度。 */
 void LF_Platform_SetMotorCommand(int16_t left_cmd, int16_t right_cmd);
 

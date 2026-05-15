@@ -6,12 +6,15 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 option(TDPS_TARGET_MCU "Build for STM32F407VET6 target" OFF)
 option(TDPS_BUILD_TESTS "Build PC stub tests" ON)
+option(TDPS_NO_CAR_MODE "Enable no-car bench debug mode" OFF)
+option(TDPS_DEBUG_MONITOR "Enable periodic debug monitor" OFF)
 
 set(TDPS_CORE_SOURCES
     Src/lf_app.c
     Src/lf_chassis.c
     Src/lf_config.c
     Src/lf_control.c
+    Src/lf_debug_monitor.c
     Src/lf_future_hooks.c
     Src/lf_radar.c
     Src/lf_sensor.c
@@ -30,6 +33,14 @@ target_include_directories(tdps_core PUBLIC
 )
 
 target_compile_options(tdps_core PRIVATE -Wall -Wextra)
+
+if(TDPS_NO_CAR_MODE)
+    target_compile_definitions(tdps_core PUBLIC TDPS_NO_CAR_MODE=1)
+endif()
+
+if(TDPS_DEBUG_MONITOR)
+    target_compile_definitions(tdps_core PUBLIC TDPS_DEBUG_MONITOR_ENABLE=1)
+endif()
 
 if(TDPS_TARGET_MCU)
     target_sources(tdps_core PRIVATE

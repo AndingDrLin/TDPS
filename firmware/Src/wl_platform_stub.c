@@ -72,17 +72,29 @@ void WL_Platform_Init(void)
     stub_aux_ready = true;
     stub_last_tx_len = 0;
     stub_tx_count = 0U;
+#ifndef WL_STUB_QUIET
     printf("[Stub] WL_Platform_Init done\n");
+#endif
 }
 
 uint32_t WL_Platform_GetMillis(void)
 {
+#ifdef WL_STUB_USE_LF_TIME
+    extern uint32_t LF_Platform_GetMillis(void);
+    return LF_Platform_GetMillis();
+#else
     return stub_millis;
+#endif
 }
 
 void WL_Platform_DelayMs(uint32_t ms)
 {
+#ifdef WL_STUB_USE_LF_TIME
+    extern void LF_Platform_DelayMs(uint32_t ms);
+    LF_Platform_DelayMs(ms);
+#else
     stub_millis += ms;
+#endif
 }
 
 void WL_Platform_UART_Send(const uint8_t *data, uint16_t len)
@@ -100,6 +112,7 @@ void WL_Platform_UART_Send(const uint8_t *data, uint16_t len)
         memcpy(stub_last_tx_buf, data, stub_last_tx_len);
     }
 
+#ifndef WL_STUB_QUIET
     printf("[Stub] UART TX %u bytes: ", len);
     for (uint16_t i = 0; i < len; i++) {
         if (data[i] >= 0x20 && data[i] < 0x7F) {
@@ -109,6 +122,7 @@ void WL_Platform_UART_Send(const uint8_t *data, uint16_t len)
         }
     }
     printf("\n");
+#endif
 
     /* 模拟 AT 指令响应：如果发送的是 "AT" 开头，自动填充 "AT_OK\r\n" */
     if (stub_auto_at_response && len >= 2U && data[0] == 'A' && data[1] == 'T') {
@@ -149,7 +163,11 @@ bool WL_Platform_ReadAUX(void)
 
 void WL_Platform_DebugPrint(const char *msg)
 {
+#ifndef WL_STUB_QUIET
     printf("[Debug] %s", msg);
+#else
+    (void)msg;
+#endif
 }
 
 /* ------------------------------------------------------------------ */

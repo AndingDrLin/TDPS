@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "lf_debug_monitor.h"
 #include "lf_port_stm32f4_hal.h"
 #include "lf_radar_uart.h"
 
@@ -30,6 +31,7 @@ __weak bool LF_Port_ReadLineSensorDigital(uint8_t out_level[LF_SENSOR_COUNT])
 }
 
 static volatile bool s_lf_debug_tx_busy = false;
+static char s_lf_debug_tx_buffer[384];
 
 static GPIO_PinState invert_pin_state(GPIO_PinState s)
 {
@@ -125,6 +127,12 @@ uint16_t LF_Platform_RadarRead(uint8_t *out_buf, uint16_t max_len)
 
 void LF_Platform_SetMotorCommand(int16_t left_cmd, int16_t right_cmd)
 {
+    LF_DebugMonitor_OnMotorCommand(left_cmd, right_cmd);
+
+    if (LF_DebugMonitor_IsNoCarMode()) {
+        return;
+    }
+
     set_single_motor(left_cmd,
                      LF_PORT_LEFT_DIR_GPIO_PORT,
                      LF_PORT_LEFT_DIR_PIN,
@@ -155,11 +163,22 @@ bool LF_Platform_IsStartButtonPressed(void)
 void LF_Platform_DebugPrint(const char *msg)
 {
 #if LF_PORT_ENABLE_DEBUG_UART
+    size_t len;
+
     if (msg == NULL || s_lf_debug_tx_busy) {
         return;
     }
+
+    len = strlen(msg);
+    if (len >= sizeof(s_lf_debug_tx_buffer)) {
+        len = sizeof(s_lf_debug_tx_buffer) - 1U;
+    }
+
+    memcpy(s_lf_debug_tx_buffer, msg, len);
+    s_lf_debug_tx_buffer[len] = '\0';
+
     s_lf_debug_tx_busy = true;
-    if (HAL_UART_Transmit_IT(&LF_PORT_DEBUG_UART_HANDLE, (uint8_t *)msg, (uint16_t)strlen(msg)) != HAL_OK) {
+    if (HAL_UART_Transmit_IT(&LF_PORT_DEBUG_UART_HANDLE, (uint8_t *)s_lf_debug_tx_buffer, (uint16_t)len) != HAL_OK) {
         s_lf_debug_tx_busy = false;
     }
 #else

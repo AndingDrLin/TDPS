@@ -101,6 +101,19 @@ typedef struct {
 
     /* 避障减速速度（WARN 状态下生效）。 */
     int16_t obstacle_warn_speed;
+    bool obstacle_avoid_enable;
+    int8_t obstacle_preferred_side;
+    uint8_t obstacle_max_attempts;
+    uint16_t obstacle_confirm_ms;
+    uint16_t obstacle_stop_ms;
+    uint16_t obstacle_turn_out_ms;
+    uint16_t obstacle_bypass_ms;
+    uint16_t obstacle_turn_in_ms;
+    uint16_t obstacle_reacquire_timeout_ms;
+    int16_t obstacle_turn_speed;
+    int16_t obstacle_bypass_inner_speed;
+    int16_t obstacle_bypass_outer_speed;
+    uint16_t obstacle_emergency_distance_mm;
 } LF_Config;
 
 /* 全局只读参数实例。 */

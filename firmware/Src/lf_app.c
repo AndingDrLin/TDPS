@@ -23,6 +23,59 @@ static void set_state(LF_AppState state)
     s_app.state = state;
 }
 
+static void set_reason(LF_AppReason reason)
+{
+    s_app.reason = reason;
+}
+
+static void enter_avoid_state(LF_AppState state, uint32_t now_ms)
+{
+    s_app.avoid_state_start_ms = now_ms;
+    set_state(state);
+}
+
+static bool avoid_elapsed(uint32_t now_ms, uint32_t duration_ms)
+{
+    return (uint32_t)(now_ms - s_app.avoid_state_start_ms) >= duration_ms;
+}
+
+static int8_t choose_avoid_dir(void)
+{
+    if (g_lf_config.obstacle_preferred_side < 0) {
+        return -1;
+    }
+    if (g_lf_config.obstacle_preferred_side > 0) {
+        return +1;
+    }
+    return (s_app.last_seen_dir < 0) ? -1 : +1;
+}
+
+static void switch_avoid_dir(void)
+{
+    s_app.avoid_dir = (s_app.avoid_dir < 0) ? +1 : -1;
+}
+
+static void start_avoidance(uint32_t now_ms)
+{
+    LF_Chassis_Stop();
+    LF_Hook_OnReservedObstacleWindow();
+
+    if (!g_lf_config.obstacle_avoid_enable) {
+        return;
+    }
+
+    s_app.avoid_attempts = 0U;
+    s_app.avoid_dir = choose_avoid_dir();
+    enter_avoid_state(LF_APP_STATE_AVOID_PREP, now_ms);
+}
+
+static bool obstacle_emergency_stop(void)
+{
+    return s_app.obstacle_state == LF_RADAR_OBSTACLE_BLOCK &&
+           s_app.obstacle_distance_mm > 0U &&
+           s_app.obstacle_distance_mm <= g_lf_config.obstacle_emergency_distance_mm;
+}
+
 static void refresh_radar_snapshot(uint32_t now_ms)
 {
     const LF_RadarState *radar;
@@ -33,6 +86,13 @@ static void refresh_radar_snapshot(uint32_t now_ms)
     s_app.obstacle_state = radar->obstacle_state;
     s_app.obstacle_distance_mm = radar->distance_mm;
     s_app.radar_parse_error_count = radar->parse_error_count;
+    s_app.radar_has_target = radar->has_target;
+    s_app.radar_frame_valid = radar->frame_valid;
+    s_app.radar_target_state = radar->target_state;
+    s_app.radar_frame_type = radar->frame_type;
+    s_app.radar_frame_count = radar->frame_count;
+    s_app.radar_last_update_ms = radar->last_update_ms;
+    s_app.radar_frame_age_ms = radar->frame_valid ? (uint32_t)(now_ms - radar->last_update_ms) : 0U;
 }
 
 static void run_calibration_motion(uint32_t now_ms)
@@ -52,7 +112,7 @@ static void run_calibration_motion(uint32_t now_ms)
     }
 }
 
-static void process_running(float dt_s)
+static void process_running(uint32_t now_ms, float dt_s)
 {
     int16_t correction;
     int16_t left_cmd;
@@ -61,8 +121,8 @@ static void process_running(float dt_s)
     float error;
 
     if (s_app.obstacle_state == LF_RADAR_OBSTACLE_BLOCK) {
-        LF_Chassis_Stop();
-        LF_Hook_OnReservedObstacleWindow();
+        set_reason(LF_APP_REASON_RADAR_BLOCK);
+        start_avoidance(now_ms);
         return;
     }
 
@@ -78,6 +138,7 @@ static void process_running(float dt_s)
             s_app.last_seen_dir = s_app.last_frame.edge_hint;
         }
         s_app.recover_start_ms = LF_Platform_GetMillis();
+        set_reason(LF_APP_REASON_LINE_LOST);
         set_state(LF_APP_STATE_RECOVERING);
         LF_Hook_OnLineLost();
         return;
@@ -102,13 +163,159 @@ static void process_running(float dt_s)
     LF_Chassis_SetCommand(left_cmd, right_cmd);
 }
 
+static void stop_after_avoid_failure(void)
+{
+    LF_Chassis_Stop();
+    set_reason(LF_APP_REASON_AVOID_FAILED);
+    set_state(LF_APP_STATE_STOPPED);
+    LF_Platform_DebugPrint("Obstacle avoid failed -> STOP\n");
+}
+
+static void retry_avoidance(uint32_t now_ms)
+{
+    if (s_app.avoid_attempts >= g_lf_config.obstacle_max_attempts) {
+        stop_after_avoid_failure();
+        return;
+    }
+
+    switch_avoid_dir();
+    set_reason(LF_APP_REASON_AVOID_RETRY);
+    enter_avoid_state(LF_APP_STATE_AVOID_PREP, now_ms);
+}
+
+static void process_avoid_prep(uint32_t now_ms)
+{
+    uint32_t hold_ms = g_lf_config.obstacle_stop_ms;
+
+    if (hold_ms < g_lf_config.obstacle_confirm_ms) {
+        hold_ms = g_lf_config.obstacle_confirm_ms;
+    }
+
+    LF_Chassis_Stop();
+
+    if (s_app.obstacle_state != LF_RADAR_OBSTACLE_BLOCK &&
+        avoid_elapsed(now_ms, g_lf_config.obstacle_confirm_ms)) {
+        LF_Control_ResetPid(&s_app.pid);
+        set_reason(LF_APP_REASON_RADAR_CLEAR);
+        set_state(LF_APP_STATE_RUNNING);
+        return;
+    }
+
+    if (!avoid_elapsed(now_ms, hold_ms)) {
+        return;
+    }
+
+    if (s_app.avoid_attempts >= g_lf_config.obstacle_max_attempts) {
+        stop_after_avoid_failure();
+        return;
+    }
+
+    s_app.avoid_attempts += 1U;
+    set_reason(LF_APP_REASON_AVOID_STARTED);
+    enter_avoid_state(LF_APP_STATE_AVOID_TURN_OUT, now_ms);
+}
+
+static void process_avoid_turn_out(uint32_t now_ms)
+{
+    int16_t turn = g_lf_config.obstacle_turn_speed;
+
+    if (obstacle_emergency_stop()) {
+        LF_Chassis_Stop();
+        retry_avoidance(now_ms);
+        return;
+    }
+
+    if (s_app.avoid_dir < 0) {
+        LF_Chassis_SetCommand((int16_t)(-turn), turn);
+    } else {
+        LF_Chassis_SetCommand(turn, (int16_t)(-turn));
+    }
+
+    if (avoid_elapsed(now_ms, g_lf_config.obstacle_turn_out_ms)) {
+        enter_avoid_state(LF_APP_STATE_AVOID_BYPASS, now_ms);
+    }
+}
+
+static void process_avoid_bypass(uint32_t now_ms)
+{
+    int16_t inner = g_lf_config.obstacle_bypass_inner_speed;
+    int16_t outer = g_lf_config.obstacle_bypass_outer_speed;
+
+    if (obstacle_emergency_stop()) {
+        LF_Chassis_Stop();
+        retry_avoidance(now_ms);
+        return;
+    }
+
+    if (s_app.avoid_dir < 0) {
+        LF_Chassis_SetCommand(inner, outer);
+    } else {
+        LF_Chassis_SetCommand(outer, inner);
+    }
+
+    if (avoid_elapsed(now_ms, g_lf_config.obstacle_bypass_ms)) {
+        enter_avoid_state(LF_APP_STATE_AVOID_TURN_IN, now_ms);
+    }
+}
+
+static void process_avoid_turn_in(uint32_t now_ms)
+{
+    int16_t turn = g_lf_config.obstacle_turn_speed;
+
+    if (obstacle_emergency_stop()) {
+        LF_Chassis_Stop();
+        retry_avoidance(now_ms);
+        return;
+    }
+
+    if (s_app.avoid_dir < 0) {
+        LF_Chassis_SetCommand(turn, (int16_t)(-turn));
+    } else {
+        LF_Chassis_SetCommand((int16_t)(-turn), turn);
+    }
+
+    if (avoid_elapsed(now_ms, g_lf_config.obstacle_turn_in_ms)) {
+        enter_avoid_state(LF_APP_STATE_AVOID_REACQUIRE, now_ms);
+    }
+}
+
+static void process_avoid_reacquire(uint32_t now_ms)
+{
+    int16_t turn = g_lf_config.recover_turn_speed;
+
+    if (obstacle_emergency_stop()) {
+        LF_Chassis_Stop();
+        retry_avoidance(now_ms);
+        return;
+    }
+
+    LF_Sensor_ReadFrame(&s_app.last_frame);
+    if (s_app.last_frame.line_detected) {
+        LF_Control_ResetPid(&s_app.pid);
+        set_reason(LF_APP_REASON_AVOID_COMPLETED);
+        set_state(LF_APP_STATE_RUNNING);
+        LF_Hook_OnLineRecovered();
+        return;
+    }
+
+    if (s_app.avoid_dir < 0) {
+        LF_Chassis_SetCommand((int16_t)(-turn), turn);
+    } else {
+        LF_Chassis_SetCommand(turn, (int16_t)(-turn));
+    }
+
+    if (avoid_elapsed(now_ms, g_lf_config.obstacle_reacquire_timeout_ms)) {
+        retry_avoidance(now_ms);
+    }
+}
+
 static void process_recovery(uint32_t now_ms)
 {
     int16_t turn = g_lf_config.recover_turn_speed;
 
     if (s_app.obstacle_state == LF_RADAR_OBSTACLE_BLOCK) {
-        LF_Chassis_Stop();
-        LF_Hook_OnReservedObstacleWindow();
+        set_reason(LF_APP_REASON_RADAR_BLOCK);
+        start_avoidance(now_ms);
         return;
     }
 
@@ -122,6 +329,7 @@ static void process_recovery(uint32_t now_ms)
     LF_Sensor_ReadFrame(&s_app.last_frame);
     if (s_app.last_frame.line_detected) {
         LF_Control_ResetPid(&s_app.pid);
+        set_reason(LF_APP_REASON_LINE_RECOVERED);
         set_state(LF_APP_STATE_RUNNING);
         LF_Hook_OnLineRecovered();
         return;
@@ -129,6 +337,7 @@ static void process_recovery(uint32_t now_ms)
 
     if ((uint32_t)(now_ms - s_app.recover_start_ms) >= g_lf_config.recover_timeout_ms) {
         LF_Chassis_Stop();
+        set_reason(LF_APP_REASON_RECOVERY_TIMEOUT);
         set_state(LF_APP_STATE_STOPPED);
         LF_Platform_DebugPrint("Recovery timeout -> STOP\n");
     }
@@ -147,10 +356,21 @@ void LF_App_Init(void)
     s_app.last_step_ms = now;
     s_app.calib_start_ms = 0U;
     s_app.recover_start_ms = 0U;
+    s_app.avoid_state_start_ms = 0U;
     s_app.last_seen_dir = +1;
+    s_app.avoid_dir = +1;
+    s_app.avoid_attempts = 0U;
     s_app.obstacle_state = LF_RADAR_OBSTACLE_CLEAR;
     s_app.obstacle_distance_mm = 0U;
     s_app.radar_parse_error_count = 0U;
+    s_app.radar_has_target = false;
+    s_app.radar_frame_valid = false;
+    s_app.radar_target_state = 0U;
+    s_app.radar_frame_type = LF_RADAR_FRAME_NONE;
+    s_app.radar_frame_count = 0U;
+    s_app.radar_last_update_ms = 0U;
+    s_app.radar_frame_age_ms = 0U;
+    s_app.reason = LF_APP_REASON_WAIT_START;
     s_app.calibration_ok = false;
 
     set_state(LF_APP_STATE_WAIT_START);
@@ -176,6 +396,7 @@ void LF_App_RunStep(void)
                 ((uint32_t)(now_ms - s_app.boot_ms) >= g_lf_config.auto_start_delay_ms)) {
                 LF_Sensor_StartCalibration();
                 s_app.calib_start_ms = now_ms;
+                set_reason(LF_APP_REASON_CALIBRATION_STARTED);
                 set_state(LF_APP_STATE_CALIBRATING);
                 LF_Hook_OnCalibrationBegin();
                 LF_Platform_DebugPrint("Calibration start\n");
@@ -197,12 +418,14 @@ void LF_App_RunStep(void)
 
                 if (!s_app.calibration_ok) {
                     LF_Chassis_Stop();
+                    set_reason(LF_APP_REASON_CALIBRATION_FAILED);
                     set_state(LF_APP_STATE_FAULT);
                     LF_Platform_DebugPrint("Calibration failed -> FAULT\n");
                     return;
                 }
 
                 LF_Control_ResetPid(&s_app.pid);
+                set_reason(LF_APP_REASON_CALIBRATION_DONE);
                 set_state(LF_APP_STATE_RUNNING);
                 LF_Platform_SetStatusLed(true);
                 LF_Platform_DebugPrint("Calibration end -> RUNNING\n");
@@ -210,11 +433,31 @@ void LF_App_RunStep(void)
             break;
 
         case LF_APP_STATE_RUNNING:
-            process_running(dt_s);
+            process_running(now_ms, dt_s);
             break;
 
         case LF_APP_STATE_RECOVERING:
             process_recovery(now_ms);
+            break;
+
+        case LF_APP_STATE_AVOID_PREP:
+            process_avoid_prep(now_ms);
+            break;
+
+        case LF_APP_STATE_AVOID_TURN_OUT:
+            process_avoid_turn_out(now_ms);
+            break;
+
+        case LF_APP_STATE_AVOID_BYPASS:
+            process_avoid_bypass(now_ms);
+            break;
+
+        case LF_APP_STATE_AVOID_TURN_IN:
+            process_avoid_turn_in(now_ms);
+            break;
+
+        case LF_APP_STATE_AVOID_REACQUIRE:
+            process_avoid_reacquire(now_ms);
             break;
 
         case LF_APP_STATE_STOPPED:
@@ -225,6 +468,9 @@ void LF_App_RunStep(void)
         case LF_APP_STATE_FAULT:
         default:
             LF_Chassis_Stop();
+            if (s_app.state != LF_APP_STATE_FAULT) {
+                set_reason(LF_APP_REASON_FAULT_FALLBACK);
+            }
             set_state(LF_APP_STATE_FAULT);
             break;
     }

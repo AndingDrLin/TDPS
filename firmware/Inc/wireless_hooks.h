@@ -9,6 +9,7 @@
  * - Tick: 主循环周期调用。
  */
 bool Wireless_Hooks_Init(void);
+void Wireless_Hooks_Reset(void);
 void Wireless_Hooks_Tick(void);
 bool Wireless_Hooks_IsReady(void);
 

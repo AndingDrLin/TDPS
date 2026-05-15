@@ -24,6 +24,13 @@ typedef enum {
     WL_APP_STATE_ERROR,         /**< 出错状态 */
 } WL_App_State;
 
+typedef struct {
+    uint16_t checkpoint_enqueued_count;
+    uint16_t checkpoint_enqueue_fail_count;
+    uint16_t checkpoint_throttled_count;
+    uint32_t last_checkpoint_id;
+} WL_App_Diag;
+
 /* ------------------------------------------------------------------ */
 /*  初始化与主循环                                                     */
 /* ------------------------------------------------------------------ */
@@ -76,5 +83,8 @@ WL_App_State WL_App_GetState(void);
 
 /** 获取最近一次发射的状态文本（用于调试/显示）。 */
 const char *WL_App_GetLastStatusText(void);
+
+/** 获取 checkpoint 发送诊断计数。 */
+const WL_App_Diag *WL_App_GetDiag(void);
 
 #endif /* WL_APP_H */
