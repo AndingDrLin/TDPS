@@ -6,10 +6,16 @@ build/
 firmware/build/
 *.o
 *.elf
+*.axf
 *.bin
 *.hex
 *.map
 *.d
+*.crf
+*.lst
+*.htm
+*.build_log.htm
+*.exe
 
 # CMake
 CMakeCache.txt
@@ -44,3 +50,4 @@ lf_test
 wl_test
 test_lf
 test_wl
+firmware/build/gcc/
