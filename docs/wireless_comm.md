@@ -47,10 +47,12 @@ TEAM=<id>,NAME=<name>,CP=<checkpoint>,TIME=<ms>\n
 统一入口：
 
 ```bash
+mkdir -p firmware/build/gcc
+
 gcc -Ifirmware/Inc -Ifirmware/common -Ifirmware/platform \
     firmware/Src/{wl_app,wl_lora,wl_protocol,wl_config,wl_platform_stub}.c \
-    firmware/test/test_wl_stub.c -o wl_test
-./wl_test
+    firmware/test/test_wl_stub.c -o firmware/build/gcc/wl_test
+./firmware/build/gcc/wl_test
 ```
 
 附加巡线回归依赖 `TDPS-Simulator` 子模块：

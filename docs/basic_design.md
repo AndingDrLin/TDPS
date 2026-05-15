@@ -14,7 +14,7 @@
 
 - 任务 1：巡线（8 路灰度）
 - 任务 2：LoRa 检查点发送（异步队列 + 超时重试 + 可选 ACK）
-- 任务 3：雷达串口帧解析与避障状态输出（保守默认协议）
+- 任务 3：雷达串口帧解析、避障状态输出、开环绕障与重新寻线
 
 ## 2. 架构决策
 
@@ -55,22 +55,32 @@
 2. 进入标定窗口，左右摆动采样
 3. 标定完成后进入 `RUNNING`
 4. `RUNNING` 中按偏差 PID 输出差速
-5. 丢线进入 `RECOVERING`
-6. 恢复成功回到 `RUNNING`；超时进入 `STOPPED`
+5. 雷达 `WARN` 时降低巡线速度，`BLOCK` 时进入避障状态机
+6. 丢线进入 `RECOVERING`
+7. 避障或恢复成功回到 `RUNNING`；超时/重试失败进入 `STOPPED`
 
 该流程在 `line_follow_v1` 中已实现，并由离线测试覆盖。
 
 ## 5. LoRa / 雷达接入策略
 
-不直接在巡线控制链路里插入业务逻辑；统一走钩子接口：
+LoRa 事件统一走钩子接口，雷达解析保持在 PAL 串口读取和 `LF_Radar_Tick()` 内：
 
 - `LF_Hook_OnReservedCheckpoint`：通信窗口
 - `LF_Hook_OnReservedObstacleWindow`：障碍决策窗口
+- `LF_Radar_Tick()`：非阻塞消费串口缓存，输出 `CLEAR/WARN/BLOCK`
+
+避障策略：
+
+- `WARN`：保留巡线，限制 `base_speed`
+- `BLOCK`：进入 `AVOID_PREP -> AVOID_TURN_OUT -> AVOID_BYPASS -> AVOID_TURN_IN -> AVOID_REACQUIRE`
+- 重入线后复位 PID 并回到 `RUNNING`
+- 重试失败后进入 `STOPPED`
 
 原则：
 
 - 扩展逻辑不得破坏巡线主循环周期
 - 扩展逻辑不得直接绕过底盘控制接口
+- 当前只有前向雷达，绕障方向来自配置/上次线方向/失败反向重试，不具备真实左右侧测距能力
 
 ## 6. 验证策略
 

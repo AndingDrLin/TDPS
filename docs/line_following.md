@@ -49,15 +49,16 @@
 
 ### 2.3 状态机
 
-状态定义：`WAIT_START -> CALIBRATING -> RUNNING -> RECOVERING -> STOPPED`
+状态定义：`WAIT_START -> CALIBRATING -> RUNNING -> RECOVERING / AVOID_* -> STOPPED`
 
 核心行为：
 
 - `CALIBRATING`：左右摆动采样，提高 min/max 覆盖度
 - `RUNNING`：按固定周期读传感器 + 更新 PID
-- `RUNNING`：并行轮询雷达状态（非阻塞），在 `WARN/BLOCK` 下执行减速或停车
-- `RECOVERING`：按“最后看到线的方向”旋转搜索
-- 超时进入 `STOPPED`，避免失控持续运行
+- `RUNNING`：并行轮询雷达状态（非阻塞），`WARN` 减速，`BLOCK` 进入避障
+- `RECOVERING`：按“最后看到线的方向”旋转搜索；若遇到 `BLOCK` 也进入避障
+- `AVOID_*`：停车确认、转出、弧线绕行、转回、低速找线；失败后反向重试
+- 超时或重试失败进入 `STOPPED`，避免失控持续运行
 
 相关文件：
 
@@ -66,7 +67,7 @@
 
 ## 3. 参数策略
 
-参数集中在 `Src/lf_config.c` 的 `g_lf_config`。
+参数集中在 `Src/lf_config.c` 的 `g_lf_config`。逐项含义和整车调试方法见 `docs/tuning.md`。
 
 建议顺序：
 
@@ -75,6 +76,8 @@
 3. `kd`
 4. `line_detect_min_sum`
 5. `recover_turn_speed` / `recover_timeout_ms`
+6. `obstacle_turn_out_ms` / `obstacle_bypass_ms` / `obstacle_turn_in_ms`
+7. `obstacle_reacquire_timeout_ms` / `obstacle_preferred_side`
 
 8-LP 相关关键参数：
 
@@ -98,14 +101,19 @@
 
 - 基线场景（circle/figure8/patio）
 - 初始偏置（left/right offset）
-- 传感器噪声
-- 电机不一致
+- 传感器噪声、掉线、增益/偏置误差
+- 电机不一致、一阶惯性、低速非线性、电池压降
+- 传感器安装偏差、线宽变化
+- 雷达延迟、漏检、误检、距离抖动
 - 组合压力场景
 
 门禁规则由 harness 固化：
 
 - quick：`82 / 0.94 / 0.35 / min_scenario_score=70`
+- full-course：完整赛道需按顺序触发检查点、到达终点、无碰撞/越界，并满足进度与丢线门限
 - stability：`80 / 93% / 0.40s`
+
+当前默认参数在 `scenarios_full_course.csv` 的 normal/stress 下均通过，5 seed stress 稳定性结果为 High。
 
 ## 5. 扩展接口
 
@@ -120,6 +128,7 @@
 
 ## 6. 已知限制
 
-- 雷达当前按保守默认帧格式解析，需实机确认 HLK-LD2410S 实际固件帧定义
+- 雷达解析已支持保留测试帧、LD2410S 最小帧和已知标准帧目标/距离字段，仍需实机确认距离单位、波特率和目标状态语义
+- 当前避障只有前向雷达信息，不能直接感知障碍在左侧还是右侧；左右绕行依赖配置、上次线方向和失败反向重试
+- 避障动作是定时开环，换电池、电机、地面摩擦或车体负载后必须重新调参
 - 参数默认值针对当前离线场景调过，换硬件后需要重新标定
-- 雷达 HAL 端口仍为 TODO 占位，当前离线与桩测试可验证状态机联动

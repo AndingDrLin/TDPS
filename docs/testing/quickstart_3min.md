@@ -13,7 +13,7 @@
 bash TDPS-Simulator/scripts/line_follow_cli.sh help
 ```
 
-应看到三个子命令：`quick`、`stability`、`run-config`。
+应看到 `quick`、`full-course`、`stability`、`run-config`。
 
 ## 步骤 2：执行 quick 门禁
 
@@ -43,11 +43,31 @@ bash TDPS-Simulator/scripts/line_follow_cli.sh quick 15 0.01 0.12 "$REPORT" "$SE
 - quick 报告：`$REPORT`
 - 字段说明：`docs/testing/report_schema.md`
 
+## 可选：完整赛道 normal/stress 检查
+
+```bash
+bash TDPS-Simulator/scripts/line_follow_cli.sh full-course \
+  TDPS-Simulator/sim_tests/line_follow_v1/config/scenarios_full_course.csv \
+  90 0.01 0.12 \
+  TDPS-Simulator/artifacts/line_follow_v1/reports/single_run/full_course_normal.json \
+  20260319 normal
+
+bash TDPS-Simulator/scripts/line_follow_cli.sh full-course \
+  TDPS-Simulator/sim_tests/line_follow_v1/config/scenarios_full_course.csv \
+  90 0.01 0.12 \
+  TDPS-Simulator/artifacts/line_follow_v1/reports/single_run/full_course_stress.json \
+  20260319 stress
+```
+
+完整赛道应显示 `Full course: passed 4/4`，并且 confidence 为 `High`。
+
 ## 可选：执行 20-seed 稳定性检查
 
 ```bash
-bash TDPS-Simulator/scripts/line_follow_cli.sh stability 15 0.01 0.12 20260319 20 \
-  TDPS-Simulator/artifacts/line_follow_v1/reports/stability_runs
+bash TDPS-Simulator/scripts/line_follow_cli.sh stability 90 0.01 0.12 20260319 20 \
+  TDPS-Simulator/artifacts/line_follow_v1/reports/stability_runs \
+  TDPS-Simulator/sim_tests/line_follow_v1/config/scenarios_full_course.csv \
+  "" stress
 ```
 
 稳定性通过条件：
@@ -59,10 +79,12 @@ bash TDPS-Simulator/scripts/line_follow_cli.sh stability 15 0.01 0.12 20260319 2
 ## 可选：无线 stub 检查
 
 ```bash
+mkdir -p firmware/build/gcc
+
 gcc -Ifirmware/Inc -Ifirmware/common -Ifirmware/platform \
     firmware/Src/{wl_app,wl_lora,wl_protocol,wl_config,wl_platform_stub}.c \
-    firmware/test/test_wl_stub.c -o wl_test
-./wl_test
+    firmware/test/test_wl_stub.c -o firmware/build/gcc/wl_test
+./firmware/build/gcc/wl_test
 ```
 
 ## 可选：巡线稳定性回归
