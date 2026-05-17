@@ -36,7 +36,7 @@
 #define WL_LORA_NET_ID          0
 
 /** 空中速率索引（0–7）。0/1/2 = 2.4 kbps（默认）。 */
-#define WL_LORA_AIR_RATE        2
+#define WL_LORA_AIR_RATE        0
 
 /** 发射功率索引。0 = 22 dBm（最大功率）。 */
 #define WL_LORA_TX_POWER        0
@@ -83,6 +83,9 @@
 
 /** ACK 校验开关（默认关闭，待网关联调后启用）。 */
 #define WL_ACK_ENABLE               false
+
+/** 默认沿用已上板验证代码：不在主程序启动时重新下发 AT 配置，只做透明传输发送。 */
+#define WL_LORA_RUN_AT_INIT         false
 
 /** 状态上报节拍（毫秒）。 */
 #define WL_STATUS_REPORT_PERIOD_MS  1000U
@@ -144,6 +147,7 @@ typedef struct {
     uint32_t    ack_timeout_ms;
     uint8_t     tx_retry_max;
     bool        ack_enable;
+    bool        lora_run_at_init;
     uint32_t    status_report_period_ms;
 
     /* 检查点 */

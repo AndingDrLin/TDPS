@@ -161,6 +161,10 @@ bool WL_Platform_ReadAUX(void)
     return stub_aux_ready;
 }
 
+void WL_Platform_ResetModule(void)
+{
+}
+
 void WL_Platform_DebugPrint(const char *msg)
 {
 #ifndef WL_STUB_QUIET

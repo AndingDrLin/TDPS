@@ -86,8 +86,10 @@ static void uart_init(void)
     (void)HAL_UART_Init(&wl_huart);
 
     HAL_NVIC_SetPriority(WL_UART_IRQN, WL_UART_IRQ_PRIORITY, WL_UART_IRQ_SUB_PRIORITY);
-    HAL_NVIC_EnableIRQ(WL_UART_IRQN);
-    uart_rx_start();
+    if (g_wl_config.lora_run_at_init || g_wl_config.ack_enable) {
+        HAL_NVIC_EnableIRQ(WL_UART_IRQN);
+        uart_rx_start();
+    }
 }
 
 static void aux_gpio_init(void)
@@ -99,6 +101,21 @@ static void aux_gpio_init(void)
     gpio.Mode = GPIO_MODE_INPUT;
     gpio.Pull = GPIO_PULLUP;
     HAL_GPIO_Init(WL_AUX_PORT, &gpio);
+}
+
+static void rst_gpio_init(void)
+{
+    GPIO_InitTypeDef gpio = {0};
+    GPIO_PinState idle_level = (WL_RST_ACTIVE_LEVEL == GPIO_PIN_SET) ? GPIO_PIN_RESET : GPIO_PIN_SET;
+
+    gpio_clock_enable(WL_RST_PORT);
+    HAL_GPIO_WritePin(WL_RST_PORT, WL_RST_PIN, idle_level);
+
+    gpio.Pin = WL_RST_PIN;
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(WL_RST_PORT, &gpio);
 }
 
 static void debug_uart_init(void)
@@ -170,6 +187,7 @@ void WL_Platform_Init(void)
     rx_tail = 0U;
     s_debug_tx_busy = false;
     aux_gpio_init();
+    rst_gpio_init();
     uart_init();
     debug_uart_init();
 }
@@ -223,6 +241,16 @@ void WL_Platform_UART_FlushRx(void)
 bool WL_Platform_ReadAUX(void)
 {
     return HAL_GPIO_ReadPin(WL_AUX_PORT, WL_AUX_PIN) == GPIO_PIN_SET;
+}
+
+void WL_Platform_ResetModule(void)
+{
+    GPIO_PinState idle_level = (WL_RST_ACTIVE_LEVEL == GPIO_PIN_SET) ? GPIO_PIN_RESET : GPIO_PIN_SET;
+
+    HAL_GPIO_WritePin(WL_RST_PORT, WL_RST_PIN, WL_RST_ACTIVE_LEVEL);
+    HAL_Delay(WL_RST_LOW_TIME_MS);
+    HAL_GPIO_WritePin(WL_RST_PORT, WL_RST_PIN, idle_level);
+    HAL_Delay(WL_RST_HIGH_TIME_MS);
 }
 
 void WL_Platform_DebugPrint(const char *msg)

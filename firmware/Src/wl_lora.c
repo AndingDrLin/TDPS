@@ -17,7 +17,7 @@
 /* ------------------------------------------------------------------ */
 
 /** AT 指令响应中表示成功的关键字。 */
-#define AT_OK_TOKEN     "AT_OK"
+#define AT_OK_TOKEN     "OK"
 
 /** 临时缓冲区大小（用于构造 AT 指令和读取响应）。 */
 #define CMD_BUF_SIZE    64
@@ -312,6 +312,14 @@ WL_LoRa_Status WL_LoRa_Init(void)
 
     WL_Platform_DebugPrint("[LoRa] init start\r\n");
 
+    if (!g_wl_config.lora_run_at_init) {
+        WL_Platform_DebugPrint("[LoRa] AT init skipped, transparent TX only\r\n");
+        return WL_LORA_OK;
+    }
+
+    WL_Platform_ResetModule();
+    WL_Platform_DelayMs(200U);
+
     /* 1. 等待模块上电自检完成（AUX 拉高） */
     WL_Platform_DelayMs(g_wl_config.power_on_delay_ms);
     if (!WL_LoRa_WaitAUX(g_wl_config.at_response_timeout_ms)) {
@@ -329,13 +337,41 @@ WL_LoRa_Status WL_LoRa_Init(void)
         return WL_LORA_ERR_TIMEOUT;
     }
 
-    /* 3. 验证 AT 链路 */
-    st = _send_at_check("AT");
+    /* 3. 同步已验证代码的配置指令顺序 */
+    st = _send_at_check("AT+ECHO=0");
     if (st != WL_LORA_OK) {
         return st;
     }
 
-    /* 4. 设置模块地址 */
+    snprintf(cmd, sizeof(cmd), "AT+RATE=%u", (unsigned)g_wl_config.lora_air_rate);
+    st = _send_at_check(cmd);
+    if (st != WL_LORA_OK) {
+        return st;
+    }
+
+    snprintf(cmd, sizeof(cmd), "AT+PACKET=%u", (unsigned)g_wl_config.lora_packet_size);
+    st = _send_at_check(cmd);
+    if (st != WL_LORA_OK) {
+        return st;
+    }
+
+    st = _send_at_check("AT+WOR=0");
+    if (st != WL_LORA_OK) {
+        return st;
+    }
+
+    snprintf(cmd, sizeof(cmd), "AT+POWER=%u", (unsigned)g_wl_config.lora_tx_power);
+    st = _send_at_check(cmd);
+    if (st != WL_LORA_OK) {
+        return st;
+    }
+
+    snprintf(cmd, sizeof(cmd), "AT+TRANS=%u", (unsigned)g_wl_config.lora_trans_mode);
+    st = _send_at_check(cmd);
+    if (st != WL_LORA_OK) {
+        return st;
+    }
+
     snprintf(cmd, sizeof(cmd), "AT+ADDR=%u", (unsigned)g_wl_config.lora_addr);
     st = _send_at_check(cmd);
     if (st != WL_LORA_OK) {
@@ -356,30 +392,22 @@ WL_LoRa_Status WL_LoRa_Init(void)
         return st;
     }
 
-    /* 7. 设置空中速率 */
-    snprintf(cmd, sizeof(cmd), "AT+RATE=%u", (unsigned)g_wl_config.lora_air_rate);
-    st = _send_at_check(cmd);
+    st = _send_at_check("AT+ERSSI=0");
     if (st != WL_LORA_OK) {
         return st;
     }
 
-    /* 8. 设置发射功率 */
-    snprintf(cmd, sizeof(cmd), "AT+POWER=%u", (unsigned)g_wl_config.lora_tx_power);
-    st = _send_at_check(cmd);
+    st = _send_at_check("AT+DRSSI=0");
     if (st != WL_LORA_OK) {
         return st;
     }
 
-    /* 9. 设置传输模式（透明 / 定点） */
-    snprintf(cmd, sizeof(cmd), "AT+TRANS=%u", (unsigned)g_wl_config.lora_trans_mode);
-    st = _send_at_check(cmd);
+    st = _send_at_check("AT+LBT=0");
     if (st != WL_LORA_OK) {
         return st;
     }
 
-    /* 10. 设置分包长度 */
-    snprintf(cmd, sizeof(cmd), "AT+PACKET=%u", (unsigned)g_wl_config.lora_packet_size);
-    st = _send_at_check(cmd);
+    st = _send_at_check("AT+ROUTER=0");
     if (st != WL_LORA_OK) {
         return st;
     }
@@ -413,8 +441,7 @@ WL_LoRa_Status WL_LoRa_Send(const uint8_t *data, uint16_t len)
         return WL_LORA_ERR_PARAM;
     }
 
-    /* 等待模块就绪 */
-    if (!WL_LoRa_WaitAUX(g_wl_config.at_response_timeout_ms)) {
+    if (g_wl_config.lora_run_at_init && !WL_LoRa_WaitAUX(g_wl_config.at_response_timeout_ms)) {
         return WL_LORA_ERR_BUSY;
     }
 
@@ -511,7 +538,7 @@ void WL_LoRa_Tick(void)
     }
 
     if (!s_service.current_sent) {
-        if (!WL_Platform_ReadAUX()) {
+        if (g_wl_config.lora_run_at_init && !WL_Platform_ReadAUX()) {
             if ((uint32_t)(now_ms - s_service.tx_start_ms) >= g_wl_config.tx_timeout_ms) {
                 (void)service_schedule_retry(now_ms, WL_LORA_ERR_BUSY);
             }

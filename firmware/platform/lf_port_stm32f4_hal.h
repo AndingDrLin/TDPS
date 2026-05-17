@@ -52,7 +52,7 @@ extern volatile uint32_t g_lf_sensor_dma_buffer[LF_SENSOR_COUNT];
 #define LF_PORT_BTN_PRESSED_LEVEL (GPIO_PIN_RESET)
 
 /* ===== 调试串口（可选） ===== */
-#define LF_PORT_ENABLE_DEBUG_UART (1)
+#define LF_PORT_ENABLE_DEBUG_UART (0)
 #define LF_PORT_DEBUG_UART_HANDLE (huart1)
 
 /* ===== 雷达串口（默认 USART2，按实际接线修改） ===== */

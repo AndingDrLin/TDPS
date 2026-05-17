@@ -31,6 +31,7 @@ const WL_Config g_wl_config = {
     .ack_timeout_ms         = WL_ACK_TIMEOUT_MS,
     .tx_retry_max           = WL_TX_RETRY_MAX,
     .ack_enable             = WL_ACK_ENABLE,
+    .lora_run_at_init       = WL_LORA_RUN_AT_INIT,
     .status_report_period_ms = WL_STATUS_REPORT_PERIOD_MS,
 
     /* 检查点 */
