@@ -5,14 +5,14 @@
 在巡线过程中，当外部识别到检查点事件时，发送 LoRa 报文：
 
 ```text
-TEAM=<id>,NAME=<name>,CP=<checkpoint>,TIME=<ms>\n
+TEAM=<id>,NAME=<name>,CP=<checkpoint>,TIME=<MM:SS>\n
 ```
 
-当前配置：`TEAM=15`，`NAME=TDPS`。
+当前配置：`TEAM=15`，`NAME=TDPS`；`TIME` 为比赛开始后的分钟:秒。
 
 ## 实现结构
 
-- `wireless_v1`：
+- `firmware`：
   - `wl_app`: 状态机（READY/RUNNING/FINISHED）
   - `wl_protocol`: 报文打包
   - `wl_lora`: AT 配置 + 异步发送队列 + 超时重试 + 可选 ACK

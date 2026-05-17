@@ -22,12 +22,17 @@ uint16_t WL_Protocol_BuildCheckpointMsg(char *buf,
         return 0;
     }
 
+    uint32_t total_seconds = elapsed_ms / 1000U;
+    uint32_t minutes = total_seconds / 60U;
+    uint32_t seconds = total_seconds % 60U;
+
     int n = snprintf(buf, buf_len,
-                     "TEAM=%u,NAME=%s,CP=%u,TIME=%u\n",
+                     "TEAM=%u,NAME=%s,CP=%u,TIME=%02u:%02u\n",
                      (unsigned)g_wl_config.team_number,
                      g_wl_config.team_name,
                      (unsigned)checkpoint_id,
-                     (unsigned)elapsed_ms);
+                     (unsigned)minutes,
+                     (unsigned)seconds);
 
     if (n < 0 || (uint16_t)n >= buf_len) {
         buf[0] = '\0';

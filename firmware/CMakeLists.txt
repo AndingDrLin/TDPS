@@ -77,4 +77,16 @@ else()
         target_link_libraries(test_wl PRIVATE tdps_core)
         add_test(NAME test_wl COMMAND test_wl)
     endif()
+
+    add_executable(wl_pc_serial_test
+        Src/wl_config.c
+        Src/wl_protocol.c
+        Src/wl_platform_posix_serial.c
+        Src/wl_pc_serial_main.c
+    )
+    target_include_directories(wl_pc_serial_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Inc
+    )
+    target_compile_definitions(wl_pc_serial_test PRIVATE WL_USE_POSIX_SERIAL_PORT)
+    target_compile_options(wl_pc_serial_test PRIVATE -Wall -Wextra)
 endif()

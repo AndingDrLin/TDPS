@@ -82,13 +82,15 @@ static void _send_checkpoint(uint32_t checkpoint_id)
 
     s_diag.last_checkpoint_id = checkpoint_id;
     if (st == WL_LORA_OK) {
+        uint32_t total_seconds = elapsed / 1000U;
         s_diag.checkpoint_enqueued_count += 1U;
         s_last_tx_ms = now;
         s_has_tx = true;
         snprintf(s_status_text, sizeof(s_status_text),
-                 "CP%u sent (%ums)",
+                 "CP%u sent (%02u:%02u)",
                  (unsigned)checkpoint_id,
-                 (unsigned)elapsed);
+                 (unsigned)(total_seconds / 60U),
+                 (unsigned)(total_seconds % 60U));
     } else {
         s_diag.checkpoint_enqueue_fail_count += 1U;
         snprintf(s_status_text, sizeof(s_status_text),

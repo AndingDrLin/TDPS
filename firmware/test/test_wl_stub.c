@@ -116,7 +116,8 @@ static int test_app_checkpoint_payload(void)
     failures += expect_true(diag->checkpoint_enqueue_fail_count == 0U, "checkpoint enqueue failure count stays zero");
     failures += expect_true(diag->checkpoint_throttled_count == 0U, "checkpoint throttle count stays zero");
     failures += expect_true(tx_len > 0U, "wireless stub captured transmitted payload");
-    failures += expect_true(buffer_contains(tx, tx_len, "CP=21"), "checkpoint payload contains CP=21");
+    failures += expect_true(buffer_contains(tx, tx_len, "TEAM=15,NAME=TDPS,CP=21,TIME=00:05\n"),
+                            "checkpoint payload uses task-required MM:SS format");
 
     WL_App_StopRace();
     failures += expect_true(WL_App_GetState() == WL_APP_STATE_FINISHED, "wireless app reaches FINISHED");
