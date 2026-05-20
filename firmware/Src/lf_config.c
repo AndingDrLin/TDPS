@@ -56,7 +56,7 @@ const LF_Config g_lf_config = {
 
     /* 雷达判定：距离单位统一为 mm，实机需确认 LD2410S 波特率和距离单位。 */
     .radar_enable = true,
-    .radar_uart_baudrate = 256000U,
+    .radar_uart_baudrate = 115200U,
     .radar_trigger_distance_mm = 450U,
     .radar_release_distance_mm = 650U,
     .radar_debounce_frames = 3U,
@@ -97,7 +97,7 @@ const LF_Config g_lf_config = {
     .fork_radar_max_age_ms = 400U,
     .fork_radar_min_distance_mm = 150U,
     .fork_radar_block_distance_mm = 1000U,
-    .fork_radar_block_confirm_frames = 2U,
+    .fork_radar_block_confirm_frames = 1U,
     .fork_radar_valid_min_samples = 1U,
     .fork_fallback_branch = -1,
     .fork_sample_speed = 0,
