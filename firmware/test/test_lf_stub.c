@@ -274,6 +274,44 @@ static void set_center_line(void)
     LF_PlatformStub_SetLineSensorRaw(raw);
 }
 
+static void set_fork_line(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {2800U, 2800U, 2500U, 3300U, 3300U, 2500U, 2800U, 2800U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
+static void set_left_branch_line(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {3300U, 3300U, 2500U, 900U, 900U, 900U, 900U, 900U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
+static void set_right_branch_line(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {900U, 900U, 900U, 900U, 900U, 2500U, 3300U, 3300U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
+static void set_left_only_line(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {3300U, 3300U, 2500U, 900U, 900U, 900U, 900U, 900U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
+static int init_app_to_running(void)
+{
+    LF_Platform_BoardInit();
+    LF_DebugMonitor_Init();
+    g_lf_debug_monitor_config.enabled = false;
+    g_lf_debug_monitor_config.no_car_mode = true;
+    (void)Wireless_Hooks_Init();
+    LF_App_Init();
+    run_app_for(g_lf_config.auto_start_delay_ms + g_lf_config.calibration_duration_ms + 20U);
+    set_center_line();
+    run_app_step_after(10U);
+    return expect_true(LF_App_GetContext()->state == LF_APP_STATE_RUNNING, "app reaches RUNNING");
+}
+
 static int test_app_degraded_calibration_runs_limited(void)
 {
     const uint16_t low[LF_SENSOR_COUNT] = {900U, 900U, 900U, 900U, 900U, 900U, 900U, 900U};
@@ -349,7 +387,7 @@ static int test_app_recovery_timeout(void)
     (void)Wireless_Hooks_Init();
     LF_App_Init();
 
-    run_app_for(5000U);
+    run_app_for(g_lf_config.auto_start_delay_ms + g_lf_config.calibration_duration_ms + 20U);
     set_center_line();
     run_app_step_after(10U);
     ctx = LF_App_GetContext();
@@ -372,22 +410,128 @@ static int test_app_recovery_timeout(void)
            expect_true(ctx->reason == LF_APP_REASON_RECOVERY_TIMEOUT, "recovery timeout reason recorded");
 }
 
+static int test_fork_left_blocked_commits_right(void)
+{
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    inject_block_frames();
+    set_fork_line();
+    run_app_for(30U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_FORK_COMMIT_RIGHT,
+                            "left blocked fork commits right instead of generic avoidance");
+    failures += expect_true(ctx->fork_decision == +1, "left blocked fork records right decision");
+    failures += expect_true(ctx->reason == LF_APP_REASON_FORK_LEFT_BLOCKED, "left blocked fork reason recorded");
+
+    set_right_branch_line();
+    run_app_for(g_lf_config.fork_commit_ms + g_lf_config.fork_reacquire_timeout_ms);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_RUNNING, "right branch reacquires line and returns RUNNING");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_fork_left_clear_commits_left(void)
+{
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    inject_ld2410s_minimal_frame(150U, 1U);
+    set_fork_line();
+    run_app_for(g_lf_config.fork_sample_ms + 60U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_FORK_COMMIT_LEFT,
+                            "clear left fork commits left");
+    failures += expect_true(ctx->fork_decision == -1, "clear left fork records left decision");
+    failures += expect_true(ctx->reason == LF_APP_REASON_FORK_LEFT_CLEAR, "clear left fork reason recorded");
+
+    set_left_branch_line();
+    run_app_for(g_lf_config.fork_commit_ms + g_lf_config.fork_reacquire_timeout_ms);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_RUNNING, "left branch reacquires line and returns RUNNING");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_fork_stale_radar_uses_fallback(void)
+{
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    set_fork_line();
+    run_app_for(g_lf_config.fork_sample_ms + 60U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_FORK_COMMIT_LEFT,
+                            "stale radar uses default left fallback");
+    failures += expect_true(ctx->fork_decision == -1, "stale radar records fallback decision");
+    failures += expect_true(ctx->fork_radar_stale, "stale radar flag recorded");
+    failures += expect_true(ctx->reason == LF_APP_REASON_FORK_FALLBACK_LEFT, "stale radar fallback reason recorded");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_false_fork_rejected_and_obstacle_still_avoids(void)
+{
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    set_left_only_line();
+    run_app_for(40U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_RUNNING, "single-side line does not enter fork state");
+
+    inject_block_frames();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_AVOID_PREP,
+                            "non-fork radar block still enters generic avoidance");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_fork_out_of_band_target_not_blocked(void)
+{
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    inject_ld2410s_minimal_frame(150U, 2U);
+    set_fork_line();
+    run_app_for(g_lf_config.fork_sample_ms + 60U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_FORK_COMMIT_LEFT,
+                            "out-of-band target does not block left fork");
+    failures += expect_true(ctx->fork_decision == -1, "out-of-band target keeps left decision");
+    failures += expect_true(ctx->reason == LF_APP_REASON_FORK_LEFT_CLEAR, "out-of-band target records clear reason");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
 static int test_app_avoidance(void)
 {
     const LF_AppContext *ctx;
 
-    LF_Platform_BoardInit();
-    LF_DebugMonitor_Init();
-    g_lf_debug_monitor_config.enabled = false;
-    g_lf_debug_monitor_config.no_car_mode = true;
-    (void)Wireless_Hooks_Init();
-    LF_App_Init();
-
-    run_app_for(5000U);
-    set_center_line();
-    run_app_step_after(10U);
-    ctx = LF_App_GetContext();
-    if (expect_true(ctx->state == LF_APP_STATE_RUNNING, "app reaches RUNNING before obstacle")) {
+    if (init_app_to_running()) {
         return 1;
     }
 
@@ -432,6 +576,11 @@ int main(void)
     failures += test_app_degraded_calibration_runs_limited();
     failures += test_debug_monitor_raw_and_reason();
     failures += test_app_recovery_timeout();
+    failures += test_fork_left_blocked_commits_right();
+    failures += test_fork_left_clear_commits_left();
+    failures += test_fork_stale_radar_uses_fallback();
+    failures += test_false_fork_rejected_and_obstacle_still_avoids();
+    failures += test_fork_out_of_band_target_not_blocked();
     failures += test_app_avoidance();
 
     if (failures != 0) {

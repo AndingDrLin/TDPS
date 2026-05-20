@@ -1,5 +1,6 @@
 #include "lf_debug_monitor.h"
 
+#include <stdint.h>
 #include <stdio.h>
 
 #include "lf_app.h"
@@ -53,6 +54,14 @@ static const char *app_state_name(LF_AppState state)
         return "AVOID_TURN_IN";
     case LF_APP_STATE_AVOID_REACQUIRE:
         return "AVOID_REACQUIRE";
+    case LF_APP_STATE_FORK_SAMPLE:
+        return "FORK_SAMPLE";
+    case LF_APP_STATE_FORK_COMMIT_LEFT:
+        return "FORK_COMMIT_LEFT";
+    case LF_APP_STATE_FORK_COMMIT_RIGHT:
+        return "FORK_COMMIT_RIGHT";
+    case LF_APP_STATE_FORK_REACQUIRE:
+        return "FORK_REACQUIRE";
     case LF_APP_STATE_STOPPED:
         return "STOPPED";
     case LF_APP_STATE_FAULT:
@@ -127,6 +136,22 @@ static const char *reason_name(LF_AppReason reason)
         return "avoid_failed";
     case LF_APP_REASON_AVOID_COMPLETED:
         return "avoid_completed";
+    case LF_APP_REASON_FORK_DETECTED:
+        return "fork_detected";
+    case LF_APP_REASON_FORK_LEFT_BLOCKED:
+        return "fork_left_blocked";
+    case LF_APP_REASON_FORK_LEFT_CLEAR:
+        return "fork_left_clear";
+    case LF_APP_REASON_FORK_RADAR_STALE:
+        return "fork_radar_stale";
+    case LF_APP_REASON_FORK_FALLBACK_LEFT:
+        return "fork_fallback_left";
+    case LF_APP_REASON_FORK_FALLBACK_RIGHT:
+        return "fork_fallback_right";
+    case LF_APP_REASON_FORK_COMPLETED:
+        return "fork_completed";
+    case LF_APP_REASON_FORK_FAILED:
+        return "fork_failed";
     case LF_APP_REASON_FAULT_FALLBACK:
         return "fault_fallback";
     default:
@@ -185,7 +210,7 @@ void LF_DebugMonitor_GetLastMotorCommand(int16_t *left_cmd, int16_t *right_cmd)
 
 void LF_DebugMonitor_Tick(void)
 {
-    static char line[512];
+    static char line[768];
     static char raw_line[384];
     static char cal_line[384];
     int len;
@@ -219,7 +244,7 @@ void LF_DebugMonitor_Tick(void)
 
     len = snprintf(line,
                    sizeof(line),
-                   "DBG t=%lu mode=%s app=%s reason=%s cal=%u line=%u pos=%ld sum=%lu peak=%u peakv=%u conf=%u edge=%d motor_l=%d motor_r=%d radar=%s rfv=%u rhas=%u rtype=%s rtgt=%u rfc=%lu rage=%lu dist=%u rerr=%lu wready=%u wl=%s wcp=%u wcpf=%u wcpt=%u lq=%u ldrop=%u lsucc=%u lfail=%u lretry=%u lack=%u lerr=%d\n",
+                   "DBG t=%lu mode=%s app=%s reason=%s cal=%u line=%u pos=%ld sum=%lu peak=%u peakv=%u conf=%u edge=%d motor_l=%d motor_r=%d radar=%s rfv=%u rhas=%u rtype=%s rtgt=%u rfc=%lu rage=%lu dist=%u rerr=%lu fork_dec=%d fork_det=%u fork_blk=%u fork_valid=%u fork_min=%u fork_stale=%u wready=%u wl=%s wcp=%u wcpf=%u wcpt=%u lq=%u ldrop=%u lsucc=%u lfail=%u lretry=%u lack=%u lerr=%d\n",
                    (unsigned long)now_ms,
                    g_lf_debug_monitor_config.no_car_mode ? "no_car" : "run",
                    app_state_name(ctx->state),
@@ -243,6 +268,12 @@ void LF_DebugMonitor_Tick(void)
                    (unsigned long)(g_lf_debug_monitor_config.report_radar ? ctx->radar_frame_age_ms : 0U),
                    (unsigned int)(g_lf_debug_monitor_config.report_radar ? ctx->obstacle_distance_mm : 0U),
                    (unsigned long)(g_lf_debug_monitor_config.report_radar ? ctx->radar_parse_error_count : 0U),
+                   (int)ctx->fork_decision,
+                   (unsigned int)ctx->fork_detect_count,
+                   (unsigned int)ctx->fork_block_count,
+                   (unsigned int)ctx->fork_valid_sample_count,
+                   (unsigned int)(ctx->fork_min_distance_mm == UINT16_MAX ? 0U : ctx->fork_min_distance_mm),
+                   (unsigned int)(ctx->fork_radar_stale ? 1U : 0U),
                    (unsigned int)(g_lf_debug_monitor_config.report_wireless && Wireless_Hooks_IsReady() ? 1U : 0U),
                    g_lf_debug_monitor_config.report_wireless ? wl_state_name(WL_App_GetState()) : "off",
                    (unsigned int)(wl_diag != NULL ? wl_diag->checkpoint_enqueued_count : 0U),

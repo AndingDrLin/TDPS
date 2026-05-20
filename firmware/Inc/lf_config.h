@@ -138,6 +138,32 @@ typedef struct {
     int16_t obstacle_bypass_inner_speed;
     int16_t obstacle_bypass_outer_speed;
     uint16_t obstacle_emergency_distance_mm;
+
+    /* 岔路决策：左侧斜装雷达只在岔路窗口内解释为左支路占用检测。 */
+    bool fork_enable;
+    uint16_t fork_detect_min_sum;
+    uint16_t fork_sensor_active_threshold;
+    uint8_t fork_detect_min_active_sensors;
+    uint16_t fork_left_min_sum;
+    uint16_t fork_right_min_sum;
+    int32_t fork_detect_max_abs_position;
+    uint8_t fork_detect_confirm_ticks;
+    uint16_t fork_sample_ms;
+    uint16_t fork_radar_max_age_ms;
+    uint16_t fork_radar_min_distance_mm;
+    uint16_t fork_radar_block_distance_mm;
+    uint8_t fork_radar_block_confirm_frames;
+    uint8_t fork_radar_valid_min_samples;
+    int8_t fork_fallback_branch;
+    int16_t fork_sample_speed;
+    int16_t fork_commit_speed;
+    int16_t fork_commit_turn_speed;
+    uint16_t fork_commit_min_ms;
+    uint16_t fork_commit_ms;
+    uint16_t fork_reacquire_timeout_ms;
+    uint16_t fork_line_reacquire_min_sum;
+    uint8_t fork_reacquire_confirm_ticks;
+    uint16_t fork_cooldown_ms;
 } LF_Config;
 
 /* 全局只读参数实例。 */

@@ -1,5 +1,6 @@
 #include "lf_app.h"
 
+#include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
 
@@ -168,6 +169,244 @@ static void complete_line_recovery(LF_AppReason reason)
     LF_Hook_OnLineRecovered();
 }
 
+static bool fork_elapsed(uint32_t now_ms, uint32_t duration_ms)
+{
+    return (uint32_t)(now_ms - s_app.fork_state_start_ms) >= duration_ms;
+}
+
+static void enter_fork_state(LF_AppState state, uint32_t now_ms)
+{
+    s_app.fork_state_start_ms = now_ms;
+    set_state(state);
+}
+
+static bool fork_cooldown_active(uint32_t now_ms)
+{
+    return g_lf_config.fork_enable &&
+           g_lf_config.fork_cooldown_ms > 0U &&
+           s_app.fork_decision != 0 &&
+           !fork_elapsed(now_ms, g_lf_config.fork_cooldown_ms);
+}
+
+static bool frame_looks_like_fork(const LF_SensorFrame *frame)
+{
+    uint32_t left_sum = 0U;
+    uint32_t right_sum = 0U;
+    uint8_t active_count = 0U;
+    uint32_t i;
+    uint16_t threshold;
+    int32_t max_abs_position;
+
+    if (frame == NULL || !frame->line_detected || frame->signal_sum < g_lf_config.fork_detect_min_sum) {
+        return false;
+    }
+
+    max_abs_position = g_lf_config.fork_detect_max_abs_position;
+    if (max_abs_position >= 0 &&
+        (frame->position > max_abs_position || frame->position < (int32_t)(-max_abs_position))) {
+        return false;
+    }
+
+    threshold = g_lf_config.fork_sensor_active_threshold;
+    for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
+        uint16_t value = frame->filtered_u16[i];
+        if (value >= threshold) {
+            active_count += 1U;
+        }
+        if (i < (LF_SENSOR_COUNT / 2U)) {
+            left_sum += value;
+        } else {
+            right_sum += value;
+        }
+    }
+
+    return active_count >= g_lf_config.fork_detect_min_active_sensors &&
+           left_sum >= g_lf_config.fork_left_min_sum &&
+           right_sum >= g_lf_config.fork_right_min_sum;
+}
+
+static bool fork_radar_indicates_left_blocked(void);
+static void enter_fork_commit(int8_t decision, uint32_t now_ms, LF_AppReason reason);
+
+static void reset_fork_sample_counters(void)
+{
+    s_app.fork_block_count = 0U;
+    s_app.fork_valid_sample_count = 0U;
+    s_app.fork_last_sample_frame_count = s_app.radar_frame_count;
+    s_app.fork_decision = 0;
+    s_app.fork_min_distance_mm = UINT16_MAX;
+    s_app.fork_radar_stale = false;
+    s_app.fork_reacquire_count = 0U;
+}
+
+static void start_fork_sample(uint32_t now_ms)
+{
+    int16_t sample_speed = limit_degraded_speed(g_lf_config.fork_sample_speed);
+
+    reset_fork_sample_counters();
+    LF_Control_ResetPid(&s_app.pid);
+    set_reason(LF_APP_REASON_FORK_DETECTED);
+    enter_fork_state(LF_APP_STATE_FORK_SAMPLE, now_ms);
+
+    if (fork_radar_indicates_left_blocked() && s_app.obstacle_state == LF_RADAR_OBSTACLE_BLOCK) {
+        s_app.fork_valid_sample_count = 1U;
+        s_app.fork_block_count = 1U;
+        s_app.fork_min_distance_mm = s_app.obstacle_distance_mm;
+        enter_fork_commit(+1, now_ms, LF_APP_REASON_FORK_LEFT_BLOCKED);
+        return;
+    }
+
+    if (sample_speed == 0) {
+        LF_Chassis_Stop();
+    } else {
+        LF_Chassis_SetCommand(sample_speed, sample_speed);
+    }
+}
+
+static bool fork_radar_sample_fresh(void)
+{
+    return s_app.radar_frame_valid &&
+           s_app.radar_frame_age_ms <= g_lf_config.fork_radar_max_age_ms;
+}
+
+static bool fork_radar_indicates_left_blocked(void)
+{
+    return fork_radar_sample_fresh() &&
+           s_app.radar_has_target &&
+           s_app.obstacle_distance_mm >= g_lf_config.fork_radar_min_distance_mm &&
+           s_app.obstacle_distance_mm <= g_lf_config.fork_radar_block_distance_mm;
+}
+
+static void enter_fork_commit(int8_t decision, uint32_t now_ms, LF_AppReason reason)
+{
+    s_app.fork_decision = (decision < 0) ? -1 : +1;
+    s_app.fork_reacquire_count = 0U;
+    LF_Control_ResetPid(&s_app.pid);
+    set_reason(reason);
+    enter_fork_state(s_app.fork_decision < 0 ? LF_APP_STATE_FORK_COMMIT_LEFT : LF_APP_STATE_FORK_COMMIT_RIGHT,
+                     now_ms);
+}
+
+static void choose_fork_fallback(uint32_t now_ms)
+{
+    int8_t fallback = (g_lf_config.fork_fallback_branch > 0) ? +1 : -1;
+    s_app.fork_radar_stale = true;
+    enter_fork_commit(fallback,
+                      now_ms,
+                      fallback > 0 ? LF_APP_REASON_FORK_FALLBACK_RIGHT : LF_APP_REASON_FORK_FALLBACK_LEFT);
+}
+
+static void process_fork_sample(uint32_t now_ms)
+{
+    int16_t sample_speed = limit_degraded_speed(g_lf_config.fork_sample_speed);
+
+    if (sample_speed == 0) {
+        LF_Chassis_Stop();
+    } else {
+        LF_Chassis_SetCommand(sample_speed, sample_speed);
+    }
+
+    if (s_app.radar_frame_count != s_app.fork_last_sample_frame_count) {
+        s_app.fork_last_sample_frame_count = s_app.radar_frame_count;
+        if (fork_radar_sample_fresh()) {
+            if (s_app.fork_valid_sample_count < UINT8_MAX) {
+                s_app.fork_valid_sample_count += 1U;
+            }
+            if (s_app.obstacle_distance_mm > 0U && s_app.obstacle_distance_mm < s_app.fork_min_distance_mm) {
+                s_app.fork_min_distance_mm = s_app.obstacle_distance_mm;
+            }
+            if (fork_radar_indicates_left_blocked() && s_app.fork_block_count < UINT8_MAX) {
+                s_app.fork_block_count += 1U;
+            }
+        }
+    } else if (s_app.fork_valid_sample_count == 0U && fork_radar_sample_fresh()) {
+        s_app.fork_last_sample_frame_count = s_app.radar_frame_count;
+        s_app.fork_valid_sample_count = 1U;
+        if (s_app.obstacle_distance_mm > 0U) {
+            s_app.fork_min_distance_mm = s_app.obstacle_distance_mm;
+        }
+        if (fork_radar_indicates_left_blocked()) {
+            s_app.fork_block_count = 1U;
+        }
+    }
+
+    if (s_app.fork_block_count >= g_lf_config.fork_radar_block_confirm_frames ||
+        (fork_radar_indicates_left_blocked() && s_app.obstacle_state == LF_RADAR_OBSTACLE_BLOCK)) {
+        enter_fork_commit(+1, now_ms, LF_APP_REASON_FORK_LEFT_BLOCKED);
+        return;
+    }
+
+    if (!fork_elapsed(now_ms, g_lf_config.fork_sample_ms)) {
+        return;
+    }
+
+    if (s_app.fork_valid_sample_count < g_lf_config.fork_radar_valid_min_samples) {
+        set_reason(LF_APP_REASON_FORK_RADAR_STALE);
+        choose_fork_fallback(now_ms);
+        return;
+    }
+
+    enter_fork_commit(-1, now_ms, LF_APP_REASON_FORK_LEFT_CLEAR);
+}
+
+static void set_fork_commit_command(int8_t decision)
+{
+    int16_t speed = limit_degraded_speed(g_lf_config.fork_commit_speed);
+    int16_t turn = g_lf_config.fork_commit_turn_speed;
+
+    if (decision < 0) {
+        LF_Chassis_SetCommand((int16_t)(speed - turn), (int16_t)(speed + turn));
+    } else {
+        LF_Chassis_SetCommand((int16_t)(speed + turn), (int16_t)(speed - turn));
+    }
+}
+
+static void process_fork_commit(uint32_t now_ms, int8_t decision)
+{
+    set_fork_commit_command(decision);
+
+    if (fork_elapsed(now_ms, g_lf_config.fork_commit_min_ms)) {
+        LF_Sensor_ReadFrame(&s_app.last_frame);
+        if (frame_is_confirmed_line(&s_app.last_frame,
+                                    g_lf_config.fork_line_reacquire_min_sum,
+                                    g_lf_config.recover_confidence_min)) {
+            enter_fork_state(LF_APP_STATE_FORK_REACQUIRE, now_ms);
+            return;
+        }
+    }
+
+    if (fork_elapsed(now_ms, g_lf_config.fork_commit_ms)) {
+        enter_fork_state(LF_APP_STATE_FORK_REACQUIRE, now_ms);
+    }
+}
+
+static void process_fork_reacquire(uint32_t now_ms)
+{
+    if (confirm_line_frame(&s_app.fork_reacquire_count,
+                           g_lf_config.fork_reacquire_confirm_ticks,
+                           g_lf_config.fork_line_reacquire_min_sum,
+                           g_lf_config.recover_confidence_min)) {
+        LF_Control_ResetPid(&s_app.pid);
+        s_app.fork_detect_count = 0U;
+        set_reason(LF_APP_REASON_FORK_COMPLETED);
+        enter_fork_state(LF_APP_STATE_RUNNING, now_ms);
+        return;
+    }
+
+    if (s_app.fork_decision != 0) {
+        set_fork_commit_command(s_app.fork_decision);
+    } else {
+        LF_Chassis_Stop();
+    }
+
+    if (fork_elapsed(now_ms, g_lf_config.fork_reacquire_timeout_ms)) {
+        s_app.recover_start_ms = now_ms;
+        enter_recovery_phase(LF_RECOVER_SWEEP, now_ms);
+        set_reason(LF_APP_REASON_FORK_FAILED);
+        enter_fork_state(LF_APP_STATE_RECOVERING, now_ms);
+    }
+}
+
 static void refresh_radar_snapshot(uint32_t now_ms)
 {
     const LF_RadarState *radar;
@@ -210,17 +449,13 @@ static void process_running(uint32_t now_ms, float dt_s)
     int16_t left_cmd;
     int16_t right_cmd;
     int16_t base_speed;
+    bool fork_candidate;
     float error;
-
-    if (s_app.obstacle_state == LF_RADAR_OBSTACLE_BLOCK) {
-        set_reason(LF_APP_REASON_RADAR_BLOCK);
-        start_avoidance(now_ms);
-        return;
-    }
 
     LF_Sensor_ReadFrame(&s_app.last_frame);
 
     if (!s_app.last_frame.line_detected) {
+        s_app.fork_detect_count = 0U;
         if (s_app.last_frame.edge_hint != 0) {
             s_app.last_seen_dir = s_app.last_frame.edge_hint;
         }
@@ -229,6 +464,27 @@ static void process_running(uint32_t now_ms, float dt_s)
         set_reason(LF_APP_REASON_LINE_LOST);
         set_state(LF_APP_STATE_RECOVERING);
         LF_Hook_OnLineLost();
+        return;
+    }
+
+    fork_candidate = g_lf_config.fork_enable &&
+                     !fork_cooldown_active(now_ms) &&
+                     frame_looks_like_fork(&s_app.last_frame);
+    if (fork_candidate) {
+        if (s_app.fork_detect_count < UINT8_MAX) {
+            s_app.fork_detect_count += 1U;
+        }
+        if (s_app.fork_detect_count >= g_lf_config.fork_detect_confirm_ticks) {
+            start_fork_sample(now_ms);
+            return;
+        }
+    } else {
+        s_app.fork_detect_count = 0U;
+    }
+
+    if (!fork_candidate && s_app.obstacle_state == LF_RADAR_OBSTACLE_BLOCK) {
+        set_reason(LF_APP_REASON_RADAR_BLOCK);
+        start_avoidance(now_ms);
         return;
     }
 
@@ -531,6 +787,15 @@ void LF_App_Init(void)
     s_app.recover_confirm_count = 0U;
     s_app.recover_phase_start_ms = 0U;
     s_app.avoid_confirm_count = 0U;
+    s_app.fork_state_start_ms = now;
+    s_app.fork_detect_count = 0U;
+    s_app.fork_block_count = 0U;
+    s_app.fork_valid_sample_count = 0U;
+    s_app.fork_last_sample_frame_count = 0U;
+    s_app.fork_decision = 0;
+    s_app.fork_min_distance_mm = UINT16_MAX;
+    s_app.fork_radar_stale = false;
+    s_app.fork_reacquire_count = 0U;
 
     set_state(LF_APP_STATE_WAIT_START);
     LF_Platform_SetStatusLed(false);
@@ -622,6 +887,22 @@ void LF_App_RunStep(void)
 
         case LF_APP_STATE_AVOID_REACQUIRE:
             process_avoid_reacquire(now_ms);
+            break;
+
+        case LF_APP_STATE_FORK_SAMPLE:
+            process_fork_sample(now_ms);
+            break;
+
+        case LF_APP_STATE_FORK_COMMIT_LEFT:
+            process_fork_commit(now_ms, -1);
+            break;
+
+        case LF_APP_STATE_FORK_COMMIT_RIGHT:
+            process_fork_commit(now_ms, +1);
+            break;
+
+        case LF_APP_STATE_FORK_REACQUIRE:
+            process_fork_reacquire(now_ms);
             break;
 
         case LF_APP_STATE_STOPPED:

@@ -19,6 +19,10 @@ typedef enum {
     LF_APP_STATE_AVOID_BYPASS,
     LF_APP_STATE_AVOID_TURN_IN,
     LF_APP_STATE_AVOID_REACQUIRE,
+    LF_APP_STATE_FORK_SAMPLE,
+    LF_APP_STATE_FORK_COMMIT_LEFT,
+    LF_APP_STATE_FORK_COMMIT_RIGHT,
+    LF_APP_STATE_FORK_REACQUIRE,
     LF_APP_STATE_STOPPED,
     LF_APP_STATE_FAULT
 } LF_AppState;
@@ -39,6 +43,14 @@ typedef enum {
     LF_APP_REASON_AVOID_RETRY,
     LF_APP_REASON_AVOID_FAILED,
     LF_APP_REASON_AVOID_COMPLETED,
+    LF_APP_REASON_FORK_DETECTED,
+    LF_APP_REASON_FORK_LEFT_BLOCKED,
+    LF_APP_REASON_FORK_LEFT_CLEAR,
+    LF_APP_REASON_FORK_RADAR_STALE,
+    LF_APP_REASON_FORK_FALLBACK_LEFT,
+    LF_APP_REASON_FORK_FALLBACK_RIGHT,
+    LF_APP_REASON_FORK_COMPLETED,
+    LF_APP_REASON_FORK_FAILED,
     LF_APP_REASON_FAULT_FALLBACK,
 } LF_AppReason;
 
@@ -71,6 +83,15 @@ typedef struct {
     uint8_t recover_confirm_count;
     uint32_t recover_phase_start_ms;
     uint8_t avoid_confirm_count;
+    uint32_t fork_state_start_ms;
+    uint8_t fork_detect_count;
+    uint8_t fork_block_count;
+    uint8_t fork_valid_sample_count;
+    uint32_t fork_last_sample_frame_count;
+    int8_t fork_decision;
+    uint16_t fork_min_distance_mm;
+    bool fork_radar_stale;
+    uint8_t fork_reacquire_count;
 } LF_AppContext;
 
 /* 应用层初始化。 */
