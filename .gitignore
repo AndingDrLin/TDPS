@@ -55,3 +55,15 @@ Release/
 # Inner repos managed separately (use git submodule instead)
 TDPS/
 TDPS-Simulator/
+
+# Reference materials (datasheets, PCB, dev board docs)
+docs/
+
+# Generated outputs
+mid_reports/outputs/
+notebook/outputs/
+
+# Other binary formats
+*.rar
+*.dwg
+*.exe
