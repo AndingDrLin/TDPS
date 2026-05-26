@@ -1,0 +1,57 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Binary / non-code assets
+*.pdf
+*.docx
+*.pptx
+*.xlsx
+*.zip
+*.rar
+*.7z
+*.epro2
+*.PcbDoc
+*.SchDoc
+*.mxproject
+*.uvguix.*
+*.uvoptx
+
+# Images (reference screenshots etc.)
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.gif
+
+# STM32 HAL / CMSIS generated
+Drivers/CMSIS/
+Drivers/STM32F4xx_HAL_Driver/
+
+# Keil MDK build artifacts
+*.lst
+*.htm
+*.crf
+*.d
+*.o
+*.elf
+*.axf
+*.bin
+*.hex
+*.map
+*.build_log.htm
+Debug/
+Release/
+
+# Inner repos managed separately (use git submodule instead)
+TDPS/
+TDPS-Simulator/
