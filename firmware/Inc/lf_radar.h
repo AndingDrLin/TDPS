@@ -17,6 +17,8 @@ typedef enum {
     LF_RADAR_FRAME_LD2410S_STANDARD,
 } LF_RadarFrameType;
 
+#define LF_RADAR_GATE_COUNT (16U)
+
 typedef struct {
     bool has_target;
     bool frame_valid;
@@ -27,6 +29,8 @@ typedef struct {
     uint32_t last_update_ms;
     LF_RadarFrameType frame_type;
     LF_RadarObstacleState obstacle_state;
+    uint32_t gate_energy[LF_RADAR_GATE_COUNT];
+    uint8_t strongest_gate;
 } LF_RadarState;
 
 /* 初始化雷达解析器状态。 */

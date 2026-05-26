@@ -53,7 +53,8 @@ static void inject_ld2410s_minimal_frame(uint16_t distance_cm, uint8_t target_st
 
 static void inject_ld2410s_standard_frame(uint16_t distance_cm, uint8_t target_state)
 {
-    uint8_t frame[70] = {0};
+    uint8_t frame[80] = {0};
+    uint8_t i;
 
     frame[0] = 0xF4U;
     frame[1] = 0xF3U;
@@ -65,10 +66,18 @@ static void inject_ld2410s_standard_frame(uint16_t distance_cm, uint8_t target_s
     frame[7] = target_state;
     frame[8] = (uint8_t)(distance_cm & 0xFFU);
     frame[9] = (uint8_t)(distance_cm >> 8);
-    frame[66] = 0xF8U;
-    frame[67] = 0xF7U;
-    frame[68] = 0xF6U;
-    frame[69] = 0xF5U;
+    for (i = 0U; i < LF_RADAR_GATE_COUNT; ++i) {
+        uint32_t energy = (uint32_t)(100U + i * 10U);
+        uint8_t offset = (uint8_t)(12U + i * 4U);
+        frame[offset] = (uint8_t)(energy & 0xFFU);
+        frame[offset + 1U] = (uint8_t)((energy >> 8) & 0xFFU);
+        frame[offset + 2U] = (uint8_t)((energy >> 16) & 0xFFU);
+        frame[offset + 3U] = (uint8_t)((energy >> 24) & 0xFFU);
+    }
+    frame[76] = 0xF8U;
+    frame[77] = 0xF7U;
+    frame[78] = 0xF6U;
+    frame[79] = 0xF5U;
     LF_PlatformStub_RadarInject(frame, (uint16_t)sizeof(frame));
 }
 
@@ -147,7 +156,10 @@ static int test_radar_standard_frame(void)
 
     return expect_true(radar->obstacle_state == LF_RADAR_OBSTACLE_BLOCK, "standard frame enters BLOCK") |
            expect_true(radar->frame_type == LF_RADAR_FRAME_LD2410S_STANDARD, "standard frame type recorded") |
-           expect_true(radar->distance_mm == 400U, "standard frame distance converted");
+           expect_true(radar->distance_mm == 400U, "standard frame distance converted") |
+           expect_true(radar->gate_energy[0] == 100U, "standard frame gate 0 energy parsed") |
+           expect_true(radar->gate_energy[15] == 250U, "standard frame gate 15 energy parsed") |
+           expect_true(radar->strongest_gate == 15U, "standard frame strongest gate parsed");
 }
 
 static int test_radar_bad_checksum(void)

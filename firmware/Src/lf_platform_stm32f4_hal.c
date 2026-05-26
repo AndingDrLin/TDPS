@@ -83,6 +83,7 @@ void LF_Platform_BoardInit(void)
 
     if (g_lf_config.radar_enable) {
         LF_RadarUart_Init();
+        LF_RadarUart_SwitchToStandardMode();
     }
 }
 

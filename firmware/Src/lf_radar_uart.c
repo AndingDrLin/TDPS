@@ -11,6 +11,22 @@ static volatile uint16_t s_rx_head = 0U;
 static volatile uint16_t s_rx_tail = 0U;
 static volatile uint8_t s_rx_byte = 0U;
 
+static const uint8_t k_cmd_enable_cfg[] = {
+    0xFD, 0xFC, 0xFB, 0xFA, 0x04, 0x00, 0xFF, 0x00,
+    0x01, 0x00, 0x04, 0x03, 0x02, 0x01
+};
+
+static const uint8_t k_cmd_switch_standard[] = {
+    0xFD, 0xFC, 0xFB, 0xFA, 0x08, 0x00, 0x7A, 0x00,
+    0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x04, 0x03,
+    0x02, 0x01
+};
+
+static const uint8_t k_cmd_end_cfg[] = {
+    0xFD, 0xFC, 0xFB, 0xFA, 0x02, 0x00, 0xFE, 0x00,
+    0x04, 0x03, 0x02, 0x01
+};
+
 static void radar_rx_start(void)
 {
     if (HAL_UART_Receive_IT(&LF_PORT_RADAR_UART_HANDLE, (uint8_t *)&s_rx_byte, 1U) != HAL_OK) {
@@ -28,6 +44,16 @@ void LF_RadarUart_Init(void)
                          LF_PORT_RADAR_UART_IRQ_SUB_PRIORITY);
     HAL_NVIC_EnableIRQ(LF_PORT_RADAR_UART_IRQN);
     radar_rx_start();
+}
+
+void LF_RadarUart_SwitchToStandardMode(void)
+{
+    (void)HAL_UART_Transmit(&LF_PORT_RADAR_UART_HANDLE, (uint8_t *)k_cmd_enable_cfg, (uint16_t)sizeof(k_cmd_enable_cfg), 100U);
+    HAL_Delay(50U);
+    (void)HAL_UART_Transmit(&LF_PORT_RADAR_UART_HANDLE, (uint8_t *)k_cmd_switch_standard, (uint16_t)sizeof(k_cmd_switch_standard), 100U);
+    HAL_Delay(50U);
+    (void)HAL_UART_Transmit(&LF_PORT_RADAR_UART_HANDLE, (uint8_t *)k_cmd_end_cfg, (uint16_t)sizeof(k_cmd_end_cfg), 100U);
+    HAL_Delay(50U);
 }
 
 uint16_t LF_RadarUart_Read(uint8_t *out_buf, uint16_t max_len)

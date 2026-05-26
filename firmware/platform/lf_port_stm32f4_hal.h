@@ -18,6 +18,7 @@ extern ADC_HandleTypeDef hadc1;
 extern TIM_HandleTypeDef htim3;
 extern UART_HandleTypeDef huart1;
 extern UART_HandleTypeDef huart2;
+extern UART_HandleTypeDef huart3;
 
 /* ===== 传感器 DMA 缓冲（在用户文件中定义） ===== */
 extern volatile uint32_t g_lf_sensor_dma_buffer[LF_SENSOR_COUNT];
@@ -55,12 +56,15 @@ extern volatile uint32_t g_lf_sensor_dma_buffer[LF_SENSOR_COUNT];
 #define LF_PORT_ENABLE_DEBUG_UART (0)
 #define LF_PORT_DEBUG_UART_HANDLE (huart1)
 
-/* ===== 雷达串口（默认 USART2，按实际接线修改） ===== */
-#define LF_PORT_RADAR_UART_HANDLE (huart2)
-#define LF_PORT_RADAR_UART_IRQN (USART2_IRQn)
+/* ===== 雷达串口：USART3 PB10/PB11，避免占用屏幕 USART2 ===== */
+#define LF_PORT_RADAR_UART_HANDLE (huart3)
+#define LF_PORT_RADAR_UART_IRQN (USART3_IRQn)
 #define LF_PORT_RADAR_UART_IRQ_PRIORITY (5U)
 #define LF_PORT_RADAR_UART_IRQ_SUB_PRIORITY (0U)
 #define LF_PORT_RADAR_RX_BUFFER_SIZE (512U)
+
+/* ===== DWIN/DGUS 屏幕串口：USART2 PD5/PD6 ===== */
+#define LF_PORT_SCREEN_UART_HANDLE (huart2)
 
 void LF_Port_UartRxCpltCallback(UART_HandleTypeDef *huart);
 void LF_Port_UartErrorCallback(UART_HandleTypeDef *huart);

@@ -8,6 +8,7 @@
 #endif
 
 void LF_RadarUart_Init(void);
+void LF_RadarUart_SwitchToStandardMode(void);
 uint16_t LF_RadarUart_Read(uint8_t *out_buf, uint16_t max_len);
 
 #ifdef LF_USE_STM32F4_HAL_PORT

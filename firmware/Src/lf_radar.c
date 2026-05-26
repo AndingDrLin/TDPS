@@ -10,7 +10,9 @@
 #define LF_RADAR_F4_HEADER_SIZE (4U)
 #define LF_RADAR_SIMPLE_PAYLOAD_SIZE (4U)
 #define LF_RADAR_LD2410S_MINIMAL_SIZE (5U)
-#define LF_RADAR_LD2410S_STANDARD_SIZE (70U)
+#define LF_RADAR_LD2410S_STANDARD_PAYLOAD_SIZE (70U)
+#define LF_RADAR_LD2410S_STANDARD_SIZE (80U)
+#define LF_RADAR_LD2410S_STANDARD_ENERGY_OFFSET (12U)
 #define LF_RADAR_READ_CHUNK_SIZE (32U)
 #define LF_RADAR_CM_TO_MM (10U)
 
@@ -71,6 +73,20 @@ static bool simple_payload_checksum_ok(void)
 {
     uint8_t checksum = (uint8_t)(s_radar.payload[0] ^ s_radar.payload[1] ^ s_radar.payload[2]);
     return checksum == s_radar.payload[3];
+}
+
+static uint32_t u32_from_le(const uint8_t *p)
+{
+    return ((uint32_t)p[0]) |
+           ((uint32_t)p[1] << 8) |
+           ((uint32_t)p[2] << 16) |
+           ((uint32_t)p[3] << 24);
+}
+
+static void clear_gate_energy(void)
+{
+    memset(s_radar.state.gate_energy, 0, sizeof(s_radar.state.gate_energy));
+    s_radar.state.strongest_gate = 0U;
 }
 
 static bool f4_payload_is_standard_candidate(void)
@@ -167,6 +183,7 @@ static void consume_simple_frame(uint32_t now_ms)
 
     distance_mm = (uint16_t)(((uint16_t)s_radar.payload[1] << 8) | (uint16_t)s_radar.payload[0]);
     target_state = s_radar.payload[2];
+    clear_gate_energy();
     consume_measurement(now_ms,
                         target_state != 0U,
                         distance_mm,
@@ -187,6 +204,7 @@ static void consume_ld2410s_minimal_frame(uint32_t now_ms)
     target_state = s_radar.minimal_frame[1];
     distance_cm = (uint16_t)(s_radar.minimal_frame[2] |
                              ((uint16_t)s_radar.minimal_frame[3] << 8));
+    clear_gate_energy();
     consume_measurement(now_ms,
                         target_state >= 2U,
                         cm_to_mm(distance_cm),
@@ -198,19 +216,21 @@ static void consume_ld2410s_standard_frame(uint32_t now_ms)
 {
     uint8_t target_state;
     uint16_t distance_cm;
+    uint32_t max_energy = 0U;
+    uint8_t i;
 
     if (s_radar.f4_index != LF_RADAR_LD2410S_STANDARD_SIZE ||
         s_radar.f4_frame[0] != 0xF4U ||
         s_radar.f4_frame[1] != 0xF3U ||
         s_radar.f4_frame[2] != 0xF2U ||
         s_radar.f4_frame[3] != 0xF1U ||
-        s_radar.f4_frame[4] != 0x46U ||
+        s_radar.f4_frame[4] != LF_RADAR_LD2410S_STANDARD_PAYLOAD_SIZE ||
         s_radar.f4_frame[5] != 0x00U ||
         s_radar.f4_frame[6] != 0x01U ||
-        s_radar.f4_frame[66] != 0xF8U ||
-        s_radar.f4_frame[67] != 0xF7U ||
-        s_radar.f4_frame[68] != 0xF6U ||
-        s_radar.f4_frame[69] != 0xF5U) {
+        s_radar.f4_frame[76] != 0xF8U ||
+        s_radar.f4_frame[77] != 0xF7U ||
+        s_radar.f4_frame[78] != 0xF6U ||
+        s_radar.f4_frame[79] != 0xF5U) {
         s_radar.state.parse_error_count += 1U;
         return;
     }
@@ -218,6 +238,16 @@ static void consume_ld2410s_standard_frame(uint32_t now_ms)
     target_state = s_radar.f4_frame[7];
     distance_cm = (uint16_t)(s_radar.f4_frame[8] |
                              ((uint16_t)s_radar.f4_frame[9] << 8));
+
+    for (i = 0U; i < LF_RADAR_GATE_COUNT; ++i) {
+        uint8_t offset = (uint8_t)(LF_RADAR_LD2410S_STANDARD_ENERGY_OFFSET + i * 4U);
+        s_radar.state.gate_energy[i] = u32_from_le(&s_radar.f4_frame[offset]);
+        if (s_radar.state.gate_energy[i] >= max_energy) {
+            max_energy = s_radar.state.gate_energy[i];
+            s_radar.state.strongest_gate = i;
+        }
+    }
+
     consume_measurement(now_ms,
                         target_state >= 2U,
                         cm_to_mm(distance_cm),
@@ -368,6 +398,7 @@ void LF_Radar_Tick(uint32_t now_ms)
         s_radar.state.target_state = 0U;
         s_radar.state.distance_mm = 0U;
         s_radar.state.frame_type = LF_RADAR_FRAME_NONE;
+        clear_gate_energy();
         return;
     }
 
@@ -385,6 +416,7 @@ void LF_Radar_Tick(uint32_t now_ms)
         s_radar.state.target_state = 0U;
         s_radar.state.distance_mm = 0U;
         s_radar.state.frame_type = LF_RADAR_FRAME_NONE;
+        clear_gate_energy();
     }
 }
 

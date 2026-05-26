@@ -15,6 +15,7 @@ set(TDPS_CORE_SOURCES
     Src/lf_config.c
     Src/lf_control.c
     Src/lf_debug_monitor.c
+    Src/lf_dgus_screen.c
     Src/lf_future_hooks.c
     Src/lf_radar.c
     Src/lf_sensor.c

@@ -34,6 +34,22 @@ Release/
 # macOS
 .DS_Store
 
+# Binary / non-code assets
+slides/
+monitor/
+test/tdps_board_test/
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.epro2
+*.zip
+*.docx
+*.pptx
+*.xlsx
+*.PcbDoc
+*.SchDoc
+
 # Legacy generated outputs
 code/line_follow_v1/tests/.lf_autotest_runner
 code/line_follow_v1/tests/reports/
