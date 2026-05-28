@@ -1,0 +1,75 @@
+# Local build outputs
+firmware/build/
+simulator/artifacts/**
+!simulator/artifacts/
+!simulator/artifacts/README.md
+reports/mid_reports/outputs/
+reports/notebook/outputs/
+
+# Local reference packages are indexed by README only
+docs_reference/**
+!docs_reference/
+!docs_reference/README.md
+
+# Python / Node caches
+__pycache__/
+*.pyc
+node_modules/
+.wrangler/
+
+# macOS / IDE
+.DS_Store
+.vscode/
+.idea/
+.settings/
+
+# Embedded generated artifacts
+*.o
+*.d
+*.crf
+*.lst
+*.map
+*.axf
+*.elf
+*.hex
+*.bin
+*.lnp
+*.dep
+*.htm
+*.build_log.htm
+Objects/
+Listings/
+Debug/
+Release/
+DebugConfig/
+RTE/
+*.uvguix.*
+*.uvoptx
+*.uvopt
+*.uvprojx
+!firmware/**/*.uvprojx
+*.ioc
+*.mxproject
+.project
+.cproject
+!firmware/**/*.ioc
+!firmware/**/.mxproject
+
+# Large binary reference files
+*.pdf
+*.docx
+*.pptx
+*.xlsx
+*.zip
+*.rar
+*.7z
+*.epro2
+*.PcbDoc
+*.SchDoc
+*.dwg
+*.exe
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.gif

@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Skid-Steer Car Simulator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/neo.min.css" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="layout">
+    <section class="panel sim-panel">
+      <div class="sim-header">
+        <h1>Skid-Steer Car Simulator</h1>
+        <div class="hint">Track width = 0.2m, wheelbase = 0.4m</div>
+      </div>
+      <div class="sim-config" id="simConfigPanel">
+        <div class="cfg-item">
+          <label for="cfgTrackWidth">w (track width, m)</label>
+          <input id="cfgTrackWidth" type="number" min="0.1" max="5" step="0.1" value="0.2" />
+        </div>
+
+        <div class="cfg-item">
+          <label for="cfgWheelBase">l (wheelbase, m)</label>
+          <input id="cfgWheelBase" type="number" min="0.1" max="8" step="0.1" value="0.4" />
+        </div>
+
+        <div class="cfg-item">
+          <label for="cfgMaxWheelSpeed">max wheel speed (m/s)</label>
+          <input id="cfgMaxWheelSpeed" type="number" min="0.2" max="20" step="0.1" value="4.0" />
+        </div>
+
+        <div class="cfg-item">
+          <label for="cfgWheelVisualScale">wheel visual scale</label>
+          <input id="cfgWheelVisualScale" type="number" min="0.2" max="3" step="0.05" value="1.0" />
+        </div>
+
+        <div class="cfg-item">
+          <label for="cfgTrailPoints">trail points</label>
+          <input id="cfgTrailPoints" type="number" min="50" max="20000" step="50" value="900" />
+        </div>
+
+        <div class="cfg-item">
+          <label for="cfgMaxDt">max dt (s)</label>
+          <input id="cfgMaxDt" type="number" min="0.005" max="0.2" step="0.005" value="0.04" />
+        </div>
+      </div>
+      <canvas id="simCanvas" width="900" height="560"></canvas>
+
+      <section class="code code-inline">
+        <h2 class="section-title">Code Control</h2>
+        <textarea id="codeInput">// API demo: line follower using sensors + memory + logging.
+// Uses: api.getSensor, api.setWheelSpeeds, api.clamp, api.mem.*, api.log
+
+const left = api.getSensor("L")?.value || 0;
+const center = api.getSensor("C")?.value || 0;
+const right = api.getSensor("R")?.value || 0;
+
+const prevError = api.mem.get("prevError", 0);
+const lastTurn = api.mem.get("lastTurn", 1);
+const wasLost = api.mem.get("wasLost", false);
+
+const hasLine = Math.max(left, center, right) > 0.1;
+
+if (hasLine) {
+  const error = (right - left) + 0.25 * (right - center) - 0.25 * (left - center);
+  const dError = error - prevError;
+
+  const base = 0.32;
+  const kP = 1.55;
+  const kD = 0.65;
+  const turn = kP * error + kD * dError;
+
+  const leftCmd = api.clamp(base + turn, -1.2, 1.2);
+  const rightCmd = api.clamp(base - turn, -1.2, 1.2);
+  api.setWheelSpeeds(leftCmd, rightCmd, leftCmd, rightCmd);
+
+  api.mem.set("prevError", error);
+  api.mem.set("lastTurn", turn >= 0 ? 1 : -1);
+  api.mem.set("wasLost", false);
+} else {
+  // Reacquire behavior when all sensors miss the line.
+  const dir = lastTurn;
+  const pivot = 0.30;
+  api.setWheelSpeeds(dir * pivot, -dir * pivot, dir * pivot, -dir * pivot);
+
+  if (!wasLost) {
+    api.log("line lost -> pivot search", dir > 0 ? "left" : "right");
+    api.mem.set("wasLost", true);
+  }
+}</textarea>
+        <div class="button-row" style="margin-top: 0.6rem;">
+          <button id="loadLfV1Template" class="secondary">Load LF V1 Template</button>
+          <button id="enableCode" class="safe">Enable Code Mode</button>
+          <button id="runOnce" class="secondary">Run Once</button>
+          <button id="disableCode" class="warn">Disable Code Mode</button>
+          <button id="clearDebug" class="secondary">Clear Debug</button>
+        </div>
+        <div class="status" id="codeStatus">Code mode disabled.</div>
+        <details class="api-doc" open>
+          <summary>Full API List</summary>
+          <pre>api.time
+api.dt
+api.millis
+api.getMillis()
+api.pose
+api.wheelSpeeds
+api.sensors
+api.getSensor(name)
+api.getSensorRaw(nameOrIndex)
+api.getLineSensorRaw(index)
+api.getLineSensorRawArray()
+api.setWheelSpeed(name, value)
+api.setWheelSpeeds(vFL, vFR, vRL, vRR)
+api.commandToWheelSpeed(cmd)
+api.setMotorCommand(leftCmd, rightCmd)
+api.clamp(value, min, max)
+api.log(...args)
+api.clearLog()
+api.mem.get(key, defaultValue)
+api.mem.set(key, value)
+api.mem.remove(key)
+api.mem.clear()
+api.mem.keys()</pre>
+        </details>
+        <details class="api-doc" open>
+          <summary>Script Memory Entries</summary>
+          <pre class="memory-view" id="memoryView">(empty)</pre>
+        </details>
+        <div class="debug-log" id="debugLog" aria-label="Code Debug Output"></div>
+      </section>
+    </section>
+
+    <aside class="side">
+      <section class="panel controls">
+        <h2 class="section-title">Wheel Controls</h2>
+        <div class="button-row">
+          <button id="toggleRun" class="safe">Pause</button>
+          <button id="zeroSpeeds" class="secondary">Zero Speeds</button>
+          <button id="resetPose" class="warn">Reset Pose</button>
+        </div>
+
+        <div class="wheel-grid" id="wheelGrid"></div>
+      </section>
+
+      <section class="panel telemetry">
+        <h2 class="section-title">Telemetry</h2>
+        <div class="metrics" id="metrics"></div>
+      </section>
+
+      <section class="panel controls">
+        <h2 class="section-title">Track & IR Sensors</h2>
+        <div class="track-grid">
+          <label for="cfgTrackPreset">track type</label>
+          <select id="cfgTrackPreset">
+            <option value="oval">Oval</option>
+            <option value="circle" selected>Circle</option>
+            <option value="figure8">Figure 8</option>
+            <option value="svg">SVG Path</option>
+          </select>
+
+          <label for="cfgLineWidth">line width (m)</label>
+          <input id="cfgLineWidth" type="number" min="0.005" max="0.2" step="0.005" value="0.03" />
+        </div>
+        <label class="mini-label" for="cfgSvgPath">svg path (meters, e.g. M -1 0 L 1 0)</label>
+        <textarea id="cfgSvgPath" class="small-textarea">M 0 0 L 1.2 0 L 1.2 0.8 L 0 0.8 Z</textarea>
+        <label class="mini-label" for="cfgSensors">sensor config (JSON array in car local coords, x=forward, y=left)</label>
+        <textarea id="cfgSensors" class="small-textarea">[
+  {"name":"S0","x":0.16,"y":0.075},
+  {"name":"S1","x":0.16,"y":0.025},
+  {"name":"S2","x":0.16,"y":-0.025},
+  {"name":"S3","x":0.16,"y":-0.075}
+]</textarea>
+        <div class="button-row" style="margin-top: 0.6rem;">
+          <button id="applyTrackSensors" class="safe">Apply Track/Sensors</button>
+          <button id="startTrackDraw" class="secondary">Start Draw</button>
+          <button id="finishTrackDraw" class="secondary">Finish Draw</button>
+          <button id="clearTrackDraw" class="warn">Clear Draw</button>
+        </div>
+        <div class="status" id="trackStatus">Track ready. Sensor API available as api.sensors and api.getSensor(name).</div>
+      </section>
+
+      <section class="panel controls">
+        <h2 class="section-title">Camera Controls</h2>
+        <div class="camera-grid">
+          <label for="camOffsetX">Offset X (px)</label>
+          <input id="camOffsetX" type="range" min="-5000" max="5000" value="0" step="1" />
+          <div class="camera-value" id="camOffsetXVal">0</div>
+
+          <label for="camOffsetY">Offset Y (px)</label>
+          <input id="camOffsetY" type="range" min="-5000" max="5000" value="0" step="1" />
+          <div class="camera-value" id="camOffsetYVal">0</div>
+
+          <label for="camZoom">Zoom (px/m)</label>
+          <input id="camZoom" type="range" min="10" max="300" value="220" step="1" />
+          <div class="camera-value" id="camZoomVal">220</div>
+        </div>
+        <div class="button-row" style="margin-top: 0.6rem;">
+          <button id="camFollowToggle" class="secondary">Follow Car: Off</button>
+          <button id="camReset" class="warn">Reset Camera</button>
+        </div>
+      </section>
+
+      <section class="panel controls">
+        <h2 class="section-title">Auto Test</h2>
+        <div class="track-grid">
+          <label for="autoTestDuration">duration (s)</label>
+          <input id="autoTestDuration" type="number" min="1" max="180" step="1" value="15" />
+
+          <label for="autoTestDt">step dt (s)</label>
+          <input id="autoTestDt" type="number" min="0.002" max="0.05" step="0.001" value="0.01" />
+
+          <label for="autoTestLineThreshold">line threshold</label>
+          <input id="autoTestLineThreshold" type="number" min="0.01" max="0.95" step="0.01" value="0.12" />
+        </div>
+        <div class="button-row" style="margin-top: 0.6rem;">
+          <button id="runAutoTest" class="safe">Run Suite</button>
+          <button id="stopAutoTest" class="warn">Stop</button>
+          <button id="copyAutoTestReport" class="secondary">Copy Report</button>
+        </div>
+        <div class="status" id="autoTestStatus">Auto test idle.</div>
+        <pre class="auto-test-report" id="autoTestReport">(no report)</pre>
+      </section>
+
+    </aside>
+  </main>
+
+  <script src="./car_pose.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>

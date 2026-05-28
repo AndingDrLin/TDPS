@@ -4,40 +4,36 @@ __pycache__/
 *.pyc
 *.egg-info/
 
+# Node / web tooling
+node_modules/
+.wrangler/
+
 # macOS
 .DS_Store
 
-# IDE
+# IDE / editor metadata
 .vscode/
 .idea/
+.settings/
+*.launch
 
-# Binary / non-code assets
-*.pdf
-*.docx
-*.pptx
-*.xlsx
-*.zip
-*.rar
-*.7z
-*.epro2
-*.PcbDoc
-*.SchDoc
-*.mxproject
-*.uvguix.*
-*.uvoptx
+# CMake / local build outputs
+build/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
 
-# Images (reference screenshots etc.)
-*.png
-*.jpg
-*.jpeg
-*.bmp
-*.gif
+# Firmware and simulator generated outputs
+TDPS/firmware/build/
+TDPS/simulator/artifacts/**
+!TDPS/simulator/artifacts/
+!TDPS/simulator/artifacts/README.md
+artifacts/**
+!artifacts/
+!artifacts/README.md
 
-# STM32 HAL / CMSIS generated
-Drivers/CMSIS/
-Drivers/STM32F4xx_HAL_Driver/
-
-# Keil MDK build artifacts
+# Keil MDK / embedded build artifacts
 *.lst
 *.htm
 *.crf
@@ -48,22 +44,61 @@ Drivers/STM32F4xx_HAL_Driver/
 *.bin
 *.hex
 *.map
+*.lnp
+*.dep
 *.build_log.htm
 Debug/
 Release/
+Objects/
+Listings/
+DebugConfig/
+RTE/
+JLinkLog.txt
+JLinkSettings.ini
+EventRecorderStub.scvd
+*.uvguix.*
+*.uvoptx
+*.uvopt
+*.uvprojx
+!TDPS/firmware/**/*.uvprojx
 
-# Inner repos managed separately (use git submodule instead)
-TDPS/
-TDPS-Simulator/
+# STM32CubeMX / Eclipse metadata outside the main firmware project
+*.ioc
+*.mxproject
+.project
+.cproject
+!TDPS/firmware/**/*.ioc
+!TDPS/firmware/**/.mxproject
 
-# Reference materials (datasheets, PCB, dev board docs)
-docs/
-
-# Generated outputs
+# Generated report outputs
+TDPS/reports/mid_reports/outputs/
+TDPS/reports/notebook/outputs/
 mid_reports/outputs/
 notebook/outputs/
 
-# Other binary formats
+# Local reference packages are indexed by README only
+TDPS/docs_reference/**
+!TDPS/docs_reference/
+!TDPS/docs_reference/README.md
+
+# Binary / non-code reference assets
+*.pdf
+*.docx
+*.pptx
+*.xlsx
+*.zip
 *.rar
+*.7z
+*.epro2
+*.PcbDoc
+*.SchDoc
 *.dwg
 *.exe
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.gif
+
+# Local archives or legacy ignored directories kept outside TDPS
+slides/

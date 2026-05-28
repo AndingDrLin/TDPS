@@ -1,0 +1,64 @@
+TDPS_BoardTest: ST-Link / Keil Watch 测试方法
+
+1. 用 Keil5 打开 MDK-ARM/TDPS_BoardTest.uvprojx。
+2. Rebuild All 后用 ST-Link/SWD 下载。
+3. 进入 Debug 模式，打开 View -> Watch Windows -> Watch 1。
+4. 在 Watch 里添加变量：g_board_swd。
+5. 展开 g_board_swd，观察状态字段。
+
+常用 command 数值：
+
+0  = 无命令
+1  = 刷新状态
+10 = 电机解锁
+11 = 电机锁定并停止
+12 = 电机立即停止
+13 = 按 motor_a_duty / motor_b_duty / motor_duration_ms 运行电机
+20 = 编码器清零
+30 = LoRa 复位
+31 = 设置 LoRa WAKE，先设置 lora_wake_level 为 0 或 1
+40 = 被动自检
+41 = 电机安全自检，要求已解锁
+
+推荐测试顺序：
+
+A. 只读状态
+- 确认 g_board_swd.magic = 0x54445053。
+- 设置 g_board_swd.command = 1。
+- 观察 uptime_ms、sysclk_hz、radar_gpio、lora_aux、lora_link、line_sig1、line_sig2。
+
+B. 编码器
+- 设置 g_board_swd.command = 20 清零。
+- 手动转动车轮。
+- 设置 g_board_swd.command = 1 刷新。
+- 观察 encoder_a / encoder_b 是否变化。
+
+C. 电机低速测试，必须架空轮子
+- 设置 g_board_swd.command = 10 解锁。
+- 设置 motor_a_duty = 5，motor_b_duty = 0，motor_duration_ms = 300。
+- 设置 g_board_swd.command = 13。
+- 等待自动停止后观察 motor_active 变回 0、encoder_a 是否变化。
+- 测 B 电机时设置 motor_a_duty = 0，motor_b_duty = 5。
+- 任意时刻设置 g_board_swd.command = 12 可立即停止。
+- 测完设置 g_board_swd.command = 11 锁定。
+
+D. 雷达
+- 雷达接好并上电后，设置 g_board_swd.command = 1 刷新。
+- 观察 radar_rx_count 是否增加。
+- 人靠近雷达，观察 radar_gpio、radar_target_state、radar_distance_cm。
+
+E. 巡线
+- 设置 g_board_swd.command = 1 刷新。
+- 遮挡/移动黑白线，观察 line_sig1、line_sig2。
+- 如果 UART 模式有数据，line_rx_count 会增加。
+
+F. LoRa
+- 设置 g_board_swd.command = 30 复位 LoRa。
+- 设置 lora_wake_level = 0 或 1，再设置 g_board_swd.command = 31。
+- 设置 g_board_swd.command = 1 刷新，观察 lora_aux、lora_link、lora_wake、lora_rst。
+
+注意事项：
+- 没有 TTL 串口时，不需要使用串口 CLI。
+- Keil Watch 修改 command 后，主循环会执行并自动把 command 清回 0。
+- 电机默认锁定，所有电机动作都需要先 command=10 解锁。
+- 电机测试前请架空轮子并使用限流电源。
