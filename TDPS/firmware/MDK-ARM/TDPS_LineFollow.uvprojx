@@ -423,6 +423,11 @@
               <FilePath>../Src/lf_app.c</FilePath>
             </File>
             <File>
+              <FileName>lf_board_stm32f4.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/lf_board_stm32f4.c</FilePath>
+            </File>
+            <File>
               <FileName>lf_chassis.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Src/lf_chassis.c</FilePath>

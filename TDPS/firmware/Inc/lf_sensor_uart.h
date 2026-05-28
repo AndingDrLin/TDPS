@@ -6,6 +6,10 @@
 
 #include "lf_config.h"
 
+#ifdef LF_USE_STM32F4_HAL_PORT
+#include "stm32f4xx_hal.h"
+#endif
+
 /*
  * UART 巡线传感器驱动
  *

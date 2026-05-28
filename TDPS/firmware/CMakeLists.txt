@@ -47,6 +47,7 @@ endif()
 
 if(TDPS_TARGET_MCU)
     target_sources(tdps_core PRIVATE
+        Src/lf_board_stm32f4.c
         Src/lf_platform_stm32f4_hal.c
         Src/lf_radar_uart.c
         Src/wl_platform_stm32f4.c

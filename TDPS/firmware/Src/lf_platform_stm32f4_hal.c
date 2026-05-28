@@ -32,7 +32,9 @@ __weak bool LF_Port_ReadLineSensorDigital(uint8_t out_level[LF_SENSOR_COUNT])
 }
 
 static volatile bool s_lf_debug_tx_busy = false;
+#if LF_PORT_ENABLE_DEBUG_UART
 static char s_lf_debug_tx_buffer[384];
+#endif
 static volatile uint8_t s_lf_sensor_uart_rx_byte;
 
 static GPIO_PinState invert_pin_state(GPIO_PinState s)

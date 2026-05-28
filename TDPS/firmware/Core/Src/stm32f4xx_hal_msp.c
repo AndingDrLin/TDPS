@@ -86,6 +86,13 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef *htim)
     }
 }
 
+void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef *htim)
+{
+    if (htim->Instance == TIM3) {
+        __HAL_RCC_TIM3_CLK_ENABLE();
+    }
+}
+
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {0};

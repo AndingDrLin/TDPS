@@ -29,7 +29,7 @@ static uint16_t clamp_curve_sample(uint32_t raw_energy)
 
 static void send_raw(const uint8_t *data, uint16_t len)
 {
-#if defined(LF_USE_STM32F4_HAL_PORT)
+#if defined(LF_USE_STM32F4_HAL_PORT) && defined(LF_PORT_SCREEN_UART_HANDLE)
     if (data == NULL || len == 0U) {
         return;
     }
