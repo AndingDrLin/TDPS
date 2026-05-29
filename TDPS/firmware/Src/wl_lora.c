@@ -2,7 +2,7 @@
  * @file    wl_lora.c
  * @brief   EWM22A-900BWL22S LoRa 驱动层实现。
  *
- * 通过 AT 指令完成模块配置，通过 UART 透传完成数据发射。
+ * 通过 AT 指令完成模块配置，通过 UART 完成数据发射。
  */
 
 #include "wl_lora.h"
@@ -26,6 +26,7 @@
 #define ACK_BUF_SIZE    32
 #define ACK_TOKEN_UPPER "ACK"
 #define ACK_TOKEN_LOWER "ack"
+#define FIXED_FRAME_HEADER_SIZE 3U
 
 typedef struct {
     uint8_t payload[WL_TX_PAYLOAD_MAX];
@@ -73,6 +74,29 @@ static void service_sync_link_snapshot(void)
     s_service.link.queue_depth = s_service.count;
     s_service.link.waiting_ack = s_service.waiting_ack;
     s_service.link.ack_enabled = s_service.ack_enabled;
+}
+
+static WL_LoRa_Status lora_send_payload(const uint8_t *data, uint16_t len)
+{
+    uint8_t frame[WL_UART_TX_BUF_SIZE];
+    uint16_t dest_addr;
+
+    if (g_wl_config.lora_trans_mode != 1U) {
+        WL_Platform_UART_Send(data, len);
+        return WL_LORA_OK;
+    }
+
+    if ((uint32_t)len + FIXED_FRAME_HEADER_SIZE > WL_UART_TX_BUF_SIZE) {
+        return WL_LORA_ERR_PARAM;
+    }
+
+    dest_addr = g_wl_config.lora_fixed_dest_addr;
+    frame[0] = (uint8_t)(dest_addr >> 8);
+    frame[1] = (uint8_t)(dest_addr & 0xFFU);
+    frame[2] = g_wl_config.lora_fixed_dest_channel;
+    memcpy(&frame[FIXED_FRAME_HEADER_SIZE], data, len);
+    WL_Platform_UART_Send(frame, (uint16_t)(len + FIXED_FRAME_HEADER_SIZE));
+    return WL_LORA_OK;
 }
 
 static void service_reset_active_tx(void)
@@ -338,7 +362,7 @@ WL_LoRa_Status WL_LoRa_Init(void)
     }
 
     /* 3. 同步已验证代码的配置指令顺序 */
-    st = _send_at_check("AT+ECHO=0");
+    st = _send_at_check("ATE0");
     if (st != WL_LORA_OK) {
         return st;
     }
@@ -387,6 +411,12 @@ WL_LoRa_Status WL_LoRa_Init(void)
 
     /* 6. 设置网络 ID */
     snprintf(cmd, sizeof(cmd), "AT+NETID=%u", (unsigned)g_wl_config.lora_net_id);
+    st = _send_at_check(cmd);
+    if (st != WL_LORA_OK) {
+        return st;
+    }
+
+    snprintf(cmd, sizeof(cmd), "AT+KEY=%u", (unsigned)g_wl_config.lora_key);
     st = _send_at_check(cmd);
     if (st != WL_LORA_OK) {
         return st;
@@ -445,8 +475,10 @@ WL_LoRa_Status WL_LoRa_Send(const uint8_t *data, uint16_t len)
         return WL_LORA_ERR_BUSY;
     }
 
-    /* 在透传模式下，直接通过 UART 发送数据即可由模块进行 LoRa 发射 */
-    WL_Platform_UART_Send(data, len);
+    WL_LoRa_Status st = lora_send_payload(data, len);
+    if (st != WL_LORA_OK) {
+        return st;
+    }
 
     char dbg[48];
     snprintf(dbg, sizeof(dbg), "[LoRa] TX %u bytes\r\n", (unsigned)len);
@@ -546,7 +578,13 @@ void WL_LoRa_Tick(void)
             return;
         }
 
-        WL_Platform_UART_Send(s_service.current.payload, s_service.current.len);
+        {
+            WL_LoRa_Status st = lora_send_payload(s_service.current.payload, s_service.current.len);
+            if (st != WL_LORA_OK) {
+                service_finish_fail(st);
+                return;
+            }
+        }
         s_service.last_tx_ms = now_ms;
         s_service.current_sent = true;
         s_service.tx_start_ms = now_ms;

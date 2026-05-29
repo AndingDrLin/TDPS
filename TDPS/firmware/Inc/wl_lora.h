@@ -42,7 +42,7 @@ typedef struct {
 /**
  * 初始化 LoRa 模块。
  * 流程：等待 AUX 就绪 → 进入配置模式 → 设置地址/信道/网络ID/空中速率/
- *       发射功率/传输模式 → 切换到 UART/LoRa 透传模式。
+ *       发射功率/传输模式/密钥 → 切换到 UART/LoRa 工作模式。
  *
  * @return WL_LORA_OK 成功，其他值为错误码。
  */
@@ -79,8 +79,8 @@ WL_LoRa_Status WL_LoRa_SendAT(const char *cmd,
 /* ------------------------------------------------------------------ */
 
 /**
- * 通过 LoRa 透传模式发送一段数据。
- * 在模式 1（UART/LoRa 透传）下，直接将数据写入 UART 即由模块发射。
+ * 通过 LoRa 工作模式发送一段数据。
+ * Fixed Mode 下驱动会自动添加目标地址和目标信道头。
  *
  * @param data  数据指针。
  * @param len   数据长度（字节），不超过 WL_TX_PAYLOAD_MAX。
@@ -89,7 +89,7 @@ WL_LoRa_Status WL_LoRa_SendAT(const char *cmd,
 WL_LoRa_Status WL_LoRa_Send(const uint8_t *data, uint16_t len);
 
 /**
- * 通过 LoRa 透传模式发送一个以 '\0' 结尾的字符串。
+ * 通过 LoRa 工作模式发送一个以 '\0' 结尾的字符串。
  *
  * @param str  要发送的字符串。
  * @return WL_LORA_OK 成功，其他值为错误码。

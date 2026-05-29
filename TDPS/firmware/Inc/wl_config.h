@@ -25,27 +25,33 @@
 /*  LoRa 射频参数（必须与拱门接收端一致）                                */
 /* ------------------------------------------------------------------ */
 
-/** 模块地址（0x0000 = 默认 / 可广播）。 */
-#define WL_LORA_ADDR            0x0000
+/** 模块地址。 */
+#define WL_LORA_ADDR            0x0001
 
-/** 信道索引。实际频率 = 850.125 + CH × 1 MHz。
- *  默认 0x12（18）→ 868.125 MHz。 */
-#define WL_LORA_CHANNEL         18
+/** 信道索引。900 系列实际频率 = 850.125 + CH × 1 MHz，CH=10 -> 860.125 MHz。 */
+#define WL_LORA_CHANNEL         10
 
 /** 网络 ID（0–255）。通信双方必须一致。 */
-#define WL_LORA_NET_ID          0
+#define WL_LORA_NET_ID          0x00
 
-/** 空中速率索引（0–7）。0/1/2 = 2.4 kbps（默认）。 */
+/** 空中速率索引（0–7）。0/1/2 = 2.4 kbps。 */
 #define WL_LORA_AIR_RATE        0
 
 /** 发射功率索引。0 = 22 dBm（最大功率）。 */
 #define WL_LORA_TX_POWER        0
 
 /** 传输模式。0 = 透明传输，1 = 定点传输。 */
-#define WL_LORA_TRANS_MODE      0
+#define WL_LORA_TRANS_MODE      1
 
-/** 分包长度索引。0 = 240 字节（默认）。 */
+/** 分包长度索引。0 = 240 字节。 */
 #define WL_LORA_PACKET_SIZE     0
+
+/** LoRa 密钥。0 = 不加密。 */
+#define WL_LORA_KEY             0
+
+/** 定点传输目标地址。0xFFFF 为广播地址。 */
+#define WL_LORA_FIXED_DEST_ADDR     0xFFFF
+#define WL_LORA_FIXED_DEST_CHANNEL  WL_LORA_CHANNEL
 
 /* ------------------------------------------------------------------ */
 /*  UART 参数（模块与 MCU 之间的串口通信）                               */
@@ -84,8 +90,8 @@
 /** ACK 校验开关（默认关闭，待网关联调后启用）。 */
 #define WL_ACK_ENABLE               false
 
-/** 默认沿用已上板验证代码：不在主程序启动时重新下发 AT 配置，只做透明传输发送。 */
-#define WL_LORA_RUN_AT_INIT         false
+/** 启动时下发 AT 配置，确保模块参数与固件一致。 */
+#define WL_LORA_RUN_AT_INIT         true
 
 /** 状态上报节拍（毫秒）。 */
 #define WL_STATUS_REPORT_PERIOD_MS  1000U
@@ -134,6 +140,9 @@ typedef struct {
     uint8_t     lora_tx_power;
     uint8_t     lora_trans_mode;
     uint8_t     lora_packet_size;
+    uint16_t    lora_key;
+    uint16_t    lora_fixed_dest_addr;
+    uint8_t     lora_fixed_dest_channel;
 
     /* UART 参数 */
     uint32_t    uart_baudrate;

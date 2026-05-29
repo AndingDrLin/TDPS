@@ -16,6 +16,7 @@
 
 extern UART_HandleTypeDef huart2;
 extern UART_HandleTypeDef huart3;
+extern UART_HandleTypeDef wl_huart;
 extern DMA_HandleTypeDef hdma_adc1;
 
 /* ===== Cortex-M4 System Exceptions ===== */
@@ -71,6 +72,11 @@ void USART2_IRQHandler(void)
 void USART3_IRQHandler(void)
 {
     HAL_UART_IRQHandler(&huart3);
+}
+
+void UART5_IRQHandler(void)
+{
+    HAL_UART_IRQHandler(&wl_huart);
 }
 
 void DMA2_Stream0_IRQHandler(void)

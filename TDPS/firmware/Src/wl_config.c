@@ -18,6 +18,9 @@ const WL_Config g_wl_config = {
     .lora_tx_power          = WL_LORA_TX_POWER,
     .lora_trans_mode        = WL_LORA_TRANS_MODE,
     .lora_packet_size       = WL_LORA_PACKET_SIZE,
+    .lora_key               = WL_LORA_KEY,
+    .lora_fixed_dest_addr   = WL_LORA_FIXED_DEST_ADDR,
+    .lora_fixed_dest_channel = WL_LORA_FIXED_DEST_CHANNEL,
 
     /* UART 参数 */
     .uart_baudrate          = WL_UART_BAUDRATE,

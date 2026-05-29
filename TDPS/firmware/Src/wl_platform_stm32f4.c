@@ -25,6 +25,12 @@ static void enable_uart_clock(USART_TypeDef *instance)
         __HAL_RCC_USART2_CLK_ENABLE();
     } else if (instance == USART3) {
         __HAL_RCC_USART3_CLK_ENABLE();
+    } else if (instance == UART4) {
+        __HAL_RCC_UART4_CLK_ENABLE();
+    } else if (instance == UART5) {
+        __HAL_RCC_UART5_CLK_ENABLE();
+    } else if (instance == USART6) {
+        __HAL_RCC_USART6_CLK_ENABLE();
     }
 }
 
@@ -118,6 +124,31 @@ static void rst_gpio_init(void)
     HAL_GPIO_Init(WL_RST_PORT, &gpio);
 }
 
+static void link_gpio_init(void)
+{
+    GPIO_InitTypeDef gpio = {0};
+
+    gpio_clock_enable(WL_LINK_PORT);
+    gpio.Pin = WL_LINK_PIN;
+    gpio.Mode = GPIO_MODE_INPUT;
+    gpio.Pull = GPIO_PULLUP;
+    HAL_GPIO_Init(WL_LINK_PORT, &gpio);
+}
+
+static void wake_gpio_init(void)
+{
+    GPIO_InitTypeDef gpio = {0};
+
+    gpio_clock_enable(WL_WAKE_PORT);
+    HAL_GPIO_WritePin(WL_WAKE_PORT, WL_WAKE_PIN, WL_WAKE_ACTIVE_LEVEL);
+
+    gpio.Pin = WL_WAKE_PIN;
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(WL_WAKE_PORT, &gpio);
+}
+
 static void debug_uart_init(void)
 {
 #if WL_ENABLE_DEBUG_UART
@@ -187,6 +218,8 @@ void WL_Platform_Init(void)
     rx_tail = 0U;
     s_debug_tx_busy = false;
     aux_gpio_init();
+    link_gpio_init();
+    wake_gpio_init();
     rst_gpio_init();
     uart_init();
     debug_uart_init();
