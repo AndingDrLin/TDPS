@@ -40,7 +40,28 @@ UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
+typedef struct
+{
+    uint8_t uart_fresh;
+    uint8_t frame_type;
+    uint8_t uart_target;
+    uint8_t target_state;
+    uint8_t gpio_target;
+    uint8_t left_obstacle_present;
+    uint8_t path_turn_right;
+    uint8_t active_zone;
+    uint16_t raw_distance_cm;
+    uint16_t filtered_distance_cm;
+    uint32_t frame_age_ms;
+    uint32_t frame_count;
+    uint32_t raw_rx_bytes;
+    uint32_t parse_error_count;
+    uint32_t rx_overflow_count;
+    HAL_StatusTypeDef last_rx_status;
+} RadarWatchInfo;
+
 LD2410S_FrameInfo g_frame_info;
+volatile RadarWatchInfo g_radar_watch;
 uint32_t g_last_frame_tick = 0;
 uint32_t g_last_report_tick = 0;
 uint32_t g_heartbeat_tick = 0;
@@ -333,6 +354,26 @@ static void UpdateZoneOutput(uint16_t filtered_distance)
 }
 
 // 纭欢鑷锛氭墍鏈?LED 闂儊涓€娆?
+static void UpdateRadarWatch(uint32_t now, uint8_t uart_fresh)
+{
+    g_radar_watch.uart_fresh = uart_fresh;
+    g_radar_watch.frame_type = (uint8_t)g_frame_info.frame_type;
+    g_radar_watch.uart_target = FrameHasTarget(&g_frame_info);
+    g_radar_watch.target_state = g_frame_info.target_state;
+    g_radar_watch.gpio_target = g_last_gpio_target;
+    g_radar_watch.left_obstacle_present = g_left_obstacle_present;
+    g_radar_watch.path_turn_right = g_path_turn_right;
+    g_radar_watch.active_zone = active_zone;
+    g_radar_watch.raw_distance_cm = g_raw_distance_cm;
+    g_radar_watch.filtered_distance_cm = g_filtered_distance_cm;
+    g_radar_watch.frame_age_ms = now - g_last_frame_tick;
+    g_radar_watch.frame_count = LD2410S_FrameCount();
+    g_radar_watch.raw_rx_bytes = LD2410S_RawRxBytes();
+    g_radar_watch.parse_error_count = LD2410S_ParseErrorCount();
+    g_radar_watch.rx_overflow_count = LD2410S_RxOverflowCount();
+    g_radar_watch.last_rx_status = LD2410S_LastRxStatus();
+}
+
 static void LED_SelfTest(void)
 {
     HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
@@ -457,6 +498,7 @@ int main(void)
         {
             LED_SetTestStatus(uart_fresh, g_last_gpio_target, g_left_obstacle_present, g_path_turn_right);
         }
+        UpdateRadarWatch(now, uart_fresh);
 
         (void)got_frame;
         if ((now - g_last_report_tick) >= DEBUG_REPORT_PERIOD_MS)

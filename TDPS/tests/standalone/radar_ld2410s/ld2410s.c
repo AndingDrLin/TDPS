@@ -146,6 +146,31 @@ void LD2410S_ErrorCallback(UART_HandleTypeDef *huart)
     LD2410S_StartReceiveIT();
 }
 
+uint32_t LD2410S_FrameCount(void)
+{
+    return s_frame_count;
+}
+
+uint32_t LD2410S_RawRxBytes(void)
+{
+    return s_raw_rx_bytes;
+}
+
+uint32_t LD2410S_ParseErrorCount(void)
+{
+    return s_parse_error_count;
+}
+
+uint32_t LD2410S_RxOverflowCount(void)
+{
+    return s_rx_overflow_count;
+}
+
+HAL_StatusTypeDef LD2410S_LastRxStatus(void)
+{
+    return s_last_rx_status;
+}
+
 void LD2410S_SwitchToStandardMode(void)
 {
     Debug_Printf("Switching LD2410S to standard mode...\r\n");
