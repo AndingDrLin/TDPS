@@ -213,7 +213,7 @@ static HAL_StatusTypeDef lora_run_config(void)
 
 static HAL_StatusTypeDef lora_send_test_payload(void)
 {
-    static const uint8_t payload[] = "TDPS LORA TEST\r\n";
+    static const uint8_t payload[] = "Team 15 PTSD\r\n";
     uint8_t frame[3U + sizeof(payload) - 1U];
     uint16_t dest = LORA_FIXED_DEST_ADDR;
     HAL_StatusTypeDef st;
@@ -222,6 +222,7 @@ static HAL_StatusTypeDef lora_send_test_payload(void)
     frame[1] = (uint8_t)(dest & 0xFFU);
     frame[2] = LORA_CHANNEL;
     memcpy(&frame[3], payload, sizeof(payload) - 1U);
+    memcpy(g_lora_test.last_payload, payload, sizeof(payload));
 
     st = lora_wait_aux(LORA_RESPONSE_TIMEOUT_MS);
     if (st != HAL_OK) {

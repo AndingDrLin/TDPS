@@ -41,6 +41,7 @@ typedef struct {
     uint8_t rst;
     char last_command[32];
     char last_response[128];
+    char last_payload[64];
 } LoraTestState;
 
 extern UART_HandleTypeDef huart5;

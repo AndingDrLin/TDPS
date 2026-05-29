@@ -28,6 +28,7 @@ LoRa 模块：EWM22A-900BWL22S。
 - 传输模式：`AT+TRANS=1`，Fixed Mode
 - LoRa Key：`AT+KEY=0`，不加密
 - 测试发送目标：`0xFFFF` 广播地址，目标信道为 `10`
+- 测试 payload：`Team 15 PTSD\r\n`
 
 ## Keil Watch 操作
 
@@ -45,6 +46,7 @@ LoRa 模块：EWM22A-900BWL22S。
 | 6 | WAKE 置高 |
 
 `g_lora_test.last_command` 和 `g_lora_test.last_response` 可查看最近一条 AT 指令及响应。
+`g_lora_test.last_payload` 可查看最近一次发送的明文 payload。
 
 ## 预期结果
 
