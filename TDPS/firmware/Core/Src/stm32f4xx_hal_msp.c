@@ -13,6 +13,7 @@
  *   USART1:   PA9(TX) / PA10(RX) — 调试串口
  *   USART2:   PA2(TX) / PA3(RX)  — 巡线传感器 UART
  *   USART3:   PB10(TX) / PB11(RX) — 雷达 UART
+ *   UART5:    PC12(TX) / PD2(RX) — LoRa UART
  *   GPIO:     PB0/PB1 电机方向, PC13 LED, PA0 按钮
  */
 

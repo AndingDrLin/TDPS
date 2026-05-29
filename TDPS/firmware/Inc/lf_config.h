@@ -69,6 +69,9 @@ typedef struct {
 
     /* 判定“在线上”的最小强度和。 */
     uint16_t line_detect_min_sum;
+    uint16_t line_detect_min_peak;
+    uint16_t line_detect_min_contrast;
+    uint8_t line_lost_grace_ticks;
 
     /* 左右半区强度差超过该阈值时，更新丢线恢复方向。 */
     uint16_t edge_hint_threshold;
@@ -89,6 +92,9 @@ typedef struct {
     int16_t adaptive_slow_speed;
     int16_t adaptive_error_threshold;
     float adaptive_confidence_threshold;
+    int16_t sharp_turn_speed;
+    int16_t line_hold_speed;
+    int16_t line_hold_turn_speed;
     float derivative_filter_alpha;
     float integral_limit;
     int16_t max_output_delta_per_tick;
@@ -171,5 +177,8 @@ typedef struct {
 
 /* 全局可变参数实例。可在 main 中直接修改，或通过 lf_config_profiles 预设覆盖。 */
 extern LF_Config g_lf_config;
+
+void LF_Config_ApplyDebugProfile(void);
+void LF_Config_ApplyCompetitionProfile(void);
 
 #endif /* LF_CONFIG_H */

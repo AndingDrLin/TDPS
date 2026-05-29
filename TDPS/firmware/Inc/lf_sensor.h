@@ -28,6 +28,9 @@ typedef struct {
     uint16_t filtered_u16[LF_SENSOR_COUNT];
     uint32_t signal_sum;
     uint16_t peak_value;
+    uint16_t background_value;
+    uint16_t contrast_value;
+    uint8_t active_count;
     uint8_t peak_index;
     float line_confidence;
     int8_t edge_hint; /* -1: left stronger, +1: right stronger, 0: unknown */

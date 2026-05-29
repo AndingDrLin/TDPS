@@ -143,6 +143,9 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
     uint32_t left_sum = 0U;
     uint32_t right_sum = 0U;
     uint16_t peak_value = 0U;
+    uint16_t min_value = 1000U;
+    uint16_t active_threshold = g_lf_config.line_detect_min_peak;
+    uint8_t active_count = 0U;
     uint8_t peak_index = 0U;
 
     if (out_frame == NULL) {
@@ -180,6 +183,12 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
             peak_value = out_frame->filtered_u16[i];
             peak_index = (uint8_t)i;
         }
+        if (out_frame->filtered_u16[i] < min_value) {
+            min_value = out_frame->filtered_u16[i];
+        }
+        if (out_frame->filtered_u16[i] >= active_threshold) {
+            active_count += 1U;
+        }
 
         if (i < (LF_SENSOR_COUNT / 2U)) {
             left_sum += out_frame->filtered_u16[i];
@@ -193,6 +202,9 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
 
     out_frame->signal_sum = signal_sum;
     out_frame->peak_value = peak_value;
+    out_frame->background_value = min_value;
+    out_frame->contrast_value = (peak_value > min_value) ? (uint16_t)(peak_value - min_value) : 0U;
+    out_frame->active_count = active_count;
     out_frame->peak_index = peak_index;
     out_frame->line_confidence = (float)peak_value / 1000.0f;
 
@@ -204,7 +216,9 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
         out_frame->edge_hint = 0;
     }
 
-    out_frame->line_detected = (signal_sum >= g_lf_config.line_detect_min_sum);
+    out_frame->line_detected = (signal_sum >= g_lf_config.line_detect_min_sum &&
+                                peak_value >= g_lf_config.line_detect_min_peak &&
+                                out_frame->contrast_value >= g_lf_config.line_detect_min_contrast);
 
     if (out_frame->line_detected && signal_sum > 0U) {
         out_frame->position = (int32_t)(weighted_sum / (int64_t)signal_sum);

@@ -94,6 +94,7 @@ typedef struct {
     uint8_t fork_reacquire_count;
     bool run_finalized;
     uint16_t recovery_count;
+    uint8_t line_lost_count;
 } LF_AppContext;
 
 /* 应用层初始化。 */

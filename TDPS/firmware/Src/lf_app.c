@@ -162,14 +162,29 @@ static int16_t choose_running_speed(const LF_SensorFrame *frame)
 
     if (frame != NULL &&
         ((frame->position > g_lf_config.adaptive_error_threshold) ||
-         (frame->position < (int32_t)(-g_lf_config.adaptive_error_threshold)) ||
-         frame->line_confidence < g_lf_config.adaptive_confidence_threshold)) {
+         (frame->position < (int32_t)(-g_lf_config.adaptive_error_threshold)))) {
+        speed = g_lf_config.sharp_turn_speed;
+    } else if (frame != NULL &&
+               (frame->line_confidence < g_lf_config.adaptive_confidence_threshold ||
+                frame->contrast_value < g_lf_config.line_detect_min_contrast)) {
         speed = g_lf_config.adaptive_slow_speed;
     }
     if (s_app.obstacle_state == LF_RADAR_OBSTACLE_WARN && speed > g_lf_config.obstacle_warn_speed) {
         speed = g_lf_config.obstacle_warn_speed;
     }
     return limit_degraded_speed(speed);
+}
+
+static void hold_last_line_direction(void)
+{
+    int16_t forward = limit_degraded_speed(g_lf_config.line_hold_speed);
+    int16_t turn = limit_degraded_speed(g_lf_config.line_hold_turn_speed);
+
+    if (s_app.last_seen_dir < 0) {
+        LF_Chassis_SetCommand((int16_t)(forward - turn), (int16_t)(forward + turn));
+    } else {
+        LF_Chassis_SetCommand((int16_t)(forward + turn), (int16_t)(forward - turn));
+    }
 }
 
 static bool obstacle_is_clear_enough(void)
@@ -520,6 +535,14 @@ static void process_running(uint32_t now_ms, float dt_s)
         if (s_app.last_frame.edge_hint != 0) {
             s_app.last_seen_dir = s_app.last_frame.edge_hint;
         }
+        if (s_app.line_lost_count < UINT8_MAX) {
+            s_app.line_lost_count += 1U;
+        }
+        if (s_app.line_lost_count <= g_lf_config.line_lost_grace_ticks) {
+            hold_last_line_direction();
+            set_reason(LF_APP_REASON_LINE_LOST);
+            return;
+        }
         s_app.recover_start_ms = LF_Platform_GetMillis();
         enter_recovery_phase(LF_RECOVER_BACKTRACK, s_app.recover_start_ms);
         set_reason(LF_APP_REASON_LINE_LOST);
@@ -527,6 +550,7 @@ static void process_running(uint32_t now_ms, float dt_s)
         LF_Hook_OnLineLost();
         return;
     }
+    s_app.line_lost_count = 0U;
 
     fork_candidate = g_lf_config.fork_enable &&
                      !fork_cooldown_active(now_ms) &&
@@ -859,6 +883,7 @@ void LF_App_Init(void)
     s_app.fork_reacquire_count = 0U;
     s_app.run_finalized = false;
     s_app.recovery_count = 0U;
+    s_app.line_lost_count = 0U;
 
     set_state(LF_APP_STATE_WAIT_START);
 }
