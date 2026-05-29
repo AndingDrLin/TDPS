@@ -10,6 +10,7 @@
 #define LORA_NET_ID 0U
 #define LORA_KEY 0U
 #define LORA_FIXED_DEST_ADDR 0xFFFFU
+#define LORA_AUTO_SEND_PERIOD_MS 1000U
 
 UART_HandleTypeDef huart5;
 LoraTestState g_lora_test;
@@ -18,6 +19,7 @@ static volatile uint8_t s_rx_byte;
 static volatile uint8_t s_rx_buf[LORA_RX_BUF_SIZE];
 static volatile uint16_t s_rx_head;
 static volatile uint16_t s_rx_tail;
+static uint32_t s_last_auto_send_ms;
 
 static void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
@@ -154,58 +156,62 @@ static HAL_StatusTypeDef lora_run_config(void)
     if (st != HAL_OK) { return st; }
 
     g_lora_test.at_step = 3U;
-    st = lora_send_at("AT+RATE=0");
+    st = lora_send_at("AT+COMSW=1,1,1");
     if (st != HAL_OK) { return st; }
 
     g_lora_test.at_step = 4U;
-    st = lora_send_at("AT+PACKET=0");
+    st = lora_send_at("AT+RATE=0");
     if (st != HAL_OK) { return st; }
 
     g_lora_test.at_step = 5U;
-    st = lora_send_at("AT+TRANS=1");
+    st = lora_send_at("AT+PACKET=0");
     if (st != HAL_OK) { return st; }
 
     g_lora_test.at_step = 6U;
+    st = lora_send_at("AT+TRANS=1");
+    if (st != HAL_OK) { return st; }
+
+    g_lora_test.at_step = 7U;
     snprintf(cmd, sizeof(cmd), "AT+ADDR=%u", (unsigned)LORA_ADDR);
     st = lora_send_at(cmd);
     if (st != HAL_OK) { return st; }
 
-    g_lora_test.at_step = 7U;
+    g_lora_test.at_step = 8U;
     snprintf(cmd, sizeof(cmd), "AT+CHANNEL=%u", (unsigned)LORA_CHANNEL);
     st = lora_send_at(cmd);
     if (st != HAL_OK) { return st; }
 
-    g_lora_test.at_step = 8U;
+    g_lora_test.at_step = 9U;
     snprintf(cmd, sizeof(cmd), "AT+NETID=%u", (unsigned)LORA_NET_ID);
     st = lora_send_at(cmd);
     if (st != HAL_OK) { return st; }
 
-    g_lora_test.at_step = 9U;
+    g_lora_test.at_step = 10U;
     snprintf(cmd, sizeof(cmd), "AT+KEY=%u", (unsigned)LORA_KEY);
     st = lora_send_at(cmd);
     if (st != HAL_OK) { return st; }
 
-    g_lora_test.at_step = 10U;
+    g_lora_test.at_step = 11U;
     st = lora_send_at("AT+WOR=0");
     if (st != HAL_OK) { return st; }
 
-    g_lora_test.at_step = 11U;
+    g_lora_test.at_step = 12U;
     st = lora_send_at("AT+ERSSI=0");
     if (st != HAL_OK) { return st; }
 
-    g_lora_test.at_step = 12U;
+    g_lora_test.at_step = 13U;
     st = lora_send_at("AT+DRSSI=0");
     if (st != HAL_OK) { return st; }
 
-    g_lora_test.at_step = 13U;
+    g_lora_test.at_step = 14U;
     st = lora_send_at("AT+LBT=0");
     if (st != HAL_OK) { return st; }
 
-    g_lora_test.at_step = 14U;
+    g_lora_test.at_step = 15U;
     st = lora_send_at("AT+ROUTER=0");
     if (st != HAL_OK) { return st; }
 
-    g_lora_test.at_step = 15U;
+    g_lora_test.at_step = 16U;
     st = lora_send_at("AT+HMODE=1");
     HAL_Delay(1000U);
     return st;
@@ -240,6 +246,26 @@ static HAL_StatusTypeDef lora_send_test_payload(void)
     return st;
 }
 
+static void lora_drain_rx_to_watch(void)
+{
+    uint8_t byte;
+
+    while (lora_uart_read(&byte, 1U) > 0U) {
+        size_t len = strlen(g_lora_test.last_rx);
+
+        if (byte == '\r' || byte == '\n') {
+            continue;
+        }
+        if (len + 1U >= sizeof(g_lora_test.last_rx)) {
+            memmove(g_lora_test.last_rx, &g_lora_test.last_rx[1], sizeof(g_lora_test.last_rx) - 2U);
+            len = sizeof(g_lora_test.last_rx) - 2U;
+            g_lora_test.last_rx[len] = '\0';
+        }
+        g_lora_test.last_rx[len] = (char)byte;
+        g_lora_test.last_rx[len + 1U] = '\0';
+    }
+}
+
 static void lora_process_command(void)
 {
     uint32_t command = g_lora_test.command;
@@ -263,6 +289,11 @@ static void lora_process_command(void)
     } else if (command == LORA_TEST_CMD_WAKE_HIGH) {
         HAL_GPIO_WritePin(LORA_WAKE_GPIO_Port, LORA_WAKE_Pin, GPIO_PIN_SET);
         lora_update_pins();
+    } else if (command == LORA_TEST_CMD_AUTO_OFF) {
+        g_lora_test.auto_send = 0U;
+    } else if (command == LORA_TEST_CMD_AUTO_ON) {
+        g_lora_test.auto_send = 1U;
+        s_last_auto_send_ms = 0U;
     }
 }
 
@@ -280,12 +311,23 @@ int main(void)
     lora_uart_rx_start();
     lora_update_pins();
     lora_reset_module();
-    (void)lora_run_config();
+    if (lora_run_config() == HAL_OK) {
+        g_lora_test.auto_send = 1U;
+        s_last_auto_send_ms = 0U;
+    }
 
     while (1) {
         g_lora_test.uptime_ms = HAL_GetTick();
         lora_update_pins();
+        lora_drain_rx_to_watch();
         lora_process_command();
+        if (g_lora_test.auto_send != 0U &&
+            (s_last_auto_send_ms == 0U ||
+             (uint32_t)(HAL_GetTick() - s_last_auto_send_ms) >= LORA_AUTO_SEND_PERIOD_MS)) {
+            if (lora_send_test_payload() == HAL_OK) {
+                s_last_auto_send_ms = HAL_GetTick();
+            }
+        }
         HAL_Delay(10U);
     }
 }
