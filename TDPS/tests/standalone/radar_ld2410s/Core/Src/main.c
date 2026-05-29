@@ -35,7 +35,6 @@ LD2410S_FrameInfo g_frame_info;
 volatile RadarWatchInfo g_radar_watch;
 uint32_t g_last_frame_tick = 0U;
 uint32_t g_last_report_tick = 0U;
-uint32_t g_heartbeat_tick = 0U;
 uint8_t g_left_obstacle_present = 0U;
 uint8_t g_path_turn_right = 0U;
 uint8_t g_last_gpio_target = 0U;
@@ -52,14 +51,6 @@ static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_USART3_UART_Init(void);
 
-static void LED_AllOff(void)
-{
-    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET);
-}
-
 static uint8_t RadarGpioTargetPresent(void)
 {
     return (HAL_GPIO_ReadPin(RADAR_GPIO_GPIO_Port, RADAR_GPIO_Pin) == GPIO_PIN_SET) ? 1U : 0U;
@@ -75,14 +66,6 @@ static uint8_t LeftObstacleRaw(uint8_t has_target, uint16_t distance_cm)
     return (has_target &&
             distance_cm >= LEFT_BLOCK_MIN_CM &&
             distance_cm <= LEFT_BLOCK_MAX_CM) ? 1U : 0U;
-}
-
-static void LED_SetTestStatus(uint8_t uart_fresh, uint8_t gpio_target, uint8_t left_obstacle, uint8_t turn_right)
-{
-    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, uart_fresh ? GPIO_PIN_SET : GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, gpio_target ? GPIO_PIN_SET : GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, left_obstacle ? GPIO_PIN_SET : GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, turn_right ? GPIO_PIN_SET : GPIO_PIN_RESET);
 }
 
 static void ResetFilter(void)
@@ -128,7 +111,6 @@ static void ResetRadarTracking(void)
     g_path_turn_right = 0U;
     g_filtered_distance_cm = 0U;
     ResetFilter();
-    LED_SetTestStatus(0U, RadarGpioTargetPresent(), 0U, 0U);
 }
 
 static void UpdateRadarWatch(uint32_t now, uint8_t uart_fresh)
@@ -150,17 +132,6 @@ static void UpdateRadarWatch(uint32_t now, uint8_t uart_fresh)
     g_radar_watch.last_rx_status = LD2410S_LastRxStatus();
 }
 
-static void LED_SelfTest(void)
-{
-    HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_SET);
-    HAL_Delay(500U);
-    LED_AllOff();
-    HAL_Delay(500U);
-}
-
 int main(void)
 {
     HAL_Init();
@@ -169,8 +140,6 @@ int main(void)
     MX_GPIO_Init();
     MX_USART2_UART_Init();
     MX_USART3_UART_Init();
-
-    LED_SelfTest();
 
     LD2410S_Init(&huart3, &huart2);
     LD2410S_StartReceiveIT();
@@ -181,8 +150,7 @@ int main(void)
     Debug_Printf("RADAR UART: USART3 PB10=TX PB11=RX baud=%lu\r\n", (unsigned long)huart3.Init.BaudRate);
     Debug_Printf("DEBUG UART: USART2 PA2=TX PA3=RX baud=%lu\r\n", (unsigned long)huart2.Init.BaudRate);
     Debug_Printf("RADAR GPIO: PB0 input, high=target_present\r\n");
-    Debug_Printf("LED MAP: PC0=UART_FRESH PC1=PB0_TARGET PC2=LEFT_OBSTACLE PC3=TURN_RIGHT\r\n");
-    Debug_Printf("WATCH: add g_radar_watch in Keil Watch window\r\n");
+    Debug_Printf("WATCH ONLY: add g_radar_watch in Keil Watch window\r\n");
 
     while (1)
     {
@@ -219,10 +187,6 @@ int main(void)
         {
             ResetRadarTracking();
         }
-        else
-        {
-            LED_SetTestStatus(uart_fresh, g_last_gpio_target, g_left_obstacle_present, g_path_turn_right);
-        }
         UpdateRadarWatch(now, uart_fresh);
 
         if ((now - g_last_report_tick) >= DEBUG_REPORT_PERIOD_MS)
@@ -256,12 +220,6 @@ int main(void)
                              g_path_turn_right ? "LEFT_BLOCKED" : "LEFT_CLEAR");
             }
             g_last_report_tick = now;
-        }
-
-        if ((now - g_heartbeat_tick) > 500U)
-        {
-            g_heartbeat_tick = now;
-            HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
         }
 
         HAL_Delay(1U);
@@ -336,20 +294,11 @@ static void MX_GPIO_Init(void)
 
     __HAL_RCC_GPIOA_CLK_ENABLE();
     __HAL_RCC_GPIOB_CLK_ENABLE();
-    __HAL_RCC_GPIOC_CLK_ENABLE();
-
-    HAL_GPIO_WritePin(GPIOC, LED1_Pin | LED2_Pin | LED3_Pin | LED4_Pin | HEARTBEAT_LED_Pin, GPIO_PIN_RESET);
 
     GPIO_InitStruct.Pin = RADAR_GPIO_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(RADAR_GPIO_GPIO_Port, &GPIO_InitStruct);
-
-    GPIO_InitStruct.Pin = LED1_Pin | LED2_Pin | LED3_Pin | LED4_Pin | HEARTBEAT_LED_Pin;
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-    HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 }
 
 void Error_Handler(void)

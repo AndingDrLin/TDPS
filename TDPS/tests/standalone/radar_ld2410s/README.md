@@ -21,15 +21,9 @@ TDPS/tests/standalone/radar_ld2410s/MDK-ARM/radar_ld2410s.uvprojx
 - 雷达 OT2 / GPIO output -> PB0
 - 调试串口 USART2_TX -> PA2，USART2_RX -> PA3，115200 8N1
 
-## LED 映射
-
-- PC0: UART 最近 300 ms 内有有效帧
-- PC1: PB0 雷达 GPIO 检测到目标
-- PC2: UART 距离判断左侧障碍存在
-- PC3: 模拟路径命令 TURN_RIGHT
-- PC13: 心跳灯
-
 ## Keil Watch
+
+本测试不依赖板载 LED，所有状态都通过 Keil Watch 观察。
 
 调试时在 Watch 窗口添加：
 
