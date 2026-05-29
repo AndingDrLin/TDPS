@@ -2,6 +2,7 @@
 <Project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="project_projx.xsd">
 
   <SchemaVersion>2.1</SchemaVersion>
+
   <Header>### uVision Project, (C) Keil Software</Header>
 
   <Targets>
@@ -9,13 +10,13 @@
       <TargetName>lora_module_test</TargetName>
       <ToolsetNumber>0x4</ToolsetNumber>
       <ToolsetName>ARM-ADS</ToolsetName>
-      <pCCUsed>5060750::V5.06 update 6 (build 750)::ARMCC</pCCUsed>
+      <pCCUsed>5060528::V5.06 update 5 (build 528)::ARMCC</pCCUsed>
       <uAC6>0</uAC6>
       <TargetOption>
         <TargetCommonOption>
           <Device>STM32F407VETx</Device>
           <Vendor>STMicroelectronics</Vendor>
-          <PackID>Keil.STM32F4xx_DFP.3.1.1</PackID>
+          <PackID>Keil.STM32F4xx_DFP.2.17.1</PackID>
           <PackURL>https://www.keil.com/pack/</PackURL>
           <Cpu>IRAM(0x20000000-0x2001BFFF) IRAM2(0x2001C000-0x2001FFFF) IROM(0x8000000-0x807FFFF) CLOCK(25000000) FPU2 CPUTYPE("Cortex-M4") TZ</Cpu>
           <FlashUtilSpec></FlashUtilSpec>
@@ -183,8 +184,6 @@
             <hadXRAM>0</hadXRAM>
             <uocXRam>0</uocXRam>
             <RvdsVP>2</RvdsVP>
-            <RvdsMve>0</RvdsMve>
-            <RvdsCdeCp>0</RvdsCdeCp>
             <hadIRAM2>1</hadIRAM2>
             <hadIROM2>0</hadIROM2>
             <StupSel>8</StupSel>
@@ -212,11 +211,101 @@
             <Im1Chk>1</Im1Chk>
             <Im2Chk>1</Im2Chk>
             <OnChipMemories>
-              <IRAM><Type>0</Type><StartAddress>0x20000000</StartAddress><Size>0x1c000</Size></IRAM>
-              <IROM><Type>1</Type><StartAddress>0x8000000</StartAddress><Size>0x80000</Size></IROM>
-              <OCR_RVCT4><Type>1</Type><StartAddress>0x8000000</StartAddress><Size>0x80000</Size></OCR_RVCT4>
-              <OCR_RVCT9><Type>0</Type><StartAddress>0x20000000</StartAddress><Size>0x1c000</Size></OCR_RVCT9>
-              <OCR_RVCT10><Type>0</Type><StartAddress>0x2001c000</StartAddress><Size>0x4000</Size></OCR_RVCT10>
+              <Ocm1>
+                <Type>0</Type>
+                <StartAddress>0x0</StartAddress>
+                <Size>0x0</Size>
+              </Ocm1>
+              <Ocm2>
+                <Type>0</Type>
+                <StartAddress>0x0</StartAddress>
+                <Size>0x0</Size>
+              </Ocm2>
+              <Ocm3>
+                <Type>0</Type>
+                <StartAddress>0x0</StartAddress>
+                <Size>0x0</Size>
+              </Ocm3>
+              <Ocm4>
+                <Type>0</Type>
+                <StartAddress>0x0</StartAddress>
+                <Size>0x0</Size>
+              </Ocm4>
+              <Ocm5>
+                <Type>0</Type>
+                <StartAddress>0x0</StartAddress>
+                <Size>0x0</Size>
+              </Ocm5>
+              <Ocm6>
+                <Type>0</Type>
+                <StartAddress>0x0</StartAddress>
+                <Size>0x0</Size>
+              </Ocm6>
+              <IRAM>
+                <Type>0</Type>
+                <StartAddress>0x20000000</StartAddress>
+                <Size>0x1c000</Size>
+              </IRAM>
+              <IROM>
+                <Type>1</Type>
+                <StartAddress>0x8000000</StartAddress>
+                <Size>0x80000</Size>
+              </IROM>
+              <XRAM>
+                <Type>0</Type>
+                <StartAddress>0x0</StartAddress>
+                <Size>0x0</Size>
+              </XRAM>
+              <OCR_RVCT1>
+                <Type>1</Type>
+                <StartAddress>0x0</StartAddress>
+                <Size>0x0</Size>
+              </OCR_RVCT1>
+              <OCR_RVCT2>
+                <Type>1</Type>
+                <StartAddress>0x0</StartAddress>
+                <Size>0x0</Size>
+              </OCR_RVCT2>
+              <OCR_RVCT3>
+                <Type>1</Type>
+                <StartAddress>0x0</StartAddress>
+                <Size>0x0</Size>
+              </OCR_RVCT3>
+              <OCR_RVCT4>
+                <Type>1</Type>
+                <StartAddress>0x8000000</StartAddress>
+                <Size>0x80000</Size>
+              </OCR_RVCT4>
+              <OCR_RVCT5>
+                <Type>1</Type>
+                <StartAddress>0x0</StartAddress>
+                <Size>0x0</Size>
+              </OCR_RVCT5>
+              <OCR_RVCT6>
+                <Type>0</Type>
+                <StartAddress>0x0</StartAddress>
+                <Size>0x0</Size>
+              </OCR_RVCT6>
+              <OCR_RVCT7>
+                <Type>0</Type>
+                <StartAddress>0x0</StartAddress>
+                <Size>0x0</Size>
+              </OCR_RVCT7>
+              <OCR_RVCT8>
+                <Type>0</Type>
+                <StartAddress>0x0</StartAddress>
+                <Size>0x0</Size>
+              </OCR_RVCT8>
+              <OCR_RVCT9>
+                <Type>0</Type>
+                <StartAddress>0x20000000</StartAddress>
+                <Size>0x1c000</Size>
+              </OCR_RVCT9>
+              <OCR_RVCT10>
+                <Type>0</Type>
+                <StartAddress>0x2001c000</StartAddress>
+                <Size>0x4000</Size>
+              </OCR_RVCT10>
             </OnChipMemories>
             <RvctStartVector></RvctStartVector>
           </ArmAdsMisc>
@@ -235,7 +324,6 @@
             <uThumb>0</uThumb>
             <uSurpInc>0</uSurpInc>
             <uC99>1</uC99>
-            <uGnu>0</uGnu>
             <useXO>0</useXO>
             <v6Lang>5</v6Lang>
             <v6LangP>3</v6LangP>
@@ -261,8 +349,13 @@
             <NoWarn>0</NoWarn>
             <uSurpInc>0</uSurpInc>
             <useXO>0</useXO>
-            <ClangAsOpt>4</ClangAsOpt>
-            <VariousControls><MiscControls></MiscControls><Define></Define><Undefine></Undefine><IncludePath></IncludePath></VariousControls>
+            <uClangAs>0</uClangAs>
+            <VariousControls>
+              <MiscControls></MiscControls>
+              <Define></Define>
+              <Undefine></Undefine>
+              <IncludePath></IncludePath>
+            </VariousControls>
           </Aads>
           <LDads>
             <umfTarg>1</umfTarg>
@@ -287,33 +380,101 @@
         <Group>
           <GroupName>Application/MDK-ARM</GroupName>
           <Files>
-            <File><FileName>startup_stm32f407xx.s</FileName><FileType>2</FileType><FilePath>startup_stm32f407xx.s</FilePath></File>
+            <File>
+              <FileName>startup_stm32f407xx.s</FileName>
+              <FileType>2</FileType>
+              <FilePath>startup_stm32f407xx.s</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
           <GroupName>Application/Core</GroupName>
           <Files>
-            <File><FileName>main.c</FileName><FileType>1</FileType><FilePath>../Core/Src/main.c</FilePath></File>
-            <File><FileName>stm32f4xx_it.c</FileName><FileType>1</FileType><FilePath>../Core/Src/stm32f4xx_it.c</FilePath></File>
-            <File><FileName>stm32f4xx_hal_msp.c</FileName><FileType>1</FileType><FilePath>../Core/Src/stm32f4xx_hal_msp.c</FilePath></File>
-            <File><FileName>system_stm32f4xx.c</FileName><FileType>1</FileType><FilePath>../Core/Src/system_stm32f4xx.c</FilePath></File>
+            <File>
+              <FileName>main.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/main.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f4xx_it.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/stm32f4xx_it.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f4xx_hal_msp.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/stm32f4xx_hal_msp.c</FilePath>
+            </File>
+            <File>
+              <FileName>system_stm32f4xx.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Core/Src/system_stm32f4xx.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
           <GroupName>Drivers/STM32F4xx_HAL_Driver</GroupName>
           <Files>
-            <File><FileName>stm32f4xx_hal.c</FileName><FileType>1</FileType><FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal.c</FilePath></File>
-            <File><FileName>stm32f4xx_hal_cortex.c</FileName><FileType>1</FileType><FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_cortex.c</FilePath></File>
-            <File><FileName>stm32f4xx_hal_dma.c</FileName><FileType>1</FileType><FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_dma.c</FilePath></File>
-            <File><FileName>stm32f4xx_hal_dma_ex.c</FileName><FileType>1</FileType><FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_dma_ex.c</FilePath></File>
-            <File><FileName>stm32f4xx_hal_gpio.c</FileName><FileType>1</FileType><FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_gpio.c</FilePath></File>
-            <File><FileName>stm32f4xx_hal_flash.c</FileName><FileType>1</FileType><FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash.c</FilePath></File>
-            <File><FileName>stm32f4xx_hal_flash_ex.c</FileName><FileType>1</FileType><FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash_ex.c</FilePath></File>
-            <File><FileName>stm32f4xx_hal_pwr.c</FileName><FileType>1</FileType><FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pwr.c</FilePath></File>
-            <File><FileName>stm32f4xx_hal_pwr_ex.c</FileName><FileType>1</FileType><FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pwr_ex.c</FilePath></File>
-            <File><FileName>stm32f4xx_hal_rcc.c</FileName><FileType>1</FileType><FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rcc.c</FilePath></File>
-            <File><FileName>stm32f4xx_hal_rcc_ex.c</FileName><FileType>1</FileType><FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rcc_ex.c</FilePath></File>
-            <File><FileName>stm32f4xx_hal_uart.c</FileName><FileType>1</FileType><FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c</FilePath></File>
+            <File>
+              <FileName>stm32f4xx_hal.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f4xx_hal_cortex.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_cortex.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f4xx_hal_dma.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_dma.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f4xx_hal_dma_ex.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_dma_ex.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f4xx_hal_gpio.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_gpio.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f4xx_hal_flash.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f4xx_hal_flash_ex.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash_ex.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f4xx_hal_pwr.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pwr.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f4xx_hal_pwr_ex.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pwr_ex.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f4xx_hal_rcc.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rcc.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f4xx_hal_rcc_ex.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rcc_ex.c</FilePath>
+            </File>
+            <File>
+              <FileName>stm32f4xx_hal_uart.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

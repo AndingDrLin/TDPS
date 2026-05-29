@@ -29,7 +29,6 @@ LoRa 模块：EWM22A-900BWL22S。
 - LoRa Key：`AT+KEY=0`，不加密
 - 测试发送目标：`0xFFFF` 广播地址，目标信道为 `10`
 - 测试 payload：`Team 15 PTSD\r\n`
-- 烧录后若 AT 配置成功，默认每 1 秒自动发送一次
 
 ## Keil Watch 操作
 
@@ -45,12 +44,9 @@ LoRa 模块：EWM22A-900BWL22S。
 | 4 | 发送 Fixed Mode 测试帧 |
 | 5 | WAKE 置低 |
 | 6 | WAKE 置高 |
-| 7 | 关闭每秒自动发送 |
-| 8 | 开启每秒自动发送 |
 
 `g_lora_test.last_command` 和 `g_lora_test.last_response` 可查看最近一条 AT 指令及响应。
 `g_lora_test.last_payload` 可查看最近一次发送的明文 payload。
-`g_lora_test.last_rx` 可查看最近接收到的明文数据，便于两块模块都烧录本工程互测。
 
 ## 预期结果
 

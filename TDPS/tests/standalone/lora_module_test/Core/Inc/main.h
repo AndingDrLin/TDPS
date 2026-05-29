@@ -23,8 +23,6 @@ extern "C" {
 #define LORA_TEST_CMD_SEND 4U
 #define LORA_TEST_CMD_WAKE_LOW 5U
 #define LORA_TEST_CMD_WAKE_HIGH 6U
-#define LORA_TEST_CMD_AUTO_OFF 7U
-#define LORA_TEST_CMD_AUTO_ON 8U
 
 typedef struct {
     uint32_t magic;
@@ -41,11 +39,9 @@ typedef struct {
     uint8_t link;
     uint8_t wake;
     uint8_t rst;
-    uint8_t auto_send;
     char last_command[32];
     char last_response[128];
     char last_payload[64];
-    char last_rx[64];
 } LoraTestState;
 
 extern UART_HandleTypeDef huart5;
