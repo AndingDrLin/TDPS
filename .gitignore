@@ -61,6 +61,7 @@ EventRecorderStub.scvd
 *.uvopt
 *.uvprojx
 !TDPS/firmware/**/*.uvprojx
+!TDPS/tests/standalone/**/*.uvprojx
 
 # STM32CubeMX / Eclipse metadata outside the main firmware project
 *.ioc
