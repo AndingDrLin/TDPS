@@ -304,6 +304,8 @@
           <Files>
             <File><FileName>stm32f4xx_hal.c</FileName><FileType>1</FileType><FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal.c</FilePath></File>
             <File><FileName>stm32f4xx_hal_cortex.c</FileName><FileType>1</FileType><FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_cortex.c</FilePath></File>
+            <File><FileName>stm32f4xx_hal_dma.c</FileName><FileType>1</FileType><FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_dma.c</FilePath></File>
+            <File><FileName>stm32f4xx_hal_dma_ex.c</FileName><FileType>1</FileType><FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_dma_ex.c</FilePath></File>
             <File><FileName>stm32f4xx_hal_gpio.c</FileName><FileType>1</FileType><FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_gpio.c</FilePath></File>
             <File><FileName>stm32f4xx_hal_flash.c</FileName><FileType>1</FileType><FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash.c</FilePath></File>
             <File><FileName>stm32f4xx_hal_flash_ex.c</FileName><FileType>1</FileType><FilePath>../../../../firmware/Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash_ex.c</FilePath></File>

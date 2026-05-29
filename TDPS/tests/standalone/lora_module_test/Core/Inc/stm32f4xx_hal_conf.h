@@ -8,6 +8,7 @@ extern "C" {
 /* ==================== Module Selection ==================== */
 #define HAL_MODULE_ENABLED
 #define HAL_GPIO_MODULE_ENABLED
+#define HAL_DMA_MODULE_ENABLED
 #define HAL_UART_MODULE_ENABLED
 #define HAL_RCC_MODULE_ENABLED
 #define HAL_FLASH_MODULE_ENABLED
