@@ -49,6 +49,60 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.line_hold_turn_speed = 0;
 }
 
+void LF_Config_ApplyTrackProfile(void)
+{
+    g_lf_config.sensor_input_mode = LF_SENSOR_INPUT_UART_PROTOCOL;
+    g_lf_config.sensor_use_dynamic_calibration = false;
+    g_lf_config.sensor_fast_calibration = true;
+    g_lf_config.sensor_invert_polarity = true;
+    g_lf_config.sensor_digital_active_high = false;
+    g_lf_config.sensor_filter_alpha = 0.45f;
+    g_lf_config.line_detect_min_sum = 780U;
+    g_lf_config.line_detect_min_peak = 260U;
+    g_lf_config.line_detect_min_contrast = 80U;
+    g_lf_config.sensor_weights[0] = 1750;
+    g_lf_config.sensor_weights[1] = 1250;
+    g_lf_config.sensor_weights[2] = 750;
+    g_lf_config.sensor_weights[3] = 250;
+    g_lf_config.sensor_weights[4] = -250;
+    g_lf_config.sensor_weights[5] = -750;
+    g_lf_config.sensor_weights[6] = -1250;
+    g_lf_config.sensor_weights[7] = -1750;
+    g_lf_config.kp = 0.32f;
+    g_lf_config.ki = 0.0f;
+    g_lf_config.kd = 1.40f;
+    g_lf_config.base_speed = 260;
+    g_lf_config.adaptive_slow_speed = 170;
+    g_lf_config.sharp_turn_speed = 130;
+    g_lf_config.max_correction = 280;
+    g_lf_config.straight_boost_enable = true;
+    g_lf_config.curve_prepare_enable = true;
+    g_lf_config.line_stability_enable = true;
+    g_lf_config.stable_direction_enable = true;
+    g_lf_config.straight_boost_speed = 320;
+    g_lf_config.curve_prepare_speed = 150;
+    g_lf_config.derivative_filter_alpha = 0.72f;
+    g_lf_config.max_output_delta_per_tick = 40;
+    g_lf_config.max_motor_cmd = 800;
+    g_lf_config.motor_deadband = 80;
+    g_lf_config.auto_start_delay_ms = 0U;
+    g_lf_config.start_min_boot_delay_ms = 2000U;
+    g_lf_config.start_line_hold_ms = 500U;
+    g_lf_config.calibration_duration_ms = 500U;
+    g_lf_config.radar_enable = true;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.fork_enable = true;
+    g_lf_config.fork_detect_confirm_ticks = 3U;
+    g_lf_config.line_lost_grace_ticks = 5U;
+    g_lf_config.line_hold_speed = 85;
+    g_lf_config.line_hold_turn_speed = 130;
+    g_lf_config.recover_backtrack_speed = 80;
+    g_lf_config.recover_sweep_start_speed = 100;
+    g_lf_config.recover_sweep_max_speed = 190;
+    g_lf_config.recover_confirm_ticks = 4U;
+    g_lf_config.recover_timeout_ms = 1500U;
+}
+
 void LF_Config_ApplyCompetitionProfile(void)
 {
     g_lf_config.base_speed = 400;

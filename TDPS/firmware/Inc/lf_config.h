@@ -97,6 +97,24 @@ typedef struct {
     int16_t adaptive_error_threshold;
     float adaptive_confidence_threshold;
     int16_t sharp_turn_speed;
+
+    bool straight_boost_enable;
+    bool curve_prepare_enable;
+    bool line_stability_enable;
+    bool stable_direction_enable;
+    int16_t straight_boost_speed;
+    int16_t straight_error_threshold;
+    int16_t straight_delta_threshold;
+    float straight_confidence_min;
+    uint8_t straight_confirm_ticks;
+    int16_t curve_prepare_speed;
+    int16_t curve_prepare_error_threshold;
+    int16_t curve_prepare_delta_threshold;
+    uint8_t curve_prepare_confirm_ticks;
+    uint8_t interference_active_count_threshold;
+    int16_t interference_position_jump_threshold;
+    float direction_update_confidence_min;
+
     int16_t line_hold_speed;
     int16_t line_hold_turn_speed;
     float derivative_filter_alpha;
@@ -183,6 +201,7 @@ typedef struct {
 extern LF_Config g_lf_config;
 
 void LF_Config_ApplyDebugProfile(void);
+void LF_Config_ApplyTrackProfile(void);
 void LF_Config_ApplyCompetitionProfile(void);
 
 #endif /* LF_CONFIG_H */

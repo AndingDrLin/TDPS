@@ -157,6 +157,80 @@ static int16_t limit_degraded_speed(int16_t speed)
     return limit_speed_abs(speed, g_lf_config.sensor_degraded_max_speed);
 }
 
+static int32_t abs_i32(int32_t value)
+{
+    return (value < 0) ? -value : value;
+}
+
+static void bump_counter(uint8_t *counter)
+{
+    if (counter != NULL && *counter < UINT8_MAX) {
+        *counter += 1U;
+    }
+}
+
+static bool frame_is_interference(const LF_SensorFrame *frame)
+{
+    int32_t position_jump;
+
+    if (!g_lf_config.line_stability_enable || frame == NULL || !frame->line_detected ||
+        !s_app.trusted_line_valid) {
+        return false;
+    }
+    if (frame->active_count < g_lf_config.interference_active_count_threshold) {
+        return false;
+    }
+    position_jump = abs_i32(frame->position - s_app.last_trusted_position);
+    return position_jump >= g_lf_config.interference_position_jump_threshold;
+}
+
+static void update_running_window(const LF_SensorFrame *frame, bool interference)
+{
+    int32_t abs_position;
+    int32_t position_delta;
+    bool straight_frame;
+    bool curve_frame;
+
+    if (frame == NULL || !frame->line_detected) {
+        s_app.straight_stable_count = 0U;
+        s_app.curve_prepare_count = 0U;
+        return;
+    }
+
+    if (interference) {
+        bump_counter(&s_app.interference_count);
+        s_app.straight_stable_count = 0U;
+        return;
+    }
+
+    s_app.interference_count = 0U;
+    abs_position = abs_i32(frame->position);
+    position_delta = s_app.trusted_line_valid ? abs_i32(frame->position - s_app.last_trusted_position) : 0;
+
+    straight_frame = g_lf_config.straight_boost_enable &&
+                     abs_position <= g_lf_config.straight_error_threshold &&
+                     position_delta <= g_lf_config.straight_delta_threshold &&
+                     frame->line_confidence >= g_lf_config.straight_confidence_min &&
+                     frame->contrast_value >= g_lf_config.line_detect_min_contrast;
+    if (straight_frame) {
+        bump_counter(&s_app.straight_stable_count);
+    } else {
+        s_app.straight_stable_count = 0U;
+    }
+
+    curve_frame = g_lf_config.curve_prepare_enable &&
+                  (abs_position >= g_lf_config.curve_prepare_error_threshold ||
+                   position_delta >= g_lf_config.curve_prepare_delta_threshold ||
+                   frame->edge_hint != 0 ||
+                   frame->line_confidence < g_lf_config.adaptive_confidence_threshold ||
+                   frame->contrast_value < g_lf_config.line_detect_min_contrast);
+    if (curve_frame) {
+        bump_counter(&s_app.curve_prepare_count);
+    } else {
+        s_app.curve_prepare_count = 0U;
+    }
+}
+
 static int16_t choose_running_speed(const LF_SensorFrame *frame)
 {
     int16_t speed = g_lf_config.base_speed;
@@ -165,25 +239,34 @@ static int16_t choose_running_speed(const LF_SensorFrame *frame)
         ((frame->position > g_lf_config.adaptive_error_threshold) ||
          (frame->position < (int32_t)(-g_lf_config.adaptive_error_threshold)))) {
         speed = g_lf_config.sharp_turn_speed;
+    } else if (g_lf_config.curve_prepare_enable &&
+               s_app.curve_prepare_count >= g_lf_config.curve_prepare_confirm_ticks) {
+        speed = g_lf_config.curve_prepare_speed;
     } else if (frame != NULL &&
                (frame->line_confidence < g_lf_config.adaptive_confidence_threshold ||
                 frame->contrast_value < g_lf_config.line_detect_min_contrast)) {
         speed = g_lf_config.adaptive_slow_speed;
+    } else if (g_lf_config.straight_boost_enable &&
+               s_app.straight_stable_count >= g_lf_config.straight_confirm_ticks) {
+        speed = g_lf_config.straight_boost_speed;
     }
     if (g_lf_config.obstacle_avoid_enable &&
         s_app.obstacle_state == LF_RADAR_OBSTACLE_WARN &&
         speed > g_lf_config.obstacle_warn_speed) {
         speed = g_lf_config.obstacle_warn_speed;
     }
-    return limit_degraded_speed(speed);
+    speed = limit_degraded_speed(speed);
+    s_app.current_target_speed = speed;
+    return speed;
 }
 
 static void hold_last_line_direction(void)
 {
     int16_t forward = limit_degraded_speed(g_lf_config.line_hold_speed);
     int16_t turn = limit_degraded_speed(g_lf_config.line_hold_turn_speed);
+    int8_t dir = g_lf_config.stable_direction_enable ? s_app.trusted_line_dir : s_app.last_seen_dir;
 
-    if (s_app.last_seen_dir < 0) {
+    if (dir < 0) {
         LF_Chassis_SetCommand((int16_t)(forward - turn), (int16_t)(forward + turn));
     } else {
         LF_Chassis_SetCommand((int16_t)(forward + turn), (int16_t)(forward - turn));
@@ -202,6 +285,34 @@ static bool frame_is_confirmed_line(const LF_SensorFrame *frame, uint16_t min_su
     return frame != NULL && frame->line_detected &&
            frame->signal_sum >= min_sum &&
            frame->line_confidence >= min_confidence;
+}
+
+static void update_trusted_direction(const LF_SensorFrame *frame, bool interference)
+{
+    int8_t dir = 0;
+
+    if (frame == NULL || !frame->line_detected || interference) {
+        return;
+    }
+    if (g_lf_config.stable_direction_enable &&
+        frame->line_confidence < g_lf_config.direction_update_confidence_min) {
+        return;
+    }
+
+    if (frame->edge_hint != 0) {
+        dir = frame->edge_hint;
+    } else if (frame->position < 0) {
+        dir = -1;
+    } else if (frame->position > 0) {
+        dir = +1;
+    }
+
+    if (dir != 0) {
+        s_app.last_seen_dir = dir;
+        s_app.trusted_line_dir = dir;
+        s_app.last_trusted_position = frame->position;
+        s_app.trusted_line_valid = true;
+    }
 }
 
 static bool wait_start_line_ready(uint32_t now_ms)
@@ -563,13 +674,15 @@ static void process_running(uint32_t now_ms, float dt_s)
     int16_t right_cmd;
     int16_t base_speed;
     bool fork_candidate;
+    bool interference;
     float error;
 
     LF_Sensor_ReadFrame(&s_app.last_frame);
+    interference = frame_is_interference(&s_app.last_frame);
 
     if (!s_app.last_frame.line_detected) {
         s_app.fork_detect_count = 0U;
-        if (s_app.last_frame.edge_hint != 0) {
+        if (!g_lf_config.stable_direction_enable && s_app.last_frame.edge_hint != 0) {
             s_app.last_seen_dir = s_app.last_frame.edge_hint;
         }
         if (s_app.line_lost_count < UINT8_MAX) {
@@ -588,8 +701,10 @@ static void process_running(uint32_t now_ms, float dt_s)
         return;
     }
     s_app.line_lost_count = 0U;
+    update_running_window(&s_app.last_frame, interference);
 
-    fork_candidate = g_lf_config.fork_enable &&
+    fork_candidate = !interference &&
+                     g_lf_config.fork_enable &&
                      !fork_cooldown_active(now_ms) &&
                      frame_looks_like_fork(&s_app.last_frame);
     if (fork_candidate) {
@@ -616,19 +731,13 @@ static void process_running(uint32_t now_ms, float dt_s)
      * error > 0 代表需要向右修正，error < 0 代表需要向左修正。
      */
     base_speed = choose_running_speed(&s_app.last_frame);
-    error = (float)s_app.last_frame.position;
+    error = (float)(interference ? s_app.last_trusted_position : s_app.last_frame.position);
     correction = LF_Control_UpdatePid(error, dt_s, &s_app.pid);
     LF_Control_ComputeMotorCmd(base_speed, correction, &left_cmd, &right_cmd);
     left_cmd = limit_degraded_speed(left_cmd);
     right_cmd = limit_degraded_speed(right_cmd);
 
-    if (s_app.last_frame.edge_hint != 0) {
-        s_app.last_seen_dir = s_app.last_frame.edge_hint;
-    } else if (s_app.last_frame.position < 0) {
-        s_app.last_seen_dir = -1;
-    } else if (s_app.last_frame.position > 0) {
-        s_app.last_seen_dir = +1;
-    }
+    update_trusted_direction(&s_app.last_frame, interference);
 
     LF_Chassis_SetCommand(left_cmd, right_cmd);
 }
@@ -924,6 +1033,13 @@ void LF_App_Init(void)
     s_app.run_finalized = false;
     s_app.recovery_count = 0U;
     s_app.line_lost_count = 0U;
+    s_app.straight_stable_count = 0U;
+    s_app.curve_prepare_count = 0U;
+    s_app.interference_count = 0U;
+    s_app.last_trusted_position = 0;
+    s_app.trusted_line_dir = +1;
+    s_app.trusted_line_valid = false;
+    s_app.current_target_speed = g_lf_config.base_speed;
 
     set_state(LF_APP_STATE_WAIT_START);
 }

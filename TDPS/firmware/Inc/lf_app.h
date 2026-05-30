@@ -96,6 +96,13 @@ typedef struct {
     bool run_finalized;
     uint16_t recovery_count;
     uint8_t line_lost_count;
+    uint8_t straight_stable_count;
+    uint8_t curve_prepare_count;
+    uint8_t interference_count;
+    int32_t last_trusted_position;
+    int8_t trusted_line_dir;
+    bool trusted_line_valid;
+    int16_t current_target_speed;
 } LF_AppContext;
 
 /* 应用层初始化。 */
