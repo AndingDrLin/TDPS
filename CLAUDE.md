@@ -99,10 +99,12 @@ Firmware layers:
 Key constraints from the design docs:
 
 - Do not block the line-following control loop. LoRa sending and radar parsing are advanced via non-blocking tick functions.
-- Tuning parameters should usually be centralized in `TDPS/firmware/Src/lf_config.c` rather than scattered through algorithms.
+- Tuning parameters should usually be centralized in `TDPS/firmware/Src/lf_config.c` and profile overrides in `TDPS/firmware/Src/lf_config_profiles.c` rather than scattered through algorithms.
+- The current real-car startup path calls `LF_Config_ApplyTrackProfile()`, not the low-speed debug profile. Track profile enables straight boost, curve preparation slowdown, line-stability filtering, stable direction recovery, and fork detection by default.
 - `LF_App_NotifyCheckpoint(checkpoint_id)` is the integration entry for checkpoint events.
 - LoRa reports use `TEAM=<id>,NAME=<name>,CP=<checkpoint>,TIME=<MM:SS>\n`; current defaults are `TEAM=15`, `NAME=TDPS`.
 - Radar currently provides forward distance/state (`CLEAR/WARN/BLOCK`). It does not provide true left/right obstacle localization; current avoidance direction comes from config, last line direction, and reverse retry.
+- Track profile uses Yahboom 8-LP UART line sensor input with polarity inversion and fast calibration; verify this before changing sensor mode or weights.
 - Avoidance is timed open-loop (`AVOID_PREP -> TURN_OUT -> BYPASS -> TURN_IN -> REACQUIRE`) and must be retuned after hardware, battery, motor, floor, or load changes.
 
 Before changing firmware behavior, read:

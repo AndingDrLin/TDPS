@@ -6,7 +6,8 @@
 - 先读 `TDPS/agent_docs/00_project_brief.md`、`01_hardware_reference.md`、`02_current_progress.md`，再改代码。
 - 固件逻辑改动前先查看 `TDPS/docs/basic_design.md`、`TDPS/docs/line_following.md`、`TDPS/docs/tuning.md`。
 - 不要阻塞巡线主循环；LoRa 和雷达服务必须非阻塞 tick 推进。
-- 调参优先改 `TDPS/firmware/Src/lf_config.c`，每次只改少量参数并记录结果。
+- 调参优先改 `TDPS/firmware/Src/lf_config.c` 或 `TDPS/firmware/Src/lf_config_profiles.c` 的 profile 参数，每次只改少量参数并记录结果。
+- 当前实车入口使用 `LF_Config_ApplyTrackProfile()`；不要误改回低速 `LF_Config_ApplyDebugProfile()`，除非只是做低速诊断。
 
 ## 常用离线构建
 
@@ -37,7 +38,7 @@ cmake --build firmware/build
 
 ## 仿真说明
 
-`TDPS/simulator/` 来自原 `TDPS-Simulator`。如果脚本仍假设旧路径 `TDPS-Simulator/`，不要在不理解脚本路径逻辑的情况下直接批量替换；先读 `TDPS/simulator/scripts/`，再决定是更新脚本还是从兼容路径运行。
+`TDPS/simulator/` 来自原 `TDPS-Simulator`。如果脚本仍假设旧路径 `TDPS-Simulator/`，不要在不理解脚本路径逻辑的情况下直接批量替换；先读 `TDPS/simulator/scripts/`，再决定是更新脚本还是从兼容路径运行。最近一次 quick 验证是手动用当前 `simulator/` 路径编译 runner 后运行的。
 
 常见入口文件：
 

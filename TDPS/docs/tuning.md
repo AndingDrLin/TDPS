@@ -5,12 +5,14 @@
 ## 推荐调试顺序
 
 1. 传感器极性和阈值
-2. 基础速度 `base_speed`
-3. PID：先 `kp`，再 `kd`，最后通常不启用 `ki`
-4. 丢线恢复
-5. 雷达 WARN/BLOCK 阈值
-6. 避障动作时间和速度
-7. LoRa 检查点联调
+2. 基础速度 `base_speed` 与直道高速 `straight_boost_speed`
+3. 弯前减速 `curve_prepare_speed` / `sharp_turn_speed`
+4. PID：先 `kp`，再 `kd`，最后通常不启用 `ki`
+5. 箭头/宽黑干扰保护和岔路确认阈值
+6. 丢线保持与恢复
+7. 雷达 WARN/BLOCK 阈值
+8. 避障动作时间和速度
+9. LoRa 检查点联调
 
 ## 1. 主循环与启动参数
 
@@ -31,8 +33,8 @@
 
 | 参数 | 当前值 | 含义 | 调试方法 |
 |---|---:|---|---|
-| `sensor_input_mode` | `LF_SENSOR_INPUT_ANALOG_ADC` | 8 路传感器输入模式。ADC 用模拟量，GPIO 用数字量。 | 实机接 ADC 就保持；如果 8-LP 用 IO 模式，改为 `LF_SENSOR_INPUT_DIGITAL_GPIO`。 |
-| `sensor_invert_polarity` | `false` | 模拟量极性翻转。 | 黑线原始值比白底低时改为 `true`；如果位置方向反、在线判断反，优先查此项。 |
+| `sensor_input_mode` | `LF_SENSOR_INPUT_UART_PROTOCOL`（track profile） | 8 路传感器输入模式。track profile 走 Yahboom 8-LP UART；默认配置仍可用于 ADC/GPIO。 | 实机接 UART 就保持 track profile；如果 8-LP 用 IO 模式，改为 `LF_SENSOR_INPUT_DIGITAL_GPIO`。 |
+| `sensor_invert_polarity` | `true`（track profile） | 归一化后极性翻转。 | 黑线原始值比白底低或位置方向反时检查此项；若 ADC/GPIO 与 track profile 不同，先校验极性再调 PID。 |
 | `sensor_digital_threshold` | `2048` | 数字/GPIO 判高低的阈值。 | 仅数字模式相关。临界抖动时远离黑白中间值。 |
 | `sensor_digital_active_high` | `false` | 数字模式下“在线”是否为高电平。 | 黑线时 IO 输出高则设 `true`，黑线时输出低则保持 `false`。 |
 | `sensor_use_dynamic_calibration` | `true` | 是否启用上电动态标定。 | ADC 模式建议开启；数字模式或标定动作不方便时关闭。 |
@@ -45,22 +47,46 @@
 
 | 参数 | 当前值 | 含义 | 调试方法 |
 |---|---:|---|---|
-| `base_speed` | `320` | 正常巡线基础速度。 | 第一优先调。直道稳定后逐步加；弯道冲出或避障不稳就降。 |
-| `kp` | `0.48` | 比例增益，决定偏离黑线后的纠正力度。 | 贴不住弯、回正慢就加；左右蛇形摆动就减。 |
-| `kd` | `1.90` | 微分增益，抑制快速摆动。 | 加 `kp` 后抖动就加 `kd`；转弯变迟钝或电机尖叫就减。 |
+| `base_speed` | `260`（track profile） | 正常巡线基础速度。 | 第一优先调。直道稳定后逐步加；弯道冲出或避障不稳就降。 |
+| `straight_boost_speed` | `320` | 连续稳定直道的高速速度。 | 直道稳定后逐步加；如果进入弯道前来不及降速就降低或提高确认帧数。 |
+| `curve_prepare_speed` | `150` | 检测到入弯趋势后的提前减速速度。 | U 型弯冲出就降低；直道误减速多就提高阈值或增加确认帧。 |
+| `sharp_turn_speed` | `130`（track profile） | 偏差超过急弯阈值后的低速。 | 急弯仍冲出就降低；急弯太慢就小幅提高。 |
+| `kp` | `0.32`（track profile） | 比例增益，决定偏离黑线后的纠正力度。 | 贴不住弯、回正慢就加；左右蛇形摆动就减。 |
+| `kd` | `1.40`（track profile） | 微分增益，抑制快速摆动。 | 加 `kp` 后抖动就加 `kd`；转弯变迟钝或电机尖叫就减。 |
 | `ki` | `0.0` | 积分增益，修长期偏差。 | 通常保持 0。只有持续偏一侧且机械问题排除后，再小幅增加。 |
-| `max_correction` | `340` | PID 修正量限幅。 | 弯道打角不够就加；急转导致甩尾或左右轮打满就减。 |
-| `max_motor_cmd` | `900` | 电机命令绝对值上限。 | 保护电机/电池。速度不够可加，但先确认机械和供电。 |
-| `motor_deadband` | `120` | 非零命令的最小起转补偿。 | 小命令车不动就加；低速动作太冲就减。 |
+| `max_correction` | `280`（track profile） | PID 修正量限幅。 | 弯道打角不够就加；急转导致甩尾或左右轮打满就减。 |
+| `max_motor_cmd` | `800`（track profile） | 电机命令绝对值上限。 | 保护电机/电池。速度不够可加，但先确认机械和供电。 |
+| `motor_deadband` | `80`（track profile） | 非零命令的最小起转补偿。 | 小命令车不动就加；低速动作太冲就减。 |
 
-## 5. 丢线恢复参数
+## 5. 直道高速、弯前减速与抗干扰参数
 
 | 参数 | 当前值 | 含义 | 调试方法 |
 |---|---:|---|---|
-| `recover_turn_speed` | `220` | 丢线后原地搜索速度。 | 找线太慢就加；转太猛错过线就减。 |
-| `recover_timeout_ms` | `900` | 丢线恢复最长时间，超时停车。 | 短暂离线即可找回但停车太早就加；失控转圈太久就减。 |
+| `straight_boost_enable` | `true` | 是否启用连续稳定直道高速。 | 初次上板建议保持开启，但先架空确认 profile 生效。 |
+| `straight_error_threshold` | `250` | 进入直道高速允许的最大位置偏差。 | 直道不提速可增大；误把小弯当直道就减小。 |
+| `straight_delta_threshold` | `120` | 直道高速允许的相邻可信位置变化。 | 传感器噪声导致不提速可增大；摆头明显就减小。 |
+| `straight_confidence_min` | `0.55` | 直道高速最低置信度。 | 低对比场地不提速可略降；误提速就提高。 |
+| `straight_confirm_ticks` | `8` | 连续多少个控制周期稳定后提速。 | 提速太慢就减小；提速太早就增大。 |
+| `curve_prepare_enable` | `true` | 是否启用弯前趋势减速。 | U 型弯测试应保持开启。 |
+| `curve_prepare_error_threshold` | `600` | 入弯趋势的位置偏差阈值。 | U 型弯冲出就降低；直道误减速就提高。 |
+| `curve_prepare_delta_threshold` | `180` | 入弯趋势的位置变化阈值。 | 弯前减速慢就降低；箭头干扰误减速就提高。 |
+| `curve_prepare_confirm_ticks` | `2` | 连续多少个控制周期确认入弯。 | 减速不及时就减小；误触发就增大。 |
+| `interference_active_count_threshold` | `6` | 疑似宽黑/箭头干扰的激活传感器数量。 | 箭头处仍抖就降低；岔路识别被抑制就提高。 |
+| `interference_position_jump_threshold` | `450` | 干扰帧相对上一可信位置的跳变阈值。 | 箭头处仍大幅摆动就降低；正常弯道被误判干扰就提高。 |
+| `direction_update_confidence_min` | `0.45` | 更新丢线恢复方向所需最低置信度。 | 丢线后找错方向就提高；方向记忆太迟钝就降低。 |
 
-## 6. 雷达判定参数
+## 6. 丢线恢复参数
+
+| 参数 | 当前值 | 含义 | 调试方法 |
+|---|---:|---|---|
+| `line_lost_grace_ticks` | `5`（track profile） | 短暂丢线后保持最后可信方向的周期数。 | U 型顶点短暂丢线就加；保持方向过久偏离就减。 |
+| `line_hold_speed` | `85`（track profile） | grace 阶段低速前进速度。 | 找线太慢就加；冲过线就减。 |
+| `line_hold_turn_speed` | `130`（track profile） | grace 阶段按可信方向转向的速度差。 | U 型弯转不过去就加；原地转圈倾向明显就减。 |
+| `recover_sweep_start_speed` | `100`（track profile） | 进入扫线时的初始转向速度。 | 找线太慢就加；扫过线就减。 |
+| `recover_sweep_max_speed` | `190`（track profile） | 恢复扫线最大转向速度。 | 超时前仍找不到线就加；原地转圈明显就减。 |
+| `recover_timeout_ms` | `1500`（track profile） | 丢线恢复最长时间，超时停车。 | 短暂离线即可找回但停车太早就加；失控转圈太久就减。 |
+
+## 7. 雷达判定参数
 
 | 参数 | 当前值 | 含义 | 调试方法 |
 |---|---:|---|---|
@@ -71,7 +97,7 @@
 | `radar_debounce_frames` | `3` | 连续多少帧确认状态变化。 | 误报多就加；反应慢就减。 |
 | `radar_frame_timeout_ms` | `120` | 超过该时间没有有效帧则清除雷达状态。 | 雷达帧率低导致状态闪断就加；断线后旧状态保持太久就减。 |
 
-## 7. 避障参数
+## 8. 避障参数
 
 | 参数 | 当前值 | 含义 | 调试方法 |
 |---|---:|---|---|
@@ -90,14 +116,17 @@
 | `obstacle_bypass_outer_speed` | `320` | 绕障弧线外侧轮速度。 | 绕不过障碍就提高；速度过快撞障或离线就降低。 |
 | `obstacle_emergency_distance_mm` | `280` | 避障过程中仍过近时立即停止并重试。 | 仍会撞障就加大；频繁急停导致无法绕过就减小。 |
 
-## 8. 实车现象到参数的快速映射
+## 9. 实车现象到参数的快速映射
 
 | 现象 | 优先检查/调整 |
 |---|---|
 | 上电标定后一直认为丢线 | `sensor_invert_polarity`、`sensor_digital_active_high`、`line_detect_min_sum` |
-| 直道左右蛇形 | 降 `kp`，或加 `kd`，或降 `base_speed` |
-| 弯道跟不上 | 降 `base_speed`，加 `kp`，加 `max_correction` |
-| 丢线后找错方向 | 先查传感器极性和 `sensor_weights`，再调 `edge_hint_threshold` |
+| 直道左右蛇形 | 降 `kp`，或加 `kd`，或降 `straight_boost_speed` / `base_speed`，并检查 `straight_delta_threshold` |
+| 直道不提速 | 检查 `straight_error_threshold`、`straight_delta_threshold`、`straight_confidence_min`、`straight_confirm_ticks` |
+| U 型弯入口冲出 | 降 `curve_prepare_speed` / `sharp_turn_speed`，或降低 `curve_prepare_error_threshold` / `curve_prepare_delta_threshold` |
+| 箭头形干扰路口抖动 | 降低 `interference_active_count_threshold` 或 `interference_position_jump_threshold`，同时确认不会压制真实岔路 |
+| 弯道跟不上 | 降 `base_speed`，加 `kp`，加 `max_correction`，或调低弯道减速阈值 |
+| 丢线后找错方向 | 先查传感器极性和 `sensor_weights`，再调 `edge_hint_threshold` / `direction_update_confidence_min` |
 | 雷达无数据 | 查 UART 接线、波特率、IRQ、`radar_enable` |
 | 雷达误触发 | 加 `radar_debounce_frames`，减小 `radar_trigger_distance_mm` |
 | 快撞上才避障 | 加大 `radar_trigger_distance_mm`，降低 `base_speed`/`obstacle_warn_speed` |
@@ -105,14 +134,19 @@
 | 绕障没越过障碍 | 加 `obstacle_bypass_ms` 或 `obstacle_bypass_outer_speed` |
 | 绕障后找不到线 | 调 `obstacle_turn_in_ms`，加 `obstacle_reacquire_timeout_ms`，降低绕障速度 |
 
-## 9. 仿真参数选择依据
+## 10. 仿真参数选择依据
 
-当前默认参数不是单次最快值，而是在 Simulator normal/stress profile 下优先选择丢线时间短、完整赛道通过且压力扰动有裕量的组合：
+当前 track profile 是实车测试初值，不是单次最快值：
 
-- `base_speed=320`
-- `kp=0.48`
-- `kd=1.90`
-- `max_correction=340`
+- `base_speed=260`
+- `straight_boost_speed=320`
+- `curve_prepare_speed=150`
+- `sharp_turn_speed=130`
+- `kp=0.32`
+- `kd=1.40`
+- `max_correction=280`
+
+Simulator 默认 override 仍用于离线 normal/stress 回归，并默认启用直道高速、弯前减速、抗干扰和可信方向更新。
 
 已验证命令示例：
 
@@ -134,9 +168,9 @@ bash simulator/scripts/run_line_follow_stability.sh \
   "" stress
 ```
 
-最近一次压力稳定性结果：5 个 seed 均为 High，`min_score=94.45`，`min_detect=99.95%`，`max_lost=0.160s`。
+最新 quick normal 验证：手动用当前 `simulator/` 路径构建 runner 后，16 个场景 `overall=95.41/100`，`avg_detect=100.00%`，`max_lost=0.000s`，Confidence `High`。此前 full-course stress 稳定性结果：5 个 seed 均为 High，`min_score=94.45`，`min_detect=99.95%`，`max_lost=0.160s`。
 
-## 10. 每次测试建议记录
+## 11. 每次测试建议记录
 
 ```text
 日期/场地：
