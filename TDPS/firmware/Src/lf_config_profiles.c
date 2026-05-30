@@ -12,14 +12,20 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.sensor_fast_calibration = true;
     g_lf_config.sensor_invert_polarity = false;
     g_lf_config.sensor_digital_active_high = false;
-    g_lf_config.sensor_filter_alpha = 0.60f;
+    g_lf_config.sensor_filter_alpha = 0.45f;
     g_lf_config.line_detect_min_sum = 780U;
     g_lf_config.line_detect_min_peak = 260U;
     g_lf_config.line_detect_min_contrast = 80U;
-    g_lf_config.base_speed = 180;
-    g_lf_config.adaptive_slow_speed = 120;
-    g_lf_config.max_correction = 250;
-    g_lf_config.max_motor_cmd = 600;
+    g_lf_config.kp = 0.12f;
+    g_lf_config.ki = 0.0f;
+    g_lf_config.kd = 0.35f;
+    g_lf_config.base_speed = 100;
+    g_lf_config.adaptive_slow_speed = 80;
+    g_lf_config.sharp_turn_speed = 80;
+    g_lf_config.max_correction = 80;
+    g_lf_config.derivative_filter_alpha = 0.60f;
+    g_lf_config.max_output_delta_per_tick = 25;
+    g_lf_config.max_motor_cmd = 300;
     g_lf_config.motor_deadband = 0;
     g_lf_config.auto_start_delay_ms = 0U;
     g_lf_config.start_min_boot_delay_ms = 2000U;
@@ -29,8 +35,10 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.obstacle_avoid_enable = false;
     g_lf_config.fork_enable = false;
     g_lf_config.recover_timeout_ms = 3000U;
-    g_lf_config.recover_turn_speed = 120;
+    g_lf_config.recover_turn_speed = 0;
     g_lf_config.recover_backtrack_speed = 0;
+    g_lf_config.line_hold_speed = 0;
+    g_lf_config.line_hold_turn_speed = 0;
 }
 
 void LF_Config_ApplyCompetitionProfile(void)
