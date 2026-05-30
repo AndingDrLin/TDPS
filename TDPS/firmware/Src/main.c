@@ -15,7 +15,7 @@ extern void LF_Config_ApplyTrackProfile(void);
 int main(void)
 {
     bool wireless_ready;
-    char profile_line[128];
+    char profile_line[192];
 
     LF_Config_ApplyTrackProfile();
     LF_Platform_BoardInit();
@@ -28,13 +28,16 @@ int main(void)
 
     snprintf(profile_line,
              sizeof(profile_line),
-             "Profile track invert=%u base=%d boost=%d curve=%d kp=%ld kd=%ld fork=%u hold=%d/%d recover=%d/%d\n",
+             "Profile track invert=%u base=%d boost=%d curve=%d kp=%ld kd=%ld straight_dead=%d scale=%u limit=%d fork=%u hold=%d/%d recover=%d/%d\n",
              g_lf_config.sensor_invert_polarity ? 1U : 0U,
              (int)g_lf_config.base_speed,
              (int)g_lf_config.straight_boost_speed,
              (int)g_lf_config.curve_prepare_speed,
              (long)(g_lf_config.kp * 1000.0f),
              (long)(g_lf_config.kd * 1000.0f),
+             (int)g_lf_config.straight_error_deadband,
+             (unsigned)g_lf_config.straight_error_scale_percent,
+             (int)g_lf_config.straight_correction_limit,
              g_lf_config.fork_enable ? 1U : 0U,
              (int)g_lf_config.line_hold_speed,
              (int)g_lf_config.line_hold_turn_speed,

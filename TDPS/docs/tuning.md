@@ -47,14 +47,14 @@
 
 | 参数 | 当前值 | 含义 | 调试方法 |
 |---|---:|---|---|
-| `base_speed` | `300`（track profile） | 正常巡线基础速度。 | 第一优先调。直道稳定后逐步加；弯道冲出或避障不稳就降。 |
-| `straight_boost_speed` | `360` | 连续稳定直道的高速速度。 | 直道稳定后逐步加；如果进入弯道前来不及降速就降低或提高确认帧数。 |
-| `curve_prepare_speed` | `180` | 检测到入弯趋势后的提前减速速度。 | U 型弯冲出就降低；直道误减速多就提高阈值或增加确认帧。 |
-| `sharp_turn_speed` | `150`（track profile） | 偏差超过急弯阈值后的低速。 | 急弯仍冲出就降低；急弯太慢就小幅提高。 |
-| `kp` | `0.10`（track profile） | 比例增益，决定偏离黑线后的纠正力度。 | 贴不住弯、回正慢就加；左右蛇形摆动就减。 |
-| `kd` | `0.45`（track profile） | 微分增益，抑制快速摆动。 | 加 `kp` 后抖动就加 `kd`；转弯变迟钝或电机尖叫就减。 |
+| `base_speed` | `280`（track profile） | 正常巡线基础速度。 | 第一优先调。直道稳定后逐步加；弯道冲出或避障不稳就降。 |
+| `straight_boost_speed` | `340` | 连续稳定直道的高速速度。 | 直道稳定后逐步加；如果进入弯道前来不及降速就降低或提高确认帧数。 |
+| `curve_prepare_speed` | `170` | 检测到入弯趋势后的提前减速速度。 | U 型弯冲出就降低；直道误减速多就提高阈值或增加确认帧。 |
+| `sharp_turn_speed` | `145`（track profile） | 偏差超过急弯阈值后的低速。 | 急弯仍冲出就降低；急弯太慢就小幅提高。 |
+| `kp` | `0.07`（track profile） | 比例增益，决定偏离黑线后的纠正力度。 | 贴不住弯、回正慢就加；左右蛇形摆动就减。 |
+| `kd` | `0.22`（track profile） | 微分增益，抑制快速摆动。 | 加 `kp` 后抖动就加 `kd`；转弯变迟钝或电机尖叫就减。 |
 | `ki` | `0.0` | 积分增益，修长期偏差。 | 通常保持 0。只有持续偏一侧且机械问题排除后，再小幅增加。 |
-| `max_correction` | `90`（track profile） | PID 修正量限幅。 | 弯道打角不够就加；急转导致甩尾或左右轮打满就减。 |
+| `max_correction` | `70`（track profile） | PID 修正量总限幅。 | 弯道打角不够就加；急转导致甩尾或左右轮打满就减。直线摆头时优先先调直线专用限幅。 |
 | `max_motor_cmd` | `800`（track profile） | 电机命令绝对值上限。 | 保护电机/电池。速度不够可加，但先确认机械和供电。 |
 | `motor_deadband` | `80`（track profile） | 非零命令的最小起转补偿。 | 小命令车不动就加；低速动作太冲就减。 |
 
@@ -66,8 +66,11 @@
 | `straight_error_threshold` | `250` | 进入直道高速允许的最大位置偏差。 | 直道不提速可增大；误把小弯当直道就减小。 |
 | `straight_delta_threshold` | `120` | 直道高速允许的相邻可信位置变化。 | 传感器噪声导致不提速可增大；摆头明显就减小。 |
 | `straight_confidence_min` | `0.55` | 直道高速最低置信度。 | 低对比场地不提速可略降；误提速就提高。 |
-| `straight_confirm_ticks` | `8` | 连续多少个控制周期稳定后提速。 | 提速太慢就减小；提速太早就增大。 |
-| `curve_prepare_enable` | `true` | 是否启用弯前趋势减速。 | U 型弯测试应保持开启。 |
+| `straight_confirm_ticks` | `8` | 连续多少个控制周期稳定后提速并启用直线低灵敏度。 | 提速太慢就减小；提速太早就增大。 |
+| `straight_error_deadband` | `150` | 稳定直线状态下的位置误差死区，小于该值不做 PID 修正。 | 直线仍摆头就增大；车持续偏一侧不回中就减小。 |
+| `straight_error_scale_percent` | `35` | 稳定直线状态下超过死区后的误差缩放比例。 | 直线修正过猛就降低；直线偏移回正太慢就升高。 |
+| `straight_correction_limit` | `30` | 稳定直线状态下 PID 修正量的额外小限幅。 | 三轮后驱车头摆幅大就降低；直线偏离后拉不回来就升高。 |
+| `curve_prepare_enable` | `true` | 是否启用弯前趋势减速。 | U 型弯测试应保持开启；进入弯前会退出直线低灵敏度并恢复转向能力。 |
 | `curve_prepare_error_threshold` | `600` | 入弯趋势的位置偏差阈值。 | U 型弯冲出就降低；直道误减速就提高。 |
 | `curve_prepare_delta_threshold` | `180` | 入弯趋势的位置变化阈值。 | 弯前减速慢就降低；箭头干扰误减速就提高。 |
 | `curve_prepare_confirm_ticks` | `2` | 连续多少个控制周期确认入弯。 | 减速不及时就减小；误触发就增大。 |
@@ -138,13 +141,16 @@
 
 当前 track profile 是实车测试初值，不是单次最快值：
 
-- `base_speed=300`
-- `straight_boost_speed=360`
-- `curve_prepare_speed=180`
-- `sharp_turn_speed=150`
-- `kp=0.10`
-- `kd=0.45`
-- `max_correction=90`
+- `base_speed=280`
+- `straight_boost_speed=340`
+- `curve_prepare_speed=170`
+- `sharp_turn_speed=145`
+- `kp=0.07`
+- `kd=0.22`
+- `max_correction=70`
+- `straight_error_deadband=150`
+- `straight_error_scale_percent=35`
+- `straight_correction_limit=30`
 
 Simulator 默认 override 仍用于离线 normal/stress 回归，并默认启用直道高速、弯前减速、抗干扰和可信方向更新。
 
