@@ -23,6 +23,12 @@ typedef struct {
     volatile int16_t left_cmd;
     volatile int16_t right_cmd;
     volatile uint32_t no_car_mode;
+    volatile uint32_t boot_elapsed_ms;
+    volatile uint32_t wait_line_since_ms;
+    volatile uint32_t start_button_pressed;
+    volatile uint32_t auto_start_delay_ms;
+    volatile uint32_t start_min_boot_delay_ms;
+    volatile uint32_t start_line_hold_ms;
     volatile uint32_t tim8_ccr3;
     volatile uint32_t tim10_ccr1;
     volatile uint32_t gpio_b_idr;

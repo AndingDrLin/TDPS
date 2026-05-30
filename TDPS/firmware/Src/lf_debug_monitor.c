@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include "lf_app.h"
+#include "lf_config.h"
 #include "lf_platform.h"
 #include "lf_sensor.h"
 #include "lf_watch_debug.h"
@@ -54,6 +55,12 @@ void LF_WatchDebug_UpdateApp(const LF_AppContext *ctx)
     g_lf_watch.peak_value = ctx->last_frame.peak_value;
     g_lf_watch.contrast_value = ctx->last_frame.contrast_value;
     g_lf_watch.no_car_mode = LF_DebugMonitor_IsNoCarMode() ? 1U : 0U;
+    g_lf_watch.boot_elapsed_ms = LF_Platform_GetMillis() - ctx->boot_ms;
+    g_lf_watch.wait_line_since_ms = ctx->wait_start_line_since_ms;
+    g_lf_watch.start_button_pressed = LF_Platform_IsStartButtonPressed() ? 1U : 0U;
+    g_lf_watch.auto_start_delay_ms = g_lf_config.auto_start_delay_ms;
+    g_lf_watch.start_min_boot_delay_ms = g_lf_config.start_min_boot_delay_ms;
+    g_lf_watch.start_line_hold_ms = g_lf_config.start_line_hold_ms;
 
     for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
         g_lf_watch.raw[i] = ctx->last_frame.raw[i];

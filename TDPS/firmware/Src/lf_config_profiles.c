@@ -21,8 +21,8 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.max_correction = 250;
     g_lf_config.max_motor_cmd = 600;
     g_lf_config.motor_deadband = 0;
-    g_lf_config.auto_start_delay_ms = 0U;
-    g_lf_config.start_min_boot_delay_ms = 2000U;
+    g_lf_config.auto_start_delay_ms = 500U;
+    g_lf_config.start_min_boot_delay_ms = 500U;
     g_lf_config.start_line_hold_ms = 500U;
     g_lf_config.calibration_duration_ms = 500U;
     g_lf_config.radar_enable = true;
