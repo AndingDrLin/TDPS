@@ -8,13 +8,13 @@
  *
  * 引脚总览：
  *   ADC1:     PA0~PA7 (8路巡线传感器 ADC 模式)
- *   TIM3 CH1: PA6  — 左电机 PWM
- *   TIM3 CH2: PA7  — 右电机 PWM
+ *   TIM8 CH3: PC8  — 电机 A PWM
+ *   TIM10 CH1: PB8 — 电机 B PWM
  *   USART1:   PA9(TX) / PA10(RX) — 调试串口
  *   USART2:   PA2(TX) / PA3(RX)  — 巡线传感器 UART
  *   USART3:   PB10(TX) / PB11(RX) — 雷达 UART
  *   UART5:    PC12(TX) / PD2(RX) — LoRa UART
- *   GPIO:     PB0/PB1 电机方向, PC13 LED, PA0 按钮
+ *   GPIO:     PC9/PB9 电机方向, PC13 LED, PA0 按钮
  */
 
 #include "main.h"
@@ -78,19 +78,23 @@ void HAL_ADC_MspDeInit(ADC_HandleTypeDef *hadc)
     }
 }
 
-/* ===== TIM3 PWM MSP (Motor PWM) ===== */
+/* ===== Motor PWM MSP ===== */
 
 void HAL_TIM_Base_MspInit(TIM_HandleTypeDef *htim)
 {
-    if (htim->Instance == TIM3) {
-        __HAL_RCC_TIM3_CLK_ENABLE();
+    if (htim->Instance == TIM8) {
+        __HAL_RCC_TIM8_CLK_ENABLE();
+    } else if (htim->Instance == TIM10) {
+        __HAL_RCC_TIM10_CLK_ENABLE();
     }
 }
 
 void HAL_TIM_PWM_MspInit(TIM_HandleTypeDef *htim)
 {
-    if (htim->Instance == TIM3) {
-        __HAL_RCC_TIM3_CLK_ENABLE();
+    if (htim->Instance == TIM8) {
+        __HAL_RCC_TIM8_CLK_ENABLE();
+    } else if (htim->Instance == TIM10) {
+        __HAL_RCC_TIM10_CLK_ENABLE();
     }
 }
 
@@ -98,28 +102,33 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim)
 {
     GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-    if (htim->Instance == TIM3) {
-        __HAL_RCC_GPIOA_CLK_ENABLE();
+    if (htim->Instance == TIM8) {
+        __HAL_RCC_GPIOC_CLK_ENABLE();
 
-        /* PA6 → TIM3_CH1 (left motor PWM)
-         * PA7 → TIM3_CH2 (right motor PWM)
-         *
-         * 注意：若 PA6/PA7 被 ADC 占用，需改到其他 TIM3 引脚，
-         * 例如 PC6(CH1) / PC7(CH2) 或 PD4(CH1) / PD5(CH2)。
-         */
-        GPIO_InitStruct.Pin       = GPIO_PIN_6 | GPIO_PIN_7;
+        GPIO_InitStruct.Pin       = GPIO_PIN_8;
         GPIO_InitStruct.Mode      = GPIO_MODE_AF_PP;
         GPIO_InitStruct.Pull      = GPIO_NOPULL;
         GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_LOW;
-        GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;
-        HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+        GPIO_InitStruct.Alternate = GPIO_AF3_TIM8;
+        HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+    } else if (htim->Instance == TIM10) {
+        __HAL_RCC_GPIOB_CLK_ENABLE();
+
+        GPIO_InitStruct.Pin       = GPIO_PIN_8;
+        GPIO_InitStruct.Mode      = GPIO_MODE_AF_PP;
+        GPIO_InitStruct.Pull      = GPIO_NOPULL;
+        GPIO_InitStruct.Speed     = GPIO_SPEED_FREQ_LOW;
+        GPIO_InitStruct.Alternate = GPIO_AF3_TIM10;
+        HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
     }
 }
 
 void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef *htim)
 {
-    if (htim->Instance == TIM3) {
-        __HAL_RCC_TIM3_CLK_DISABLE();
+    if (htim->Instance == TIM8) {
+        __HAL_RCC_TIM8_CLK_DISABLE();
+    } else if (htim->Instance == TIM10) {
+        __HAL_RCC_TIM10_CLK_DISABLE();
     }
 }
 

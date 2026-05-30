@@ -7,7 +7,8 @@
 
 ADC_HandleTypeDef hadc1;
 DMA_HandleTypeDef hdma_adc1;
-TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim8;
+TIM_HandleTypeDef htim10;
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
@@ -92,24 +93,25 @@ static void init_adc1(void)
     }
 }
 
-static void init_tim3_pwm(void)
+static void init_motor_pwm(void)
 {
     TIM_MasterConfigTypeDef master = {0};
     TIM_OC_InitTypeDef oc = {0};
 
-    htim3.Instance = TIM3;
-    htim3.Init.Prescaler = 15U;
-    htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-    htim3.Init.Period = 999U;
-    htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-    htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-    if (HAL_TIM_PWM_Init(&htim3) != HAL_OK) {
+    htim8.Instance = TIM8;
+    htim8.Init.Prescaler = 15U;
+    htim8.Init.CounterMode = TIM_COUNTERMODE_UP;
+    htim8.Init.Period = 999U;
+    htim8.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    htim8.Init.RepetitionCounter = 0U;
+    htim8.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    if (HAL_TIM_PWM_Init(&htim8) != HAL_OK) {
         Error_Handler();
     }
 
     master.MasterOutputTrigger = TIM_TRGO_RESET;
     master.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-    if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &master) != HAL_OK) {
+    if (HAL_TIMEx_MasterConfigSynchronization(&htim8, &master) != HAL_OK) {
         Error_Handler();
     }
 
@@ -117,14 +119,24 @@ static void init_tim3_pwm(void)
     oc.Pulse = 0U;
     oc.OCPolarity = TIM_OCPOLARITY_HIGH;
     oc.OCFastMode = TIM_OCFAST_DISABLE;
-    if (HAL_TIM_PWM_ConfigChannel(&htim3, &oc, LF_PORT_LEFT_PWM_CHANNEL) != HAL_OK) {
+    if (HAL_TIM_PWM_ConfigChannel(&htim8, &oc, LF_PORT_LEFT_PWM_CHANNEL) != HAL_OK) {
         Error_Handler();
     }
-    if (HAL_TIM_PWM_ConfigChannel(&htim3, &oc, LF_PORT_RIGHT_PWM_CHANNEL) != HAL_OK) {
-        Error_Handler();
-    }
+    HAL_TIM_MspPostInit(&htim8);
 
-    HAL_TIM_MspPostInit(&htim3);
+    htim10.Instance = TIM10;
+    htim10.Init.Prescaler = 15U;
+    htim10.Init.CounterMode = TIM_COUNTERMODE_UP;
+    htim10.Init.Period = 999U;
+    htim10.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+    htim10.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+    if (HAL_TIM_PWM_Init(&htim10) != HAL_OK) {
+        Error_Handler();
+    }
+    if (HAL_TIM_PWM_ConfigChannel(&htim10, &oc, LF_PORT_RIGHT_PWM_CHANNEL) != HAL_OK) {
+        Error_Handler();
+    }
+    HAL_TIM_MspPostInit(&htim10);
 }
 
 static void init_uart(UART_HandleTypeDef *huart, USART_TypeDef *instance, uint32_t baudrate)
@@ -173,7 +185,7 @@ void LF_Port_Peripheral_Init(void)
 {
     init_gpio();
     init_adc1();
-    init_tim3_pwm();
+    init_motor_pwm();
     init_uart(&huart2, USART2, LF_SENSOR_UART_BAUDRATE);
     init_uart(&huart3, USART3, g_lf_config.radar_uart_baudrate);
 }
