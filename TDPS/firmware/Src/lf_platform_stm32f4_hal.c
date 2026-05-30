@@ -89,6 +89,8 @@ void LF_Platform_BoardInit(void)
         LF_SensorUart_Init(&LF_PORT_SENSOR_UART_HANDLE);
         (void)HAL_UART_Receive_IT(&LF_PORT_SENSOR_UART_HANDLE,
                                    (uint8_t *)&s_lf_sensor_uart_rx_byte, 1U);
+        HAL_Delay(1000U);
+        (void)LF_SensorUart_SendCommand(LF_SENSOR_UART_COMMAND_BOTH);
     }
 
     if (g_lf_config.radar_enable) {
@@ -116,11 +118,11 @@ void LF_Platform_ReadLineSensorRaw(uint16_t out_raw[LF_SENSOR_COUNT])
     }
 
     if (g_lf_config.sensor_input_mode == LF_SENSOR_INPUT_UART_PROTOCOL) {
-        uint8_t values[LF_SENSOR_COUNT];
+        uint16_t values[LF_SENSOR_COUNT];
 
-        if (LF_SensorUart_GetFrame(values)) {
+        if (LF_SensorUart_GetAnalogFrame(values)) {
             for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
-                out_raw[i] = (uint16_t)values[i] * 16U;
+                out_raw[i] = (values[i] > 4095U) ? 4095U : values[i];
             }
             return;
         }
@@ -227,6 +229,7 @@ void LF_Port_UartErrorCallback(UART_HandleTypeDef *huart)
 {
     if (g_lf_config.sensor_input_mode == LF_SENSOR_INPUT_UART_PROTOCOL &&
         huart->Instance == LF_PORT_SENSOR_UART_HANDLE.Instance) {
+        LF_SensorUart_RecordUartError();
         (void)HAL_UART_Receive_IT(huart, (uint8_t *)&s_lf_sensor_uart_rx_byte, 1U);
         return;
     }

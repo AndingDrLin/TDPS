@@ -4,11 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "lf_config.h"
-
-#ifdef LF_USE_STM32F4_HAL_PORT
 #include "stm32f4xx_hal.h"
-#endif
+#include "lf_config.h"
 
 #define LF_SENSOR_UART_BAUDRATE          115200U
 #define LF_SENSOR_UART_COMMAND_DIGITAL   "$0,0,1#"
@@ -39,6 +36,7 @@ bool LF_SensorUart_GetFrame(uint8_t out_values[LF_SENSOR_COUNT]);
 
 void LF_SensorUart_GetStats(LF_SensorUartStats *out_stats);
 void LF_SensorUart_GetLastAsciiFrame(char out_frame[LF_SENSOR_UART_MAX_FRAME_LEN]);
+
 uint32_t LF_SensorUart_GetValidFrameCount(void);
 uint32_t LF_SensorUart_GetErrorCount(void);
 
