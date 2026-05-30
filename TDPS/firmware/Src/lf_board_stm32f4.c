@@ -13,6 +13,8 @@ UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
 volatile uint32_t g_lf_sensor_dma_buffer[LF_SENSOR_COUNT];
 
+void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
+
 static void init_gpio(void)
 {
     GPIO_InitTypeDef gpio = {0};
@@ -44,12 +46,17 @@ static void init_gpio(void)
     gpio.Pull = GPIO_PULLUP;
     HAL_GPIO_Init(LF_PORT_BTN_GPIO_PORT, &gpio);
 
+#if defined(LF_PORT_FRONT_AUX_LEFT_PIN) && defined(LF_PORT_FRONT_AUX_LEFT_PORT)
     gpio.Pin = LF_PORT_FRONT_AUX_LEFT_PIN;
     gpio.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(LF_PORT_FRONT_AUX_LEFT_PORT, &gpio);
+#endif
 
+#if defined(LF_PORT_FRONT_AUX_RIGHT_PIN) && defined(LF_PORT_FRONT_AUX_RIGHT_PORT)
     gpio.Pin = LF_PORT_FRONT_AUX_RIGHT_PIN;
+    gpio.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(LF_PORT_FRONT_AUX_RIGHT_PORT, &gpio);
+#endif
 }
 
 static void init_adc1(void)

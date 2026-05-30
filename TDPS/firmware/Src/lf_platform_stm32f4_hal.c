@@ -82,7 +82,7 @@ void LF_Platform_BoardInit(void)
     HAL_TIM_PWM_Start(&LF_PORT_RIGHT_PWM_TIMER_HANDLE, LF_PORT_RIGHT_PWM_CHANNEL);
 
     if (g_lf_config.sensor_input_mode == LF_SENSOR_INPUT_ANALOG_ADC) {
-        HAL_ADC_Start_DMA(&LF_PORT_ADC_HANDLE, g_lf_sensor_dma_buffer, LF_SENSOR_COUNT);
+        HAL_ADC_Start_DMA(&LF_PORT_ADC_HANDLE, (uint32_t *)g_lf_sensor_dma_buffer, LF_SENSOR_COUNT);
     }
 
     if (g_lf_config.sensor_input_mode == LF_SENSOR_INPUT_UART_PROTOCOL) {
