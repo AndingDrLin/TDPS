@@ -88,8 +88,8 @@ int16_t LF_Control_UpdatePid(float error, float dt_s, LF_PIDState *pid)
 
 void LF_Control_ComputeMotorCmd(int16_t base_speed, int16_t correction, int16_t *out_left, int16_t *out_right)
 {
-    int32_t left = (int32_t)base_speed - correction;
-    int32_t right = (int32_t)base_speed + correction;
+    int32_t left = (int32_t)base_speed + correction;
+    int32_t right = (int32_t)base_speed - correction;
 
     if (out_left != 0) {
         *out_left = TDPS_ClampI16(left, (int16_t)(-g_lf_config.max_motor_cmd), g_lf_config.max_motor_cmd);
