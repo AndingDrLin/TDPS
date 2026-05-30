@@ -22,7 +22,7 @@ LF_DebugMonitorConfig g_lf_debug_monitor_config = {
     .enabled = (TDPS_DEBUG_MONITOR_ENABLE != 0),
     .no_car_mode = (TDPS_NO_CAR_MODE != 0),
     .report_period_ms = 200U,
-    .report_line_raw = false,
+    .report_line_raw = true,
     .report_wireless = true,
     .report_radar = true,
 };
@@ -244,7 +244,7 @@ void LF_DebugMonitor_Tick(void)
 
     len = snprintf(line,
                    sizeof(line),
-                   "DBG t=%lu mode=%s app=%s reason=%s cal=%u line=%u pos=%ld sum=%lu peak=%u peakv=%u conf=%u edge=%d motor_l=%d motor_r=%d radar=%s rfv=%u rhas=%u rtype=%s rtgt=%u rfc=%lu rage=%lu dist=%u rerr=%lu fork_dec=%d fork_det=%u fork_blk=%u fork_valid=%u fork_min=%u fork_stale=%u wready=%u wl=%s wcp=%u wcpf=%u wcpt=%u lq=%u ldrop=%u lsucc=%u lfail=%u lretry=%u lack=%u lerr=%d\n",
+                   "DBG t=%lu mode=%s app=%s reason=%s cal=%u line=%u pos=%ld sum=%lu peak=%u peakv=%u contrast=%u conf=%u edge=%d motor_l=%d motor_r=%d radar=%s rfv=%u rhas=%u rtype=%s rtgt=%u rfc=%lu rage=%lu dist=%u rerr=%lu fork_dec=%d fork_det=%u fork_blk=%u fork_valid=%u fork_min=%u fork_stale=%u wready=%u wl=%s wcp=%u wcpf=%u wcpt=%u lq=%u ldrop=%u lsucc=%u lfail=%u lretry=%u lack=%u lerr=%d\n",
                    (unsigned long)now_ms,
                    g_lf_debug_monitor_config.no_car_mode ? "no_car" : "run",
                    app_state_name(ctx->state),
@@ -255,6 +255,7 @@ void LF_DebugMonitor_Tick(void)
                    (unsigned long)ctx->last_frame.signal_sum,
                    (unsigned int)ctx->last_frame.peak_index,
                    (unsigned int)ctx->last_frame.peak_value,
+                   (unsigned int)ctx->last_frame.contrast_value,
                    (unsigned int)(ctx->last_frame.line_confidence * 1000.0f),
                    (int)ctx->last_frame.edge_hint,
                    (int)s_last_left_cmd,
