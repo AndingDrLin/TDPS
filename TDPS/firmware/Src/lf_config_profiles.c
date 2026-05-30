@@ -10,7 +10,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.sensor_input_mode = LF_SENSOR_INPUT_UART_PROTOCOL;
     g_lf_config.sensor_use_dynamic_calibration = false;
     g_lf_config.sensor_fast_calibration = true;
-    g_lf_config.sensor_invert_polarity = false;
+    g_lf_config.sensor_invert_polarity = true;
     g_lf_config.sensor_digital_active_high = false;
     g_lf_config.sensor_filter_alpha = 0.45f;
     g_lf_config.line_detect_min_sum = 780U;
