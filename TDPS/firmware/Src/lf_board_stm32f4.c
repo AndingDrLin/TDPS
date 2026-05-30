@@ -1,5 +1,7 @@
 #ifdef LF_USE_STM32F4_HAL_PORT
 
+#include <string.h>
+
 #include "main.h"
 #include "lf_port_stm32f4_hal.h"
 #include "lf_sensor_uart.h"
@@ -181,10 +183,24 @@ void LF_Port_SystemClock_Config(void)
     }
 }
 
+bool LF_Port_ReadLineSensorDigital(uint8_t out_level[LF_SENSOR_COUNT])
+{
+    if (out_level == NULL) {
+        return false;
+    }
+
+    memset(out_level, 0, LF_SENSOR_COUNT);
+    out_level[0] = (HAL_GPIO_ReadPin(LF_PORT_FRONT_AUX_LEFT_PORT, LF_PORT_FRONT_AUX_LEFT_PIN) == GPIO_PIN_SET) ? 1U : 0U;
+    out_level[1] = (HAL_GPIO_ReadPin(LF_PORT_FRONT_AUX_RIGHT_PORT, LF_PORT_FRONT_AUX_RIGHT_PIN) == GPIO_PIN_SET) ? 1U : 0U;
+    return true;
+}
+
 void LF_Port_Peripheral_Init(void)
 {
     init_gpio();
-    init_adc1();
+    if (g_lf_config.sensor_input_mode == LF_SENSOR_INPUT_ANALOG_ADC) {
+        init_adc1();
+    }
     init_motor_pwm();
     init_uart(&huart2, USART2, LF_SENSOR_UART_BAUDRATE);
     init_uart(&huart3, USART3, g_lf_config.radar_uart_baudrate);

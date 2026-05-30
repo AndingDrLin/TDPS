@@ -43,6 +43,12 @@ extern volatile uint32_t g_lf_sensor_dma_buffer[LF_SENSOR_COUNT];
 #define LF_PORT_LEFT_FORWARD_LEVEL (GPIO_PIN_SET)
 #define LF_PORT_RIGHT_FORWARD_LEVEL (GPIO_PIN_SET)
 
+/* ===== 双路巡线 GPIO ===== */
+#define LF_PORT_FRONT_AUX_LEFT_PORT (GPIOB)
+#define LF_PORT_FRONT_AUX_LEFT_PIN (GPIO_PIN_0)
+#define LF_PORT_FRONT_AUX_RIGHT_PORT (GPIOB)
+#define LF_PORT_FRONT_AUX_RIGHT_PIN (GPIO_PIN_1)
+
 /* ===== 状态灯 ===== */
 #define LF_PORT_LED_GPIO_PORT (GPIOC)
 #define LF_PORT_LED_PIN (GPIO_PIN_13)
