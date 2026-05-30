@@ -116,11 +116,55 @@ static int test_app_checkpoint_payload(void)
     failures += expect_true(diag->checkpoint_enqueue_fail_count == 0U, "checkpoint enqueue failure count stays zero");
     failures += expect_true(diag->checkpoint_throttled_count == 0U, "checkpoint throttle count stays zero");
     failures += expect_true(tx_len > 0U, "wireless stub captured transmitted payload");
-    failures += expect_true(buffer_contains(tx, tx_len, "TEAM=15,NAME=TDPS,CP=21,TIME=00:05\n"),
+    failures += expect_true(buffer_contains(tx, tx_len, "TEAM=15,NAME=PTSD,CP=21,TIME=00:05\n"),
                             "checkpoint payload uses task-required MM:SS format");
+    failures += expect_true(tx_len >= 3U && tx[0] == 0x00U && tx[1] == 0x01U && tx[2] == 0x0AU,
+                            "fixed-mode header uses verified target address and channel");
 
     WL_App_StopRace();
     failures += expect_true(WL_App_GetState() == WL_APP_STATE_FINISHED, "wireless app reaches FINISHED");
+    return failures;
+}
+
+static int test_app_timed_checkpoint_payload(void)
+{
+    const WL_App_Diag *diag;
+    uint8_t tx[128];
+    uint16_t tx_len;
+    uint32_t tx_count;
+    int failures = 0;
+
+    if (!WL_App_Init()) {
+        return 1;
+    }
+
+    failures += expect_true(WL_App_GetState() == WL_APP_STATE_READY, "wireless app waits ready after init");
+    WL_App_StartRace();
+    failures += expect_true(WL_App_GetState() == WL_APP_STATE_RUNNING, "wireless app starts race on request");
+    WL_Stub_ResetTxCount();
+    WL_Stub_ClearLastTx();
+
+    WL_Platform_DelayMs(g_wl_config.timed_checkpoint_delay_ms - 1U);
+    WL_App_Tick();
+    failures += expect_true(WL_Stub_GetTxCount() == 0U, "timed checkpoint does not send before configured delay");
+
+    WL_Platform_DelayMs(1U);
+    WL_App_Tick();
+    diag = WL_App_GetDiag();
+    tx_len = WL_Stub_GetLastTx(tx, (uint16_t)sizeof(tx));
+    failures += expect_true(diag->checkpoint_enqueued_count == 1U, "timed checkpoint enqueue count is recorded");
+    failures += expect_true(WL_Stub_GetTxCount() == 1U, "timed checkpoint sends at configured delay");
+    failures += expect_true(tx_len > 0U, "timed checkpoint payload is captured");
+    failures += expect_true(tx_len >= 3U && tx[0] == 0x00U && tx[1] == 0x01U && tx[2] == 0x0AU,
+                            "timed checkpoint fixed-mode header uses verified target address and channel");
+    failures += expect_true(buffer_contains(tx, tx_len, "TEAM=15,NAME=PTSD,CP=21,TIME=00:15\n"),
+                            "timed checkpoint payload uses configured delay as MM:SS");
+
+    tx_count = WL_Stub_GetTxCount();
+    WL_Platform_DelayMs(g_wl_config.timed_checkpoint_delay_ms);
+    WL_App_Tick();
+    failures += expect_true(WL_Stub_GetTxCount() == tx_count, "timed checkpoint sends only once");
+
     return failures;
 }
 
@@ -131,6 +175,7 @@ int main(void)
     failures += test_lora_queue_full();
     failures += test_lora_ack_retry_success();
     failures += test_app_checkpoint_payload();
+    failures += test_app_timed_checkpoint_payload();
 
     if (failures != 0) {
         printf("test_wl failed: %d\n", failures);

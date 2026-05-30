@@ -33,6 +33,9 @@ static bool s_has_tx = false;
 /** 最近一次状态上报时间戳。 */
 static uint32_t s_last_status_report_ms = 0;
 
+/** 上电定时检查点是否已经发送。 */
+static bool s_timed_checkpoint_sent = false;
+
 /** 最近一次操作的状态文本。 */
 static char s_status_text[64] = "IDLE";
 static WL_App_Diag s_diag;
@@ -104,6 +107,20 @@ static void _send_checkpoint(uint32_t checkpoint_id)
     WL_Platform_DebugPrint("\r\n");
 }
 
+static void _send_timed_checkpoint(void)
+{
+    if (s_timed_checkpoint_sent || g_wl_config.timed_checkpoint_delay_ms == 0U) {
+        return;
+    }
+
+    if (WL_App_GetElapsedMs() < g_wl_config.timed_checkpoint_delay_ms) {
+        return;
+    }
+
+    _send_checkpoint(g_wl_config.timed_checkpoint_id);
+    s_timed_checkpoint_sent = true;
+}
+
 static void _send_periodic_status(void)
 {
     uint32_t now = WL_Platform_GetMillis();
@@ -154,6 +171,7 @@ bool WL_App_Init(void)
     s_last_tx_ms = 0;
     s_has_tx = false;
     s_last_status_report_ms = 0;
+    s_timed_checkpoint_sent = false;
     memset(&s_diag, 0, sizeof(s_diag));
     snprintf(s_status_text, sizeof(s_status_text), "init");
 
@@ -175,17 +193,18 @@ bool WL_App_Init(void)
 
     s_state = WL_APP_STATE_READY;
     snprintf(s_status_text, sizeof(s_status_text), "ready");
-    WL_Platform_DebugPrint("[App] init done\r\n");
+    WL_Platform_DebugPrint("[App] init done, ready\r\n");
     return true;
 }
 
 void WL_App_Tick(void)
 {
-    WL_LoRa_Tick();
-
     if (s_state == WL_APP_STATE_RUNNING) {
+        _send_timed_checkpoint();
         _send_periodic_status();
     }
+
+    WL_LoRa_Tick();
 }
 
 void WL_App_StartRace(void)
@@ -198,7 +217,8 @@ void WL_App_StartRace(void)
     s_race_started = true;
     s_last_tx_ms = 0;
     s_has_tx = false;
-    s_last_status_report_ms = WL_Platform_GetMillis();
+    s_last_status_report_ms = s_race_start_ms;
+    s_timed_checkpoint_sent = false;
     s_state = WL_APP_STATE_RUNNING;
     snprintf(s_status_text, sizeof(s_status_text), "race started");
     WL_Platform_DebugPrint("[App] race started\r\n");

@@ -36,10 +36,12 @@ const WL_Config g_wl_config = {
     .ack_enable             = WL_ACK_ENABLE,
     .lora_run_at_init       = WL_LORA_RUN_AT_INIT,
     .status_report_period_ms = WL_STATUS_REPORT_PERIOD_MS,
+    .timed_checkpoint_delay_ms = WL_TIMED_CHECKPOINT_DELAY_MS,
 
     /* 检查点 */
     .checkpoint_arch_2_1    = WL_CHECKPOINT_ARCH_2_1,
     .checkpoint_arch_2_2    = WL_CHECKPOINT_ARCH_2_2,
+    .timed_checkpoint_id    = WL_TIMED_CHECKPOINT_ID,
 
     /* 队列参数 */
     .tx_queue_size          = WL_TX_QUEUE_SIZE,

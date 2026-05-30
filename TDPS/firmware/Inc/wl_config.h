@@ -19,7 +19,7 @@
 /*  队伍信息                                                           */
 /* ------------------------------------------------------------------ */
 #define WL_TEAM_NUMBER          15
-#define WL_TEAM_NAME            "TDPS"
+#define WL_TEAM_NAME            "PTSD"
 
 /* ------------------------------------------------------------------ */
 /*  LoRa 射频参数（必须与拱门接收端一致）                                */
@@ -49,8 +49,8 @@
 /** LoRa 密钥。0 = 不加密。 */
 #define WL_LORA_KEY             0
 
-/** 定点传输目标地址。0xFFFF 为广播地址。 */
-#define WL_LORA_FIXED_DEST_ADDR     0xFFFF
+/** 定点传输目标地址。 */
+#define WL_LORA_FIXED_DEST_ADDR     0x0001
 #define WL_LORA_FIXED_DEST_CHANNEL  WL_LORA_CHANNEL
 
 /* ------------------------------------------------------------------ */
@@ -94,7 +94,10 @@
 #define WL_LORA_RUN_AT_INIT         true
 
 /** 状态上报节拍（毫秒）。 */
-#define WL_STATUS_REPORT_PERIOD_MS  1000U
+#define WL_STATUS_REPORT_PERIOD_MS  0U
+
+/** 上电后自动发送检查点报文的延迟（毫秒）；0 表示关闭。 */
+#define WL_TIMED_CHECKPOINT_DELAY_MS 15000U
 
 /* ------------------------------------------------------------------ */
 /*  检查点 ID（由巡线系统定义，经过拱门时触发无线发射）                    */
@@ -105,6 +108,9 @@
 
 /** 拱门 2.2 对应的检查点 ID。 */
 #define WL_CHECKPOINT_ARCH_2_2      22U
+
+/** 上电自动发送使用的检查点 ID。 */
+#define WL_TIMED_CHECKPOINT_ID      WL_CHECKPOINT_ARCH_2_1
 
 /* ------------------------------------------------------------------ */
 /*  缓冲区大小                                                         */
@@ -158,10 +164,12 @@ typedef struct {
     bool        ack_enable;
     bool        lora_run_at_init;
     uint32_t    status_report_period_ms;
+    uint32_t    timed_checkpoint_delay_ms;
 
     /* 检查点 */
     uint32_t    checkpoint_arch_2_1;
     uint32_t    checkpoint_arch_2_2;
+    uint32_t    timed_checkpoint_id;
 
     /* 队列参数 */
     uint16_t    tx_queue_size;
