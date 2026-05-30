@@ -337,7 +337,7 @@
             <v6Rtti>0</v6Rtti>
             <VariousControls>
               <MiscControls></MiscControls>
-              <Define>USE_HAL_DRIVER,STM32F407xx,LF_USE_STM32F4_HAL_PORT,WL_USE_STM32F4_HAL_PORT</Define>
+              <Define>USE_HAL_DRIVER,STM32F407xx,LF_USE_STM32F4_HAL_PORT,WL_USE_STM32F4_HAL_PORT,TDPS_NO_CAR_MODE=0,TDPS_DEBUG_MONITOR_ENABLE=1</Define>
               <Undefine></Undefine>
               <IncludePath>../Core/Inc;../Inc;../platform;../common;../Drivers/STM32F4xx_HAL_Driver/Inc;../Drivers/STM32F4xx_HAL_Driver/Inc/Legacy;../Drivers/CMSIS/Device/ST/STM32F4xx/Include;../Drivers/CMSIS/Include</IncludePath>
             </VariousControls>

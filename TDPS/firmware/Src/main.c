@@ -15,8 +15,8 @@ int main(void)
 {
     bool wireless_ready;
 
-    LF_Platform_BoardInit();
     LF_Config_ApplyDebugProfile();  /* 低速整车巡线测试：线稳定后自动开始、快标定、雷达只观测 */
+    LF_Platform_BoardInit();
     LF_LedBlink_Init();
     LF_RunLog_Init();
     LF_DebugMonitor_Init();
