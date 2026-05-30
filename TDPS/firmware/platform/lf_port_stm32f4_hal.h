@@ -40,8 +40,8 @@ extern volatile uint32_t g_lf_sensor_dma_buffer[LF_SENSOR_COUNT];
 #define LF_PORT_RIGHT_DIR_PIN (GPIO_PIN_9)
 
 /* 前进方向对应电平：A/左电机与 B/右电机方向极性相反。 */
-#define LF_PORT_LEFT_FORWARD_LEVEL (GPIO_PIN_SET)
-#define LF_PORT_RIGHT_FORWARD_LEVEL (GPIO_PIN_RESET)
+#define LF_PORT_LEFT_FORWARD_LEVEL (GPIO_PIN_RESET)
+#define LF_PORT_RIGHT_FORWARD_LEVEL (GPIO_PIN_SET)
 
 /* ===== 双路巡线 GPIO ===== */
 #define LF_PORT_FRONT_AUX_LEFT_PORT (GPIOB)
