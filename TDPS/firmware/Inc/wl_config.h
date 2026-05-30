@@ -91,7 +91,7 @@
 #define WL_ACK_ENABLE               false
 
 /** 启动时下发 AT 配置，确保模块参数与固件一致。 */
-#define WL_LORA_RUN_AT_INIT         true
+#define WL_LORA_RUN_AT_INIT         false
 
 /** 状态上报节拍（毫秒）。 */
 #define WL_STATUS_REPORT_PERIOD_MS  0U

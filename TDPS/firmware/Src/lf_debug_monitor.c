@@ -11,11 +11,11 @@
 #include "wl_lora.h"
 
 #ifndef TDPS_NO_CAR_MODE
-#define TDPS_NO_CAR_MODE 1
+#define TDPS_NO_CAR_MODE 0
 #endif
 
 #ifndef TDPS_DEBUG_MONITOR_ENABLE
-#define TDPS_DEBUG_MONITOR_ENABLE TDPS_NO_CAR_MODE
+#define TDPS_DEBUG_MONITOR_ENABLE 1
 #endif
 
 LF_DebugMonitorConfig g_lf_debug_monitor_config = {
