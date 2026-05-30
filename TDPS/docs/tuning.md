@@ -47,14 +47,14 @@
 
 | 参数 | 当前值 | 含义 | 调试方法 |
 |---|---:|---|---|
-| `base_speed` | `260`（track profile） | 正常巡线基础速度。 | 第一优先调。直道稳定后逐步加；弯道冲出或避障不稳就降。 |
-| `straight_boost_speed` | `320` | 连续稳定直道的高速速度。 | 直道稳定后逐步加；如果进入弯道前来不及降速就降低或提高确认帧数。 |
-| `curve_prepare_speed` | `150` | 检测到入弯趋势后的提前减速速度。 | U 型弯冲出就降低；直道误减速多就提高阈值或增加确认帧。 |
-| `sharp_turn_speed` | `130`（track profile） | 偏差超过急弯阈值后的低速。 | 急弯仍冲出就降低；急弯太慢就小幅提高。 |
-| `kp` | `0.32`（track profile） | 比例增益，决定偏离黑线后的纠正力度。 | 贴不住弯、回正慢就加；左右蛇形摆动就减。 |
-| `kd` | `1.40`（track profile） | 微分增益，抑制快速摆动。 | 加 `kp` 后抖动就加 `kd`；转弯变迟钝或电机尖叫就减。 |
+| `base_speed` | `300`（track profile） | 正常巡线基础速度。 | 第一优先调。直道稳定后逐步加；弯道冲出或避障不稳就降。 |
+| `straight_boost_speed` | `360` | 连续稳定直道的高速速度。 | 直道稳定后逐步加；如果进入弯道前来不及降速就降低或提高确认帧数。 |
+| `curve_prepare_speed` | `180` | 检测到入弯趋势后的提前减速速度。 | U 型弯冲出就降低；直道误减速多就提高阈值或增加确认帧。 |
+| `sharp_turn_speed` | `150`（track profile） | 偏差超过急弯阈值后的低速。 | 急弯仍冲出就降低；急弯太慢就小幅提高。 |
+| `kp` | `0.10`（track profile） | 比例增益，决定偏离黑线后的纠正力度。 | 贴不住弯、回正慢就加；左右蛇形摆动就减。 |
+| `kd` | `0.45`（track profile） | 微分增益，抑制快速摆动。 | 加 `kp` 后抖动就加 `kd`；转弯变迟钝或电机尖叫就减。 |
 | `ki` | `0.0` | 积分增益，修长期偏差。 | 通常保持 0。只有持续偏一侧且机械问题排除后，再小幅增加。 |
-| `max_correction` | `280`（track profile） | PID 修正量限幅。 | 弯道打角不够就加；急转导致甩尾或左右轮打满就减。 |
+| `max_correction` | `90`（track profile） | PID 修正量限幅。 | 弯道打角不够就加；急转导致甩尾或左右轮打满就减。 |
 | `max_motor_cmd` | `800`（track profile） | 电机命令绝对值上限。 | 保护电机/电池。速度不够可加，但先确认机械和供电。 |
 | `motor_deadband` | `80`（track profile） | 非零命令的最小起转补偿。 | 小命令车不动就加；低速动作太冲就减。 |
 
@@ -80,8 +80,8 @@
 | 参数 | 当前值 | 含义 | 调试方法 |
 |---|---:|---|---|
 | `line_lost_grace_ticks` | `5`（track profile） | 短暂丢线后保持最后可信方向的周期数。 | U 型顶点短暂丢线就加；保持方向过久偏离就减。 |
-| `line_hold_speed` | `85`（track profile） | grace 阶段低速前进速度。 | 找线太慢就加；冲过线就减。 |
-| `line_hold_turn_speed` | `130`（track profile） | grace 阶段按可信方向转向的速度差。 | U 型弯转不过去就加；原地转圈倾向明显就减。 |
+| `line_hold_speed` | `90`（track profile） | grace 阶段低速前进速度。 | 找线太慢就加；冲过线就减。 |
+| `line_hold_turn_speed` | `60`（track profile） | grace 阶段按可信方向转向的速度差。 | U 型弯转不过去就加；原地转圈倾向明显就减。 |
 | `recover_sweep_start_speed` | `100`（track profile） | 进入扫线时的初始转向速度。 | 找线太慢就加；扫过线就减。 |
 | `recover_sweep_max_speed` | `190`（track profile） | 恢复扫线最大转向速度。 | 超时前仍找不到线就加；原地转圈明显就减。 |
 | `recover_timeout_ms` | `1500`（track profile） | 丢线恢复最长时间，超时停车。 | 短暂离线即可找回但停车太早就加；失控转圈太久就减。 |
@@ -138,13 +138,13 @@
 
 当前 track profile 是实车测试初值，不是单次最快值：
 
-- `base_speed=260`
-- `straight_boost_speed=320`
-- `curve_prepare_speed=150`
-- `sharp_turn_speed=130`
-- `kp=0.32`
-- `kd=1.40`
-- `max_correction=280`
+- `base_speed=300`
+- `straight_boost_speed=360`
+- `curve_prepare_speed=180`
+- `sharp_turn_speed=150`
+- `kp=0.10`
+- `kd=0.45`
+- `max_correction=90`
 
 Simulator 默认 override 仍用于离线 normal/stress 回归，并默认启用直道高速、弯前减速、抗干扰和可信方向更新。
 
