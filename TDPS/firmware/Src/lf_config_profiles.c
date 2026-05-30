@@ -16,6 +16,14 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.line_detect_min_sum = 780U;
     g_lf_config.line_detect_min_peak = 260U;
     g_lf_config.line_detect_min_contrast = 80U;
+    g_lf_config.sensor_weights[0] = 1750;
+    g_lf_config.sensor_weights[1] = 1250;
+    g_lf_config.sensor_weights[2] = 750;
+    g_lf_config.sensor_weights[3] = 250;
+    g_lf_config.sensor_weights[4] = -250;
+    g_lf_config.sensor_weights[5] = -750;
+    g_lf_config.sensor_weights[6] = -1250;
+    g_lf_config.sensor_weights[7] = -1750;
     g_lf_config.kp = 0.12f;
     g_lf_config.ki = 0.0f;
     g_lf_config.kd = 0.35f;
