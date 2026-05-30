@@ -616,7 +616,7 @@ static void process_running(uint32_t now_ms, float dt_s)
      * error > 0 代表需要向右修正，error < 0 代表需要向左修正。
      */
     base_speed = choose_running_speed(&s_app.last_frame);
-    error = (float)(-s_app.last_frame.position);
+    error = (float)s_app.last_frame.position;
     correction = LF_Control_UpdatePid(error, dt_s, &s_app.pid);
     LF_Control_ComputeMotorCmd(base_speed, correction, &left_cmd, &right_cmd);
     left_cmd = limit_degraded_speed(left_cmd);

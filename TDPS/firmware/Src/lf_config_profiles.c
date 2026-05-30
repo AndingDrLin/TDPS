@@ -29,8 +29,8 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.obstacle_avoid_enable = false;
     g_lf_config.fork_enable = false;
     g_lf_config.recover_timeout_ms = 3000U;
-    g_lf_config.recover_turn_speed = 150;
-    g_lf_config.recover_backtrack_speed = 100;
+    g_lf_config.recover_turn_speed = 120;
+    g_lf_config.recover_backtrack_speed = 0;
 }
 
 void LF_Config_ApplyCompetitionProfile(void)
