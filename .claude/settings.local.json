@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status *)",
+      "Bash(git symbolic-ref *)",
+      "Bash(git show-ref *)",
+      "Bash(git show *)",
+      "Bash(git reflog *)",
+      "Bash(git diff *)",
+      "Bash(git config *)",
+      "Bash(python3 *)",
+      "Bash(git fetch *)",
+      "Bash(git stash *)",
+      "Bash(git reset *)",
+      "Bash(git fsck *)",
+      "Bash(git restore *)",
+      "Bash(git update-index *)",
+      "Bash(git hash-object *)",
+      "Bash(git check-attr *)",
+      "Bash(git add *)"
+    ]
+  }
+}
