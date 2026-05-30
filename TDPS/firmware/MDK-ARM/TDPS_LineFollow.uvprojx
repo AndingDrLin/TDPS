@@ -504,6 +504,11 @@
               <FileType>1</FileType>
               <FilePath>../Src/tdps_uart_callbacks.c</FilePath>
             </File>
+            <File>
+              <FileName>lf_watch_debug.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../Src/lf_watch_debug.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

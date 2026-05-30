@@ -19,6 +19,7 @@ set(TDPS_CORE_SOURCES
     Src/lf_future_hooks.c
     Src/lf_radar.c
     Src/lf_sensor.c
+    Src/lf_watch_debug.c
     Src/wireless_hooks.c
     Src/wl_app.c
     Src/wl_config.c

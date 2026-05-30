@@ -13,6 +13,7 @@
 #include "lf_radar.h"
 #include "lf_run_log.h"
 #include "lf_sensor.h"
+#include "lf_watch_debug.h"
 
 static LF_AppContext s_app;
 
@@ -1056,6 +1057,8 @@ void LF_App_RunStep(void)
             }
             break;
     }
+
+    LF_WatchDebug_UpdateApp(&s_app);
 }
 
 const LF_AppContext *LF_App_GetContext(void)

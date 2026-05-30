@@ -9,6 +9,7 @@
 #include "lf_port_stm32f4_hal.h"
 #include "lf_radar_uart.h"
 #include "lf_sensor_uart.h"
+#include "lf_watch_debug.h"
 
 /*
  * 说明：
@@ -155,9 +156,13 @@ uint16_t LF_Platform_RadarRead(uint8_t *out_buf, uint16_t max_len)
 
 void LF_Platform_SetMotorCommand(int16_t left_cmd, int16_t right_cmd)
 {
-    LF_DebugMonitor_OnMotorCommand(left_cmd, right_cmd);
+    bool no_car_mode;
 
-    if (LF_DebugMonitor_IsNoCarMode()) {
+    LF_DebugMonitor_OnMotorCommand(left_cmd, right_cmd);
+    no_car_mode = LF_DebugMonitor_IsNoCarMode();
+    LF_WatchDebug_UpdateMotor(left_cmd, right_cmd, no_car_mode ? 1U : 0U);
+
+    if (no_car_mode) {
         return;
     }
 
@@ -174,6 +179,7 @@ void LF_Platform_SetMotorCommand(int16_t left_cmd, int16_t right_cmd)
                      LF_PORT_RIGHT_FORWARD_LEVEL,
                      &LF_PORT_RIGHT_PWM_TIMER_HANDLE,
                      LF_PORT_RIGHT_PWM_CHANNEL);
+    LF_WatchDebug_UpdateMotor(left_cmd, right_cmd, 0U);
 }
 
 void LF_Platform_SetStatusLed(bool on)
