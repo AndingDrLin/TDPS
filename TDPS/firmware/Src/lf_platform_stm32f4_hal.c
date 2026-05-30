@@ -37,6 +37,7 @@ static volatile bool s_lf_debug_tx_busy = false;
 static char s_lf_debug_tx_buffer[384];
 #endif
 static volatile uint8_t s_lf_sensor_uart_rx_byte;
+static uint32_t s_last_sensor_command_ms;
 
 static GPIO_PinState invert_pin_state(GPIO_PinState s)
 {
@@ -92,6 +93,7 @@ void LF_Platform_BoardInit(void)
                                    (uint8_t *)&s_lf_sensor_uart_rx_byte, 1U);
         HAL_Delay(1000U);
         (void)LF_SensorUart_SendCommand(LF_SENSOR_UART_COMMAND_BOTH);
+        s_last_sensor_command_ms = HAL_GetTick();
     }
 
     if (g_lf_config.radar_enable) {
@@ -126,6 +128,10 @@ void LF_Platform_ReadLineSensorRaw(uint16_t out_raw[LF_SENSOR_COUNT])
                 out_raw[i] = (values[i] > 4095U) ? 4095U : values[i];
             }
             return;
+        }
+        if ((uint32_t)(HAL_GetTick() - s_last_sensor_command_ms) >= 500U) {
+            (void)LF_SensorUart_SendCommand(LF_SENSOR_UART_COMMAND_BOTH);
+            s_last_sensor_command_ms = HAL_GetTick();
         }
         for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
             out_raw[i] = 0U;
