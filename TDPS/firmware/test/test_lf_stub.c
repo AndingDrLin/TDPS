@@ -316,6 +316,14 @@ static int init_app_to_running(void)
     LF_DebugMonitor_Init();
     g_lf_debug_monitor_config.enabled = false;
     g_lf_debug_monitor_config.no_car_mode = true;
+    g_lf_config.auto_start_delay_ms = 10U;
+    g_lf_config.start_min_boot_delay_ms = 0U;
+    g_lf_config.start_line_hold_ms = 0U;
+    g_lf_config.calibration_duration_ms = 10U;
+    g_lf_config.sensor_use_dynamic_calibration = false;
+    g_lf_config.sensor_fast_calibration = true;
+    g_lf_config.obstacle_avoid_enable = true;
+    g_lf_config.fork_enable = true;
     (void)Wireless_Hooks_Init();
     LF_App_Init();
     run_app_for(g_lf_config.auto_start_delay_ms + g_lf_config.calibration_duration_ms + 20U);
@@ -431,8 +439,9 @@ static int test_fork_left_blocked_commits_right(void)
         return 1;
     }
 
-    inject_block_frames();
     set_fork_line();
+    run_app_for(30U);
+    inject_block_frames();
     run_app_for(30U);
     ctx = LF_App_GetContext();
     failures += expect_true(ctx->state == LF_APP_STATE_FORK_COMMIT_RIGHT,

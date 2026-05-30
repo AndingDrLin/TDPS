@@ -169,7 +169,9 @@ static int16_t choose_running_speed(const LF_SensorFrame *frame)
                 frame->contrast_value < g_lf_config.line_detect_min_contrast)) {
         speed = g_lf_config.adaptive_slow_speed;
     }
-    if (s_app.obstacle_state == LF_RADAR_OBSTACLE_WARN && speed > g_lf_config.obstacle_warn_speed) {
+    if (g_lf_config.obstacle_avoid_enable &&
+        s_app.obstacle_state == LF_RADAR_OBSTACLE_WARN &&
+        speed > g_lf_config.obstacle_warn_speed) {
         speed = g_lf_config.obstacle_warn_speed;
     }
     return limit_degraded_speed(speed);
@@ -199,6 +201,40 @@ static bool frame_is_confirmed_line(const LF_SensorFrame *frame, uint16_t min_su
     return frame != NULL && frame->line_detected &&
            frame->signal_sum >= min_sum &&
            frame->line_confidence >= min_confidence;
+}
+
+static bool wait_start_line_ready(uint32_t now_ms)
+{
+    uint32_t held_ms;
+
+    if ((uint32_t)(now_ms - s_app.boot_ms) < g_lf_config.start_min_boot_delay_ms) {
+        s_app.wait_start_line_since_ms = 0U;
+        return false;
+    }
+
+    LF_Sensor_ReadFrame(&s_app.last_frame);
+    if (!s_app.last_frame.line_detected) {
+        s_app.wait_start_line_since_ms = 0U;
+        return false;
+    }
+
+    if (s_app.wait_start_line_since_ms == 0U) {
+        s_app.wait_start_line_since_ms = now_ms;
+    }
+
+    held_ms = now_ms - s_app.wait_start_line_since_ms;
+    return held_ms >= g_lf_config.start_line_hold_ms;
+}
+
+static void start_calibration(uint32_t now_ms)
+{
+    LF_Sensor_StartCalibration();
+    s_app.calib_start_ms = now_ms;
+    s_app.wait_start_line_since_ms = 0U;
+    set_reason(LF_APP_REASON_CALIBRATION_STARTED);
+    set_state(LF_APP_STATE_CALIBRATING);
+    LF_Hook_OnCalibrationBegin();
+    LF_Platform_DebugPrint("Calibration start\n");
 }
 
 static bool confirm_line_frame(uint8_t *counter, uint8_t required_ticks, uint16_t min_sum, float min_confidence)
@@ -567,7 +603,8 @@ static void process_running(uint32_t now_ms, float dt_s)
         s_app.fork_detect_count = 0U;
     }
 
-    if (!fork_candidate && s_app.obstacle_state == LF_RADAR_OBSTACLE_BLOCK) {
+    if (!fork_candidate && g_lf_config.obstacle_avoid_enable &&
+        s_app.obstacle_state == LF_RADAR_OBSTACLE_BLOCK) {
         set_reason(LF_APP_REASON_RADAR_BLOCK);
         start_avoidance(now_ms);
         return;
@@ -768,7 +805,8 @@ static void process_recovery(uint32_t now_ms)
         confirm_ticks = 1U;
     }
 
-    if (s_app.obstacle_state == LF_RADAR_OBSTACLE_BLOCK) {
+    if (g_lf_config.obstacle_avoid_enable &&
+        s_app.obstacle_state == LF_RADAR_OBSTACLE_BLOCK) {
         set_reason(LF_APP_REASON_RADAR_BLOCK);
         start_avoidance(now_ms);
         return;
@@ -849,6 +887,7 @@ void LF_App_Init(void)
 
     s_app.boot_ms = now;
     s_app.last_step_ms = now;
+    s_app.wait_start_line_since_ms = 0U;
     s_app.calib_start_ms = 0U;
     s_app.recover_start_ms = 0U;
     s_app.avoid_state_start_ms = 0U;
@@ -903,14 +942,12 @@ void LF_App_RunStep(void)
 
     switch (s_app.state) {
         case LF_APP_STATE_WAIT_START:
+            LF_Chassis_Stop();
             if (LF_Platform_IsStartButtonPressed() ||
-                ((uint32_t)(now_ms - s_app.boot_ms) >= g_lf_config.auto_start_delay_ms)) {
-                LF_Sensor_StartCalibration();
-                s_app.calib_start_ms = now_ms;
-                set_reason(LF_APP_REASON_CALIBRATION_STARTED);
-                set_state(LF_APP_STATE_CALIBRATING);
-                LF_Hook_OnCalibrationBegin();
-                LF_Platform_DebugPrint("Calibration start\n");
+                (g_lf_config.auto_start_delay_ms > 0U &&
+                 (uint32_t)(now_ms - s_app.boot_ms) >= g_lf_config.auto_start_delay_ms) ||
+                wait_start_line_ready(now_ms)) {
+                start_calibration(now_ms);
             }
             break;
 

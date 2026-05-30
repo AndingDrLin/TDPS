@@ -8,6 +8,8 @@
 LF_Config g_lf_config = {
     .control_period_ms = 10U,
     .auto_start_delay_ms = 1200U,
+    .start_min_boot_delay_ms = 2000U,
+    .start_line_hold_ms = 2000U,
 
     /* 标定参数：影响上电后传感器 min/max 覆盖质量。 */
     .calibration_duration_ms = 3000U,

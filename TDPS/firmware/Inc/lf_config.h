@@ -31,8 +31,12 @@ typedef struct {
     /* 主循环节拍（ms）。建议保持固定周期执行控制算法。 */
     uint16_t control_period_ms;
 
-    /* 自动开始延时（ms）。上电后等待该时间进入标定。 */
+    /* 自动开始延时（ms）。0 表示禁用固定倒计时启动。 */
     uint32_t auto_start_delay_ms;
+
+    /* 无按钮启动：上电安全等待后，检测到有效线持续一段时间再进入标定。 */
+    uint32_t start_min_boot_delay_ms;
+    uint32_t start_line_hold_ms;
 
     /* 光照标定持续时间（ms）。 */
     uint32_t calibration_duration_ms;
