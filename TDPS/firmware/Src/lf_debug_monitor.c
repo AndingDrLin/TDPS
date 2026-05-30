@@ -66,6 +66,22 @@ void LF_WatchDebug_UpdateApp(const LF_AppContext *ctx)
         g_lf_watch.raw[i] = ctx->last_frame.raw[i];
         g_lf_watch.norm[i] = ctx->last_frame.norm[i];
     }
+    g_lf_watch.raw0 = ctx->last_frame.raw[0];
+    g_lf_watch.raw1 = ctx->last_frame.raw[1];
+    g_lf_watch.raw2 = ctx->last_frame.raw[2];
+    g_lf_watch.raw3 = ctx->last_frame.raw[3];
+    g_lf_watch.raw4 = ctx->last_frame.raw[4];
+    g_lf_watch.raw5 = ctx->last_frame.raw[5];
+    g_lf_watch.raw6 = ctx->last_frame.raw[6];
+    g_lf_watch.raw7 = ctx->last_frame.raw[7];
+    g_lf_watch.norm0 = ctx->last_frame.norm[0];
+    g_lf_watch.norm1 = ctx->last_frame.norm[1];
+    g_lf_watch.norm2 = ctx->last_frame.norm[2];
+    g_lf_watch.norm3 = ctx->last_frame.norm[3];
+    g_lf_watch.norm4 = ctx->last_frame.norm[4];
+    g_lf_watch.norm5 = ctx->last_frame.norm[5];
+    g_lf_watch.norm6 = ctx->last_frame.norm[6];
+    g_lf_watch.norm7 = ctx->last_frame.norm[7];
 
 #ifdef LF_USE_STM32F4_HAL_PORT
     g_lf_watch.tim8_ccr3 = TIM8->CCR3;

@@ -1033,6 +1033,13 @@ void LF_App_RunStep(void)
 
         case LF_APP_STATE_STOPPED:
             LF_Chassis_Stop();
+            if (g_lf_config.sensor_fast_calibration && wait_start_line_ready(now_ms)) {
+                s_app.run_finalized = false;
+                s_app.line_lost_count = 0U;
+                s_app.recovery_count = 0U;
+                start_calibration(now_ms);
+                break;
+            }
             if (!s_app.run_finalized) {
                 LF_RunLog_Finalize((uint8_t)LF_APP_STATE_STOPPED, (uint8_t)s_app.reason);
                 LF_LedBlink_SetPostmortemCode(decode_stop_reason(s_app.reason),
