@@ -207,7 +207,6 @@ static bool frame_is_straight_noise(const LF_SensorFrame *frame)
 static bool frame_is_lead_event(const LF_SensorFrame *frame)
 {
     int32_t abs_position;
-    bool strong_special_frame;
 
     if (!g_lf_config.lead_compensation_enable || frame == NULL || !frame->line_detected ||
         frame_is_straight_noise(frame)) {
@@ -219,13 +218,11 @@ static bool frame_is_lead_event(const LF_SensorFrame *frame)
     }
 
     abs_position = abs_i32(frame->position);
-    strong_special_frame = frame->active_count > g_lf_config.lead_event_active_count_threshold &&
-                           frame->signal_sum >= (uint32_t)g_lf_config.lead_event_min_sum + 400U;
     if (abs_position <= g_lf_config.lead_event_center_error_threshold) {
-        return s_app.lead_entry_memory_count > 0U || strong_special_frame;
+        return frame->edge_hint == 0 || s_app.lead_entry_memory_count > 0U;
     }
     return abs_position >= g_lf_config.lead_event_entry_error_threshold ||
-           (frame->edge_hint != 0 && s_app.lead_entry_memory_count > 0U);
+           frame->edge_hint != 0;
 }
 
 static void reset_lead_phase(void)
