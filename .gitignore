@@ -103,3 +103,4 @@ TDPS/docs_reference/**
 
 # Local archives or legacy ignored directories kept outside TDPS
 slides/
+.claude/settings.local.json
