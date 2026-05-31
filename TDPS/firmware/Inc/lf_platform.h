@@ -19,6 +19,9 @@ void LF_Platform_BoardInit(void);
 /* 读取单调递增毫秒计数。 */
 uint32_t LF_Platform_GetMillis(void);
 
+/* 读取单调递增微秒计数（用于高精度 dt_s 计算）。 */
+uint32_t LF_Platform_GetMicros(void);
+
 /* 毫秒级阻塞延时（仅用于初始化阶段，不建议在控制循环中调用）。 */
 void LF_Platform_DelayMs(uint32_t ms);
 

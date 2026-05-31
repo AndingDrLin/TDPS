@@ -141,6 +141,18 @@ typedef struct {
     int16_t line_hold_turn_speed;
     float derivative_filter_alpha;
     float integral_limit;
+    /*
+     * 积分分离 + 变速积分：
+     * |error| > sep+soft → 积分指数衰减（防弯道记忆出弯过冲）
+     * sep < |error| ≤ sep+soft → 积分速率线性降速（平滑过渡）
+     * |error| ≤ sep → 全速积分（直线稳态修正）
+     */
+    float integral_separation_threshold;
+    float integral_soft_zone;
+    /*
+     * PID 输出变化率限幅：单拍最大跳变量，防止传感器跳变导致急转。
+     * 100Hz 控制频率下，80 意味着每秒最多变化 8000 单位 ≈ 全量程的 8 倍/s。
+     */
     int16_t max_output_delta_per_tick;
 
     /* 电机命令绝对值上限。 */

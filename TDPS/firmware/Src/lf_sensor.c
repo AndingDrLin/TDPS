@@ -10,6 +10,17 @@
 static LF_SensorCalibration s_calib;
 static float s_filtered[LF_SENSOR_COUNT];
 static int32_t s_last_position = 0;
+static uint16_t s_median_hist[LF_SENSOR_COUNT][3];
+static uint8_t s_median_idx = 0U;
+static bool s_median_primed = false;
+
+static uint16_t median3(uint16_t a, uint16_t b, uint16_t c)
+{
+    if (a > b) { uint16_t t = a; a = b; b = t; }
+    if (a > c) { uint16_t t = a; a = c; c = t; }
+    if (b > c) { uint16_t t = b; b = c; c = t; }
+    return b;
+}
 
 static uint16_t normalize_with_calib(uint16_t raw, uint16_t min_v, uint16_t max_v)
 {
@@ -43,6 +54,7 @@ void LF_Sensor_Init(void)
     s_calib.status = LF_SENSOR_CAL_FAILED;
     s_calib.calibrated = false;
     s_last_position = 0;
+    s_median_primed = false;
 }
 
 void LF_Sensor_StartCalibration(void)
@@ -135,6 +147,15 @@ void LF_Sensor_EndCalibration(void)
     }
 }
 
+/*
+ * 传感器帧读取：中值去噪 → 归一化 → 一阶 IIR → 边缘抑制 → 加权质心。
+ *
+ * 位约定：position 左负右正，目标值 0。
+ * 权重表 sensor_weights[] 应左负右正、边缘绝对值大于中心，
+ * 以提高边缘位置分辨率。
+ *
+ * 丢线时 position 保持上一次有效值，供恢复策略使用。
+ */
 void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
 {
     uint32_t i;
@@ -156,6 +177,28 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
     memset(out_frame, 0, sizeof(*out_frame));
     LF_Platform_ReadLineSensorRaw(out_frame->raw);
 
+    /*
+     * 3 样本中值滤波：消除传感器脉冲噪声（地面反光、颗粒等）。
+     * 每个传感器维护 3 帧历史，取中值作为当前噪声抑制后的原始值。
+     * 首帧用当前值填充全部历史，避免冷启动零值干扰。
+     */
+    {
+        uint32_t mi;
+        for (mi = 0U; mi < LF_SENSOR_COUNT; ++mi) {
+            s_median_hist[mi][s_median_idx] = out_frame->raw[mi];
+            if (!s_median_primed) {
+                s_median_hist[mi][0] = out_frame->raw[mi];
+                s_median_hist[mi][1] = out_frame->raw[mi];
+                s_median_hist[mi][2] = out_frame->raw[mi];
+            }
+            out_frame->raw[mi] = median3(s_median_hist[mi][0],
+                                         s_median_hist[mi][1],
+                                         s_median_hist[mi][2]);
+        }
+        s_median_primed = true;
+        s_median_idx = (s_median_idx + 1U) % 3U;
+    }
+
     for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
         uint16_t norm;
         bool sensor_valid = ((s_calib.bad_mask & (uint16_t)(1U << i)) == 0U);
@@ -172,6 +215,7 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
             }
         }
 
+        /* 一阶 IIR 低通：alpha 越大越灵敏（噪声多），越小越平滑（延迟大） */
         float filt = g_lf_config.sensor_filter_alpha * (float)norm +
                      (1.0f - g_lf_config.sensor_filter_alpha) * s_filtered[i];
 
@@ -182,6 +226,10 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
         calc_u16[i] = out_frame->filtered_u16[i];
     }
 
+    /*
+     * 边缘噪声抑制：若端点传感器（0 或 7）异常偏高而内侧邻居偏低，
+     * 且中心区有真实信号，则将该端点清零——典型的反光/杂散光干扰模式。
+     */
     if (g_lf_config.sensor_edge_noise_reject_enable && LF_SENSOR_COUNT >= 8U) {
         uint16_t neighbor_threshold = g_lf_config.sensor_edge_noise_neighbor_threshold;
         if (neighbor_threshold == 0U) {
@@ -229,8 +277,10 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
     out_frame->contrast_value = (peak_value > min_value) ? (uint16_t)(peak_value - min_value) : 0U;
     out_frame->active_count = active_count;
     out_frame->peak_index = peak_index;
+    /* 线置信度：峰值越接近归一化上限 1000，质量越高 */
     out_frame->line_confidence = (float)peak_value / 1000.0f;
 
+    /* 边缘方向提示：半区信号强度显著不对称时给出方向，用于丢线恢复 */
     if (left_sum > (right_sum + g_lf_config.edge_hint_threshold)) {
         out_frame->edge_hint = -1;
     } else if (right_sum > (left_sum + g_lf_config.edge_hint_threshold)) {
@@ -239,17 +289,17 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
         out_frame->edge_hint = 0;
     }
 
+    /* 三条件判定在线：信号总量 + 峰值 + 对比度均达标 */
     out_frame->line_detected = (signal_sum >= g_lf_config.line_detect_min_sum &&
                                 peak_value >= g_lf_config.line_detect_min_peak &&
                                 out_frame->contrast_value >= g_lf_config.line_detect_min_contrast);
 
     if (out_frame->line_detected && signal_sum > 0U) {
+        /* 加权质心法：position = Σ(weight_i × value_i) / Σ(value_i) */
         out_frame->position = (int32_t)(weighted_sum / (int64_t)signal_sum);
         s_last_position = out_frame->position;
     } else {
-        /*
-         * 丢线时继续输出上一次位置，便于恢复策略根据“最后方向”转向。
-         */
+        /* 丢线时保持上次位置，恢复策略据此决定转向方向 */
         out_frame->position = s_last_position;
     }
 }

@@ -190,13 +190,34 @@ void LF_SensorUart_RecordUartError(void)
     s_stats.uart_error_count++;
 }
 
+/*
+ * 中断发送模式：用 HAL_UART_Transmit_IT 替代阻塞发送，
+ * 发送期间 s_tx_busy 为 true，完成回调中清除。
+ * 若上一帧仍在发送则跳过本次命令（传感器命令是周期轮询的，丢一帧无影响）。
+ */
+static volatile bool s_tx_busy = false;
+
 HAL_StatusTypeDef LF_SensorUart_SendCommand(const char *cmd)
 {
     if (s_huart == NULL || cmd == NULL) {
         return HAL_ERROR;
     }
+    if (s_tx_busy) {
+        return HAL_BUSY;
+    }
 
-    return HAL_UART_Transmit(s_huart, (uint8_t *)cmd, (uint16_t)strlen(cmd), 100U);
+    s_tx_busy = true;
+    HAL_StatusTypeDef status = HAL_UART_Transmit_IT(s_huart, (uint8_t *)cmd, (uint16_t)strlen(cmd));
+    if (status != HAL_OK) {
+        s_tx_busy = false;
+    }
+    return status;
+}
+
+/* 由 HAL_UART_TxCpltCallback 分发调用，清除发送忙标志。 */
+void LF_SensorUart_OnTxComplete(void)
+{
+    s_tx_busy = false;
 }
 
 bool LF_SensorUart_GetAnalogFrame(uint16_t out_values[LF_SENSOR_COUNT])

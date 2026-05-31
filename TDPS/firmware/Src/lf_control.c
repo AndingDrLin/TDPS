@@ -15,6 +15,15 @@ void LF_Control_ResetPid(LF_PIDState *pid)
     pid->initialized = 0U;
 }
 
+/*
+ * 位置式 PID 更新（100Hz 控制周期）。
+ *
+ * 误差约定：position 左负右正，目标值 0。
+ * error > 0 → 需向右修正（左轮加速、右轮减速）。
+ *
+ * 保护链：积分分离 → 硬限幅 → 输出限幅 → 变化率限幅 → 反饱和回退。
+ * D 项经一阶低通滤波抑制高频噪声，alpha 越大 D 越平滑（响应越慢）。
+ */
 int16_t LF_Control_UpdatePid(float error, float dt_s, LF_PIDState *pid)
 {
     float raw_derivative;
@@ -39,6 +48,7 @@ int16_t LF_Control_UpdatePid(float error, float dt_s, LF_PIDState *pid)
         integral_limit = -integral_limit;
     }
 
+    /* 状态切换后首拍：用当前误差初始化，防止微分突变 */
     if (pid->initialized == 0U) {
         pid->prev_error = error;
         pid->filtered_derivative = 0.0f;
@@ -46,12 +56,39 @@ int16_t LF_Control_UpdatePid(float error, float dt_s, LF_PIDState *pid)
         pid->initialized = 1U;
     }
 
+    /* 后向欧拉微分 + 一阶低通滤波 */
     raw_derivative = (error - pid->prev_error) / dt_s;
     derivative = alpha * pid->filtered_derivative + (1.0f - alpha) * raw_derivative;
     pid->filtered_derivative = derivative;
 
     if (g_lf_config.ki != 0.0f) {
-        pid->integral += error * dt_s;
+        float abs_error = (error > 0.0f) ? error : -error;
+        float sep = g_lf_config.integral_separation_threshold;
+        float soft = g_lf_config.integral_soft_zone;
+
+        if (sep > 0.0f && abs_error > sep + soft) {
+            /*
+             * 大误差区（如弯道）：积分指数衰减，防止弯道积分记忆导致出弯过冲。
+             * 衰减系数 0.90 每拍，10 拍（100ms）内降至原来的 35%。
+             */
+            pid->integral *= 0.90f;
+        } else if (sep > 0.0f && abs_error > sep) {
+            /*
+             * 过渡区：积分速率从 100% 线性降至 0%。
+             * 误差越接近分离阈值，积分越慢。
+             */
+            float ratio = (abs_error - sep) / soft;
+            float speed = 1.0f - ratio;
+            pid->integral += error * dt_s * speed;
+        } else {
+            /*
+             * 小误差区：正常全速积分。
+             * 这是直线上的稳态修正窗口。
+             */
+            pid->integral += error * dt_s;
+        }
+
+        /* 硬限幅 */
         if (pid->integral > integral_limit) {
             pid->integral = integral_limit;
         } else if (pid->integral < -integral_limit) {
@@ -59,11 +96,13 @@ int16_t LF_Control_UpdatePid(float error, float dt_s, LF_PIDState *pid)
         }
     }
 
+    /* P + I + D 合成，输出限幅到 max_correction */
     output = g_lf_config.kp * error + g_lf_config.ki * pid->integral + g_lf_config.kd * derivative;
     limited_output = (float)TDPS_ClampI16((int32_t)output,
                                           (int16_t)(-g_lf_config.max_correction),
                                           g_lf_config.max_correction);
 
+    /* 输出变化率限幅：单拍最大跳变 max_output_delta_per_tick，防止传感器跳变导致急转 */
     if (max_delta > 0) {
         float delta = limited_output - pid->prev_output;
         if (delta > (float)max_delta) {
@@ -76,6 +115,8 @@ int16_t LF_Control_UpdatePid(float error, float dt_s, LF_PIDState *pid)
     result = TDPS_ClampI16((int32_t)limited_output,
                            (int16_t)(-g_lf_config.max_correction),
                            g_lf_config.max_correction);
+
+    /* 条件式反饱和：输出已触顶且误差仍往同方向推 → 撤销本拍积分增量 */
     if ((result >= g_lf_config.max_correction && error > 0.0f) ||
         (result <= (int16_t)(-g_lf_config.max_correction) && error < 0.0f)) {
         pid->integral -= error * dt_s;

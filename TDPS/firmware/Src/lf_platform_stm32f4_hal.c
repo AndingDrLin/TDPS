@@ -74,6 +74,18 @@ static void set_single_motor(int16_t cmd,
     __HAL_TIM_SET_COMPARE(pwm_timer, pwm_channel, pwm);
 }
 
+/*
+ * 启动 DWT 周期计数器（Cortex-M4 内建，无需占用额外定时器）。
+ * 168MHz 主频下每 6ns 递增一次，用于微秒级 dt_s 计算。
+ * 32 位计数器约 25.5 秒回绕，差值运算对无符号回绕安全。
+ */
+static void dwt_init(void)
+{
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0U;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+}
+
 void LF_Platform_BoardInit(void)
 {
     HAL_Init();
@@ -89,6 +101,15 @@ void LF_Platform_BoardInit(void)
 
     if (g_lf_config.sensor_input_mode == LF_SENSOR_INPUT_UART_PROTOCOL) {
         LF_SensorUart_Init(&LF_PORT_SENSOR_UART_HANDLE);
+        /*
+         * 中断优先级阶梯（从高到低）：
+         * (未来)TIM 控制中断 = 3 → 传感器 UART RX = 4 → 雷达 UART RX = 5 → UART TX Complete = 6。
+         * 控制周期是刚性需求，传感器数据丢一个字节则整帧作废，雷达可容忍偶尔丢帧。
+         */
+        HAL_NVIC_SetPriority(LF_PORT_SENSOR_UART_IRQN,
+                             LF_PORT_SENSOR_UART_IRQ_PRIORITY,
+                             LF_PORT_SENSOR_UART_IRQ_SUB_PRIORITY);
+        HAL_NVIC_EnableIRQ(LF_PORT_SENSOR_UART_IRQN);
         (void)HAL_UART_Receive_IT(&LF_PORT_SENSOR_UART_HANDLE,
                                    (uint8_t *)&s_lf_sensor_uart_rx_byte, 1U);
         HAL_Delay(1000U);
@@ -100,11 +121,19 @@ void LF_Platform_BoardInit(void)
         LF_RadarUart_Init();
         LF_RadarUart_SwitchToStandardMode();
     }
+
+    dwt_init();
 }
 
 uint32_t LF_Platform_GetMillis(void)
 {
     return HAL_GetTick();
+}
+
+/* DWT 微秒时间戳：将 CPU 周期数换算为微秒，用于高精度 dt_s。 */
+uint32_t LF_Platform_GetMicros(void)
+{
+    return DWT->CYCCNT / (SystemCoreClock / 1000000U);
 }
 
 void LF_Platform_DelayMs(uint32_t ms)
@@ -248,14 +277,23 @@ void LF_Port_UartErrorCallback(UART_HandleTypeDef *huart)
     LF_RadarUart_ErrorCallback(huart);
 }
 
+/* UART 发送完成回调：传感器串口清除忙标志，调试串口解锁发送缓冲。 */
 void LF_Port_UartTxCpltCallback(UART_HandleTypeDef *huart)
 {
+    if (huart == NULL) {
+        return;
+    }
+
+    if (g_lf_config.sensor_input_mode == LF_SENSOR_INPUT_UART_PROTOCOL &&
+        huart->Instance == LF_PORT_SENSOR_UART_HANDLE.Instance) {
+        LF_SensorUart_OnTxComplete();
+        return;
+    }
+
 #if LF_PORT_ENABLE_DEBUG_UART
     if (huart != NULL && huart->Instance == LF_PORT_DEBUG_UART_HANDLE.Instance) {
         s_lf_debug_tx_busy = false;
     }
-#else
-    (void)huart;
 #endif
 }
 

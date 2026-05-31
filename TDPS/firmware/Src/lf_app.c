@@ -230,6 +230,8 @@ static void reset_lead_phase(void)
     s_app.lead_phase = (uint8_t)LF_LEAD_PHASE_IDLE;
     s_app.lead_event_count = 0U;
     s_app.lead_phase_ticks = 0U;
+    s_app.lead_entry_memory_count = 0U;
+    s_app.lead_entry_dir = 0;
 }
 
 static void start_lead_advance(void)
@@ -842,107 +844,179 @@ static void run_calibration_motion(uint32_t now_ms)
     }
 }
 
-static void process_running(uint32_t now_ms, float dt_s)
-{
-    int16_t correction;
-    int16_t left_cmd;
-    int16_t right_cmd;
-    int16_t base_speed;
+/*
+ * 巡线决策仲裁：将原来隐式嵌套的 if-return 链改为显式优先级枚举。
+ *
+ * 优先级从高到低：
+ *   0. LINE_LOST       — 丢线立即进入恢复，最高优先级
+ *   1. FORK            — 岔路口采样决策（领先补偿期间抑制）
+ *   2. OBSTACLE        — 雷达障碍触发避障
+ *   3. LEAD_COMPENSATION — 入弯前馈转向（传感器 22cm 前置量的几何补偿）
+ *   4. PID_CONTROL     — 正常巡线，最低优先级
+ *
+ * 同级内不互抢——领先补偿一旦启动（lead_phase ≠ IDLE），
+ * 在完成前不会被低优先级的岔路/障碍覆盖；但丢线仍可中断领先补偿。
+ */
+typedef enum {
+    LF_RUN_ACTION_NONE               = 0,
+    LF_RUN_ACTION_LINE_LOST,
+    LF_RUN_ACTION_FORK,
+    LF_RUN_ACTION_OBSTACLE,
+    LF_RUN_ACTION_LEAD_COMPENSATION,
+    LF_RUN_ACTION_PID_CONTROL,
+} LF_RunAction;
+
+typedef struct {
+    LF_RunAction action;
     bool fork_candidate;
     bool interference;
-    float error;
+} LF_RunDecision;
 
-    LF_Sensor_ReadFrame(&s_app.last_frame);
-    interference = frame_is_interference(&s_app.last_frame);
+static void handle_line_lost(uint32_t now_ms)
+{
+    reset_lead_phase();
+    s_app.straight_noise_count = 0U;
+    s_app.fork_detect_count = 0U;
 
-    if (!s_app.last_frame.line_detected) {
-        reset_lead_phase();
-        s_app.straight_noise_count = 0U;
-        s_app.fork_detect_count = 0U;
-        if (!g_lf_config.stable_direction_enable && s_app.last_frame.edge_hint != 0) {
-            s_app.last_seen_dir = s_app.last_frame.edge_hint;
-        }
-        if (s_app.line_lost_count < UINT8_MAX) {
-            s_app.line_lost_count += 1U;
-        }
-        if (s_app.line_lost_count <= g_lf_config.line_lost_grace_ticks) {
-            hold_last_line_direction();
-            set_reason(LF_APP_REASON_LINE_LOST);
-            return;
-        }
-        s_app.recover_start_ms = LF_Platform_GetMillis();
-        enter_recovery_phase(LF_RECOVER_BACKTRACK, s_app.recover_start_ms);
+    if (!g_lf_config.stable_direction_enable && s_app.last_frame.edge_hint != 0) {
+        s_app.last_seen_dir = s_app.last_frame.edge_hint;
+    }
+    if (s_app.line_lost_count < UINT8_MAX) {
+        s_app.line_lost_count += 1U;
+    }
+    if (s_app.line_lost_count <= g_lf_config.line_lost_grace_ticks) {
+        hold_last_line_direction();
         set_reason(LF_APP_REASON_LINE_LOST);
-        set_state(LF_APP_STATE_RECOVERING);
-        LF_Hook_OnLineLost();
         return;
     }
-    s_app.line_lost_count = 0U;
-    update_running_window(&s_app.last_frame, interference);
 
-    fork_candidate = !interference &&
-                     g_lf_config.fork_enable &&
-                     !fork_cooldown_active(now_ms) &&
-                     frame_looks_like_fork(&s_app.last_frame);
-    if (fork_candidate) {
+    s_app.recover_start_ms = now_ms;
+    enter_recovery_phase(LF_RECOVER_BACKTRACK, s_app.recover_start_ms);
+    set_reason(LF_APP_REASON_LINE_LOST);
+    set_state(LF_APP_STATE_RECOVERING);
+    LF_Hook_OnLineLost();
+}
+
+/*
+ * 每控制周期调用一次，按优先级选择唯一动作。
+ * 返回前已完成本周期所有窗口计数器更新。
+ */
+static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
+{
+    LF_RunDecision d;
+    d.fork_candidate = false;
+    d.interference = frame_is_interference(&s_app.last_frame);
+
+    /* 优先级 0：丢线（不可降级，立即接管） */
+    if (!s_app.last_frame.line_detected) {
+        d.action = LF_RUN_ACTION_LINE_LOST;
+        return d;
+    }
+
+    s_app.line_lost_count = 0U;
+    update_running_window(&s_app.last_frame, d.interference);
+
+    /* 优先级 1：岔路（需连续确认 fork_detect_confirm_ticks 帧） */
+    if (!d.interference && g_lf_config.fork_enable &&
+        !fork_cooldown_active(now_ms) &&
+        frame_looks_like_fork(&s_app.last_frame)) {
+        d.fork_candidate = true;
         if (s_app.fork_detect_count < UINT8_MAX) {
             s_app.fork_detect_count += 1U;
         }
         if (s_app.fork_detect_count >= g_lf_config.fork_detect_confirm_ticks) {
-            start_fork_sample(now_ms);
-            return;
+            d.action = LF_RUN_ACTION_FORK;
+            return d;
         }
     } else {
         s_app.fork_detect_count = 0U;
     }
 
-    if (!fork_candidate && g_lf_config.obstacle_avoid_enable &&
+    /* 优先级 2：雷达障碍 */
+    if (!d.fork_candidate && g_lf_config.obstacle_avoid_enable &&
         s_app.obstacle_state == LF_RADAR_OBSTACLE_BLOCK) {
-        reset_lead_phase();
-        set_reason(LF_APP_REASON_RADAR_BLOCK);
-        start_avoidance(now_ms);
-        return;
+        d.action = LF_RUN_ACTION_OBSTACLE;
+        return d;
     }
 
+    /* 优先级 3：领先补偿——传感器 22cm 前置导致的位置超前响应 */
     if (s_app.lead_phase != (uint8_t)LF_LEAD_PHASE_IDLE) {
-        process_lead_phase();
-        return;
+        d.action = LF_RUN_ACTION_LEAD_COMPENSATION;
+        return d;
     }
 
     if (frame_is_lead_event(&s_app.last_frame)) {
         bump_counter(&s_app.lead_event_count);
         if (s_app.lead_event_count >= g_lf_config.lead_event_confirm_ticks) {
             start_lead_advance();
-            process_lead_phase();
-            return;
+            d.action = LF_RUN_ACTION_LEAD_COMPENSATION;
+            return d;
         }
     } else {
         s_app.lead_event_count = 0U;
     }
-    update_lead_entry_memory(&s_app.last_frame, interference);
+    update_lead_entry_memory(&s_app.last_frame, d.interference);
 
-    /*
-     * position 左负右正，目标值是 0。
-     * error > 0 代表需要向右修正，error < 0 代表需要向左修正。
-     */
-    base_speed = choose_running_speed(&s_app.last_frame);
-    error = (float)(interference ? s_app.last_trusted_position : s_app.last_frame.position);
-    error = shape_control_error(error);
-    {
-        float saved_kp = g_lf_config.kp;
-        float ratio = (float)base_speed / (float)g_lf_config.base_speed;
-        if (ratio < 0.18f) ratio = 0.18f;
-        g_lf_config.kp = saved_kp * ratio;
-        correction = LF_Control_UpdatePid(error, dt_s, &s_app.pid);
-        g_lf_config.kp = saved_kp;
+    /* 优先级 4：正常 PID 控制 */
+    d.action = LF_RUN_ACTION_PID_CONTROL;
+    return d;
+}
+
+static void process_running(uint32_t now_ms, float dt_s)
+{
+    int16_t correction;
+    int16_t left_cmd;
+    int16_t right_cmd;
+    int16_t base_speed;
+    float error;
+
+    LF_Sensor_ReadFrame(&s_app.last_frame);
+
+    LF_RunDecision decision = arbitrate_running_action(now_ms);
+
+    switch (decision.action) {
+    case LF_RUN_ACTION_LINE_LOST:
+        handle_line_lost(now_ms);
+        return;
+
+    case LF_RUN_ACTION_FORK:
+        start_fork_sample(now_ms);
+        return;
+
+    case LF_RUN_ACTION_OBSTACLE:
+        reset_lead_phase();
+        set_reason(LF_APP_REASON_RADAR_BLOCK);
+        start_avoidance(now_ms);
+        return;
+
+    case LF_RUN_ACTION_LEAD_COMPENSATION:
+        process_lead_phase();
+        return;
+
+    case LF_RUN_ACTION_PID_CONTROL:
+        base_speed = choose_running_speed(&s_app.last_frame);
+        error = (float)(decision.interference
+                        ? s_app.last_trusted_position
+                        : s_app.last_frame.position);
+        error = shape_control_error(error);
+        {
+            float saved_kp = g_lf_config.kp;
+            float ratio = (float)base_speed / (float)g_lf_config.base_speed;
+            if (ratio < 0.18f) ratio = 0.18f;
+            g_lf_config.kp = saved_kp * ratio;
+            correction = LF_Control_UpdatePid(error, dt_s, &s_app.pid);
+            g_lf_config.kp = saved_kp;
+        }
+        LF_Control_ComputeMotorCmd(base_speed, correction, &left_cmd, &right_cmd);
+        left_cmd = limit_degraded_speed(left_cmd);
+        right_cmd = limit_degraded_speed(right_cmd);
+        update_trusted_direction(&s_app.last_frame, decision.interference);
+        LF_Chassis_SetCommand(left_cmd, right_cmd);
+        return;
+
+    default:
+        return;
     }
-    LF_Control_ComputeMotorCmd(base_speed, correction, &left_cmd, &right_cmd);
-    left_cmd = limit_degraded_speed(left_cmd);
-    right_cmd = limit_degraded_speed(right_cmd);
-
-    update_trusted_direction(&s_app.last_frame, interference);
-
-    LF_Chassis_SetCommand(left_cmd, right_cmd);
 }
 
 static void stop_after_avoid_failure(void)
@@ -1199,7 +1273,7 @@ void LF_App_Init(void)
     LF_Chassis_Init();
 
     s_app.boot_ms = now;
-    s_app.last_step_ms = now;
+    s_app.last_step_us = LF_Platform_GetMicros();
     s_app.wait_start_line_since_ms = 0U;
     s_app.calib_start_ms = 0U;
     s_app.recover_start_ms = 0U;
@@ -1255,15 +1329,17 @@ void LF_App_Init(void)
 
 void LF_App_RunStep(void)
 {
+    uint32_t now_us = LF_Platform_GetMicros();
     uint32_t now_ms = LF_Platform_GetMillis();
     float dt_s;
 
-    if (!time_reached(now_ms, s_app.last_step_ms, g_lf_config.control_period_ms)) {
+    if (!time_reached(now_us, s_app.last_step_us,
+                      (uint32_t)g_lf_config.control_period_ms * 1000U)) {
         return;
     }
 
-    dt_s = (float)(now_ms - s_app.last_step_ms) / 1000.0f;
-    s_app.last_step_ms = now_ms;
+    dt_s = (float)(now_us - s_app.last_step_us) / 1000000.0f;
+    s_app.last_step_us = now_us;
     refresh_radar_snapshot(now_ms);
 
     switch (s_app.state) {

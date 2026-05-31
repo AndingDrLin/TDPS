@@ -46,12 +46,15 @@ int main(void)
         LF_Platform_DebugPrint("System ready: line-follow only\n");
     }
 
+    /*
+     * 主循环为纯事件分发器：每个 Tick 函数内部自有时基门控，
+     * 时间未到时立即返回，不阻塞 CPU。
+     */
     while (1) {
         LF_App_RunStep();
         LF_LedBlink_Tick();
         LF_DgusScreen_Tick();
         Wireless_Hooks_Tick();
         LF_DebugMonitor_Tick();
-        LF_Platform_DelayMs(1U);
     }
 }

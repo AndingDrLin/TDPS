@@ -32,6 +32,7 @@ void LF_SensorUart_Init(UART_HandleTypeDef *huart);
 void LF_SensorUart_OnByte(UART_HandleTypeDef *huart, uint8_t byte);
 void LF_SensorUart_RecordUartError(void);
 HAL_StatusTypeDef LF_SensorUart_SendCommand(const char *cmd);
+void LF_SensorUart_OnTxComplete(void);
 
 bool LF_SensorUart_GetAnalogFrame(uint16_t out_values[LF_SENSOR_COUNT]);
 bool LF_SensorUart_GetDigitalFrame(uint8_t out_values[LF_SENSOR_COUNT]);

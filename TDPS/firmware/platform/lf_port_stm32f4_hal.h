@@ -72,6 +72,14 @@ extern volatile uint32_t g_lf_sensor_dma_buffer[LF_SENSOR_COUNT];
 
 /* ===== 巡线传感器串口：USART2 PA2(TX→传感器RX) / PA3(传感器TX→RX) ===== */
 #define LF_PORT_SENSOR_UART_HANDLE (huart2)
+/*
+ * NVIC 优先级分配（数字越小优先级越高）：
+ * 传感器 UART IRQ 优先级 = 4，高于雷达(5)，低于未来 TIM 控制中断(3)。
+ * 传感器每 10ms 来一帧，丢一个字节则整帧作废，必须保证实时性。
+ */
+#define LF_PORT_SENSOR_UART_IRQN          (USART2_IRQn)
+#define LF_PORT_SENSOR_UART_IRQ_PRIORITY  (4U)
+#define LF_PORT_SENSOR_UART_IRQ_SUB_PRIORITY (0U)
 
 /* 注意：若屏幕也用 USART2，需改为其他串口或分时复用。 */
 /* #define LF_PORT_SCREEN_UART_HANDLE (huart2) */

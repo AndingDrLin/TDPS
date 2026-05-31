@@ -63,7 +63,7 @@ typedef enum {
 typedef struct {
     LF_AppState state;
     uint32_t boot_ms;
-    uint32_t last_step_ms;
+    uint32_t last_step_us; /* DWT 微秒时间戳，替代毫秒级 last_step_ms，dt_s 精度提升 1000 倍。 */
     uint32_t wait_start_line_since_ms;
     uint32_t calib_start_ms;
     uint32_t recover_start_ms;

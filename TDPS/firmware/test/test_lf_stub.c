@@ -204,11 +204,13 @@ static int test_sensor_weighted_position_and_edge_hint(void)
     LF_Sensor_Init();
     LF_Sensor_StartCalibration();
     LF_PlatformStub_SetLineSensorRaw(raw);
-    LF_Sensor_ReadFrame(&frame);
+    LF_Sensor_ReadFrame(&frame);  /* prime median history */
+    LF_Sensor_ReadFrame(&frame);  /* flush median */
+    LF_Sensor_ReadFrame(&frame);  /* stable output */
     LF_PlatformStub_ClearLineSensorRaw();
 
     return expect_true(frame.line_detected, "sensor detects right-side line") |
-           expect_true(frame.position == 1000, "sensor weighted position matches right-side weights") |
+           expect_true(frame.position == 1500, "sensor weighted position matches right-side weights") |
            expect_true(frame.edge_hint == 1, "sensor edge hint points right");
 }
 
@@ -578,7 +580,7 @@ static int test_offset_line_still_turns_with_deadband(void)
     set_center_line();
     run_app_for(40U);
     LF_PlatformStub_SetLineSensorRaw(far_left_line);
-    run_app_step_after(10U);
+    run_app_for(30U);
     ctx = LF_App_GetContext();
     LF_DebugMonitor_GetLastMotorCommand(&left, &right);
     failures += expect_true(ctx->last_frame.line_detected, "offset line remains detected");

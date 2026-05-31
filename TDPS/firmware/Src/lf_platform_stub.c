@@ -38,6 +38,11 @@ uint32_t LF_Platform_GetMillis(void)
     return s_fake_ms;
 }
 
+uint32_t LF_Platform_GetMicros(void)
+{
+    return s_fake_ms * 1000U;
+}
+
 void LF_Platform_DelayMs(uint32_t ms)
 {
     s_fake_ms += ms;

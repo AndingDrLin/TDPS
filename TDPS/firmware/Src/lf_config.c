@@ -34,16 +34,20 @@ LF_Config g_lf_config = {
     .edge_hint_threshold = 120U,
     .sensor_edge_noise_reject_enable = true,
     .sensor_edge_noise_neighbor_threshold = 260U,
-    .sensor_weights = {-1750, -1250, -750, -250, 250, 750, 1250, 1750},
+    .sensor_weights = {-3200, -1800, -800, -200, 200, 800, 1800, 3200},
 
-    /* 巡线 PID：整车速度和稳定性主要由这组参数决定。 */
-    .kp = 0.48f,
-    .ki = 0.0f,
-    .kd = 1.90f,
+    /*
+     * 巡线 PID：5 级非线性响应链 ——
+     * deadband(50) → soft_zone(150) → 线性区 → 积分过渡区 → 积分分离区。
+     * Ki 只在 |error| < sep 时全速累积，超过 sep+soft 则指数衰减。
+     */
+    .kp = 0.32f,
+    .ki = 0.06f,
+    .kd = 3.50f,
     .base_speed = 300,
     .max_correction = 340,
-    .control_error_deadband = 0,
-    .control_error_soft_zone = 0,
+    .control_error_deadband = 50,
+    .control_error_soft_zone = 150,
     .adaptive_slow_speed = 210,
     .adaptive_error_threshold = 350,
     .adaptive_confidence_threshold = 0.40f,
@@ -85,7 +89,10 @@ LF_Config g_lf_config = {
     .line_hold_speed = 150,
     .line_hold_turn_speed = 210,
     .derivative_filter_alpha = 0.35f,
-    .integral_limit = 200.0f,
+    /* 积分保护链：硬限幅 → 分离衰减 → 输出变化率限幅 → 反饱和回退 */
+    .integral_limit = 150.0f,
+    .integral_separation_threshold = 350.0f,
+    .integral_soft_zone = 100.0f,
     .max_output_delta_per_tick = 80,
     .max_motor_cmd = 900,
     .motor_deadband = 120,
