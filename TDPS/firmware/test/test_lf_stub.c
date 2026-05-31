@@ -304,6 +304,12 @@ static void set_right_branch_line(void)
     LF_PlatformStub_SetLineSensorRaw(raw);
 }
 
+static void set_far_right_entry_line(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {900U, 900U, 900U, 900U, 900U, 900U, 3300U, 3300U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
 static void set_wide_center_line(void)
 {
     const uint16_t raw[LF_SENSOR_COUNT] = {1200U, 2200U, 3300U, 4095U, 4095U, 3300U, 2200U, 1200U};
@@ -313,6 +319,12 @@ static void set_wide_center_line(void)
 static void set_dirty_straight_noise(void)
 {
     const uint16_t raw[LF_SENSOR_COUNT] = {0U, 1230U, 1230U, 1230U, 1230U, 1230U, 1230U, 0U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
+static void set_wide_biased_straight_noise(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {900U, 900U, 2800U, 3300U, 3300U, 3300U, 2800U, 900U};
     LF_PlatformStub_SetLineSensorRaw(raw);
 }
 
@@ -470,6 +482,32 @@ static int test_straight_noise_keeps_base_speed(void)
     return failures;
 }
 
+static int test_biased_wide_noise_does_not_start_lead_event(void)
+{
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.lead_compensation_enable = true;
+    g_lf_config.lead_event_confirm_ticks = 1U;
+    g_lf_config.lead_event_active_count_threshold = 5U;
+    g_lf_config.lead_event_min_sum = 1800U;
+    g_lf_config.lead_event_center_error_threshold = 350;
+    g_lf_config.lead_event_entry_error_threshold = 650;
+    set_wide_biased_straight_noise();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->lead_phase == (uint8_t)LF_LEAD_PHASE_IDLE,
+                            "biased wide straight noise does not start lead phase");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
 static int test_lead_event_advances_before_turning(void)
 {
     const LF_AppContext *ctx;
@@ -494,9 +532,9 @@ static int test_lead_event_advances_before_turning(void)
     g_lf_config.lead_event_active_count_threshold = 5U;
     g_lf_config.lead_event_min_sum = 1800U;
     g_lf_config.lead_event_center_error_threshold = 350;
-    g_lf_config.lead_event_entry_error_threshold = 300;
+    g_lf_config.lead_event_entry_error_threshold = 650;
 
-    set_right_branch_line();
+    set_far_right_entry_line();
     run_app_step_after(10U);
     set_wide_center_line();
     run_app_step_after(10U);
@@ -568,8 +606,8 @@ static int test_line_loss_resets_lead_phase(void)
     g_lf_config.lead_event_active_count_threshold = 5U;
     g_lf_config.lead_event_min_sum = 1800U;
     g_lf_config.lead_event_center_error_threshold = 350;
-    g_lf_config.lead_event_entry_error_threshold = 300;
-    set_right_branch_line();
+    g_lf_config.lead_event_entry_error_threshold = 650;
+    set_far_right_entry_line();
     run_app_step_after(10U);
     set_wide_center_line();
     run_app_step_after(10U);
@@ -756,6 +794,7 @@ int main(void)
     failures += test_debug_monitor_raw_and_reason();
     failures += test_app_recovery_timeout();
     failures += test_straight_noise_keeps_base_speed();
+    failures += test_biased_wide_noise_does_not_start_lead_event();
     failures += test_lead_event_advances_before_turning();
     failures += test_lead_event_without_entry_direction_does_not_random_turn();
     failures += test_line_loss_resets_lead_phase();

@@ -16,7 +16,7 @@
 - 传感器数量：8 路（默认）
 - 输入模式由 `sensor_input_mode` 选择，支持 ADC、GPIO 数字量和 Yahboom 8-LP UART 协议路径
 - 先做归一化，再做低通滤波
-- 采用加权位置计算偏差（左负右正）
+- 采用配置权重计算位置偏差；debug profile 因 Yahboom UART 实车通道顺序使用 `{1750..-1750}` 权重，方向以实车架空验证为准
 - 输出辅助信号：`signal_sum`、`peak_value`、`contrast_value`、`active_count`、`line_confidence`、`edge_hint`
 
 与 Yahboom 8-LP 的接口匹配策略：

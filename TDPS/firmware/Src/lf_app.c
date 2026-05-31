@@ -215,8 +215,10 @@ static bool frame_is_lead_event(const LF_SensorFrame *frame)
     }
 
     abs_position = abs_i32(frame->position);
-    return abs_position <= g_lf_config.lead_event_center_error_threshold ||
-           abs_position >= g_lf_config.lead_event_entry_error_threshold ||
+    if (abs_position <= g_lf_config.lead_event_center_error_threshold) {
+        return frame->edge_hint == 0 || s_app.lead_entry_memory_count > 0U;
+    }
+    return abs_position >= g_lf_config.lead_event_entry_error_threshold ||
            frame->edge_hint != 0;
 }
 
@@ -839,7 +841,6 @@ static void process_running(uint32_t now_ms, float dt_s)
         return;
     }
     s_app.line_lost_count = 0U;
-    update_lead_entry_memory(&s_app.last_frame, interference);
     update_running_window(&s_app.last_frame, interference);
 
     fork_candidate = !interference &&
@@ -881,6 +882,7 @@ static void process_running(uint32_t now_ms, float dt_s)
     } else {
         s_app.lead_event_count = 0U;
     }
+    update_lead_entry_memory(&s_app.last_frame, interference);
 
     /*
      * position 左负右正，目标值是 0。

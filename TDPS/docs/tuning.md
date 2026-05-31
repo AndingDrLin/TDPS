@@ -42,7 +42,7 @@
 | `sensor_digital_threshold` | `2048` | 数字/GPIO 判高低的阈值。 | 仅数字模式相关。临界抖动时远离黑白中间值。 |
 | `sensor_digital_active_high` | `false` | 数字模式下“在线”是否为高电平。 | 黑线时 IO 输出高则设 `true`，黑线时输出低则保持 `false`。 |
 | `sensor_use_dynamic_calibration` | `false`（debug profile） | 是否启用上电动态标定。 | ADC 模式建议开启；当前 Yahboom UART debug profile 关闭动态标定并使用快速标定。 |
-| `sensor_filter_alpha` | `0.35`（debug profile） | 低通滤波系数。越大越灵敏，越小越平滑。 | 曾试过 `0.45`，直线更容易受噪声影响；当前以 `0.35` 为低速实车基准。 |
+| `sensor_filter_alpha` | `0.35`（debug profile） | 低通滤波系数。越大越灵敏，越小越平滑。 | 当前以 `0.35` 为低速实车基准；若调大，必须单独验证直线不蛇形。 |
 | `line_detect_min_sum` | `780` | 判定“检测到线”的总强度阈值。 | 经常误丢线就降低；白底也被认为在线就升高。先确认极性再调。 |
 | `edge_hint_threshold` | `120` | 左右半区强度差超过该值时更新丢线恢复方向。 | 丢线后总往错边找线就检查权重/极性，再调此值；方向变化太敏感就升高。 |
 | `sensor_weights` | `{1750,1250,750,250,-250,-750,-1250,-1750}`（debug profile） | 8 路横向位置权重；当前 Yahboom UART 实车通道顺序与常规“左负右正”表述相反，以 debug profile 为准。 | 不要随意改回 `{-1750..1750}`：曾导致直线不稳、箭头岔路摆头走错线、U 型弯入口反向左转。 |
@@ -53,12 +53,12 @@
 |---|---:|---|---|
 | `base_speed` | `150`（debug profile） | 正常巡线基础速度。 | 当前直线稳定性较好的基准。`100` 太保守且配合 `max_correction=50` 转向不足；`180` 曾让 U 型弯和干扰处更难控。 |
 | `straight_boost_speed` | `320`（默认值，debug 关闭） | 连续稳定直道的高速速度。 | debug profile 默认关闭直道高速；需要提速时先明确切换或重新开启。 |
-| `curve_prepare_speed` | `70`（默认值，debug 未覆盖） | 检测到入弯趋势后的提前减速速度。 | debug profile 当前 `curve_prepare_enable=true`，直线脏点/反光误减速优先调 `straight_noise_*`，不要先关掉弯前减速。 |
+| `curve_prepare_speed` | `70`（默认值，debug 当前关闭） | 检测到入弯趋势后的提前减速速度。 | debug profile 先关闭以保证直线基线；确认直线稳定后，若要开启，必须同步检查直线脏点/反光不会触发误减速。 |
 | `sharp_turn_speed` | `35`（debug profile） | 偏差超过急弯阈值后的低速。 | 急弯仍冲出就降低；急弯太慢就小幅提高。 |
 | `kp` | `0.10`（debug profile） | 比例增益，决定偏离黑线后的纠正力度。 | 当前基准。`0.08` 更稳但 U 型弯打角不足；继续加大容易在直线和箭头路口摆头。 |
-| `kd` | `0.18`（debug profile） | 微分增益，抑制快速摆动。 | 当前基准。`0.20~0.22` 可抑制摆动但会让转弯响应变钝，配合错误权重/高速度时仍会抖。 |
+| `kd` | `0.18`（debug profile） | 微分增益，抑制快速摆动。 | 当前基准。不要在未确认直线稳定前同时增大 `kd`、`max_correction` 和输出变化率。 |
 | `ki` | `0.0` | 积分增益，修长期偏差。 | 通常保持 0。只有持续偏一侧且机械问题排除后，再小幅增加。 |
-| `max_correction` | `250`（debug profile） | PID 修正量总限幅。 | 当前为解决 U 型弯转向不足的基准。`50` 明显转向不足；`180` 仍偏保守；继续增大前先确认不会摆头和打满。 |
+| `max_correction` | `180`（debug profile） | PID 修正量总限幅。 | 当前恢复为直线稳定优先的基准。`250` 曾配合 `max_output_delta_per_tick=35` 导致直线左右摆动，后续禁止同时激进增大。 |
 | `max_motor_cmd` | `300`（debug profile） | 电机命令绝对值上限。 | 保护电机/电池。速度不够可加，但先确认机械和供电。 |
 | `motor_deadband` | `0`（debug profile） | 非零命令的最小起转补偿。 | 小命令车不动就加；低速动作太冲就减。 |
 
@@ -71,7 +71,7 @@
 | `straight_delta_threshold` | `120` | 直道高速允许的相邻可信位置变化。 | 仅开启直道高速后相关；传感器噪声导致不提速可增大，摆头明显就减小。 |
 | `straight_confidence_min` | `0.55` | 直道高速最低置信度。 | 仅开启直道高速后相关；低对比场地不提速可略降，误提速就提高。 |
 | `straight_confirm_ticks` | `8` | 连续多少个控制周期稳定后提速。 | 仅开启直道高速后相关；提速太慢就减小，提速太早就增大。 |
-| `curve_prepare_enable` | `true`（debug profile） | 是否启用弯前趋势减速。 | 当前保持开启；直线误减速先调 `straight_noise_*`，不要直接关闭。 |
+| `curve_prepare_enable` | `false`（debug profile） | 是否启用弯前趋势减速。 | 当前关闭以保护直线稳定基线。重新开启前必须先确认 `straight_noise_*` 和直线段不会误触发。 |
 | `curve_prepare_error_threshold` | `400` | 入弯趋势的位置偏差阈值。 | U 型弯冲出就降低；直道误减速先检查 `straight_noise_*`，再考虑提高。 |
 | `curve_prepare_delta_threshold` | `100` | 入弯趋势的位置变化阈值。 | 弯前减速慢就降低；箭头干扰误减速先检查 `straight_noise_*` 和 `interference_*`。 |
 | `curve_prepare_confirm_ticks` | `1` | 连续多少个控制周期确认入弯。 | 减速不及时就保持 1；误触发优先调直线噪声识别，而不是盲目增大。 |
@@ -95,7 +95,7 @@
 | `lead_event_active_count_threshold` | `6`（debug profile） | 判定特殊线型所需在线通道数。 | 路口漏触发可降到 5；直线误触发就升高。 |
 | `lead_event_min_sum` | `2200`（debug profile） | 特殊线型最小总强度。 | 路口/U 型顶点漏触发可降低；脏点/反光误触发就提高。 |
 | `lead_event_center_error_threshold` | `350`（debug profile） | 宽线/交点中心帧允许的中心偏差。 | U 型顶点全通道在线但 `position≈0` 时靠它触发。误触发则收紧。 |
-| `lead_event_entry_error_threshold` | `300`（debug profile） | 记录入弯/入口方向的位置偏差阈值。 | 入口方向记不住就降低；普通直线偏差误记方向就提高。 |
+| `lead_event_entry_error_threshold` | `650`（debug profile） | 记录入弯/入口方向的位置偏差阈值。 | 必须显著大于 `lead_event_center_error_threshold`，避免阈值重叠导致几乎所有宽线/噪声都触发前探。 |
 | `lead_event_confirm_ticks` | `2`（debug profile） | 连续多少帧确认特殊线型。 | 路口漏触发可减到 1；直线误触发前探就增大。 |
 | `lead_advance_ticks` | `18`（debug profile） | 检测到特殊线型后继续低速直行的 tick 数。 | 最优先调。过早转弯就增大；冲过交点/顶点才转就减小。 |
 | `lead_advance_speed` | `65`（debug profile） | 前探补偿阶段左右轮同速。 | 先保持低速；调距离优先改 `lead_advance_ticks`，不要先大幅改速度。 |
@@ -104,7 +104,7 @@
 | `lead_turn_delta` | `115`（debug profile） | 转向保持阶段左右轮速度差。 | 补偿后仍转不过去就增大；转向过猛/甩头就减小。 |
 | `lead_entry_memory_ticks` | `40`（debug profile） | 入口方向记忆保留时间。 | 方向丢得太快就增大；过旧方向导致误转就减小。 |
 
-调参顺序固定为：先 `lead_advance_ticks`，再 `lead_turn_delta`，再 `lead_turn_hold_ticks`，最后才调 `lead_event_*`。如果没有明确入口方向，代码只做保守前探，不随机强制转向。
+调参顺序固定为：先 `lead_advance_ticks`，再 `lead_turn_delta`，再 `lead_turn_hold_ticks`，最后才调 `lead_event_*`。如果没有明确入口方向，代码只做保守前探，不随机强制转向。`lead_event_entry_error_threshold` 不能小于或接近 `lead_event_center_error_threshold`；阈值重叠会让宽噪声直线、反光或地图褶皱几乎无条件进入前探补偿。
 
 ## 7. 丢线恢复参数
 
@@ -121,19 +121,19 @@
 
 | 参数 | 当前值 | 含义 | 调试方法 |
 |---|---:|---|---|
-| `radar_enable` | `true` | 是否启用雷达解析和避障状态。 | 单独调巡线时可临时设 `false`。整车联调必须开启。 |
-| `radar_uart_baudrate` | `256000` | LD2410S 串口波特率记录值。实际 UART 初始化仍需与 CubeMX/板级配置一致。 | 如果完全无雷达帧，先确认 CubeMX USART 波特率、接线和中断。 |
+| `radar_enable` | `false`（debug profile） | 是否启用雷达解析和避障状态。 | 单独调巡线时保持关闭；整车联调再开启。 |
+| `radar_uart_baudrate` | `115200` | LD2410S 串口波特率记录值。实际 UART 初始化仍需与 CubeMX/板级配置一致。 | 如果完全无雷达帧，先确认 CubeMX USART 波特率、接线和中断。 |
 | `radar_trigger_distance_mm` | `450` | 进入 `BLOCK` 的距离阈值。 | 车来不及避障就加大；离障碍很远就绕行就减小。 |
 | `radar_release_distance_mm` | `650` | 从 `BLOCK/WARN` 释放到 `CLEAR` 的距离阈值。应大于 trigger，形成滞回。 | 状态反复跳变就加大与 trigger 的差值；解除太慢就减小。 |
 | `radar_debounce_frames` | `3` | 连续多少帧确认状态变化。 | 误报多就加；反应慢就减。 |
-| `radar_frame_timeout_ms` | `120` | 超过该时间没有有效帧则清除雷达状态。 | 雷达帧率低导致状态闪断就加；断线后旧状态保持太久就减。 |
+| `radar_frame_timeout_ms` | `300` | 超过该时间没有有效帧则清除雷达状态。 | 雷达帧率低导致状态闪断就加；断线后旧状态保持太久就减。 |
 
 ## 9. 避障参数
 
 | 参数 | 当前值 | 含义 | 调试方法 |
 |---|---:|---|---|
 | `obstacle_warn_speed` | `220` | `WARN` 状态下的最高巡线速度。 | 接近障碍仍太快就减；减速过早影响通行就加。 |
-| `obstacle_avoid_enable` | `true` | 是否启用 `BLOCK` 后自动绕障。 | 只验证雷达停车时可设 `false`；整车任务设 `true`。 |
+| `obstacle_avoid_enable` | `false`（debug profile） | 是否启用 `BLOCK` 后自动绕障。 | 只验证巡线时保持关闭；整车任务设 `true`。 |
 | `obstacle_preferred_side` | `0` | 绕障方向：`-1` 左，`+1` 右，`0` 自动。 | 地图已知空侧时固定方向；随机障碍先用 0，失败会反向重试。 |
 | `obstacle_max_attempts` | `2` | 避障失败最多尝试次数。 | 一次失败后需要反向重试就保持 2；场地狭窄避免乱跑可设 1。 |
 | `obstacle_confirm_ms` | `100` | BLOCK 后停车确认时间。 | 雷达误报多就加；反应太慢就减。 |
@@ -152,7 +152,7 @@
 | 现象 | 优先检查/调整 |
 |---|---|
 | 上电标定后一直认为丢线 | `sensor_invert_polarity`、`sensor_digital_active_high`、`line_detect_min_sum` |
-| 直道左右蛇形 | 降 `kp`，或加 `kd`，或降 `base_speed`；不要重新启用错误方向的 `sensor_weights` |
+| 直道左右蛇形 | 先恢复保守基线：`max_correction=180`、`max_output_delta_per_tick=20`、`curve_prepare_enable=false`；再小步调 `kp/kd/base_speed`，不要同时激进增大多个控制输出参数 |
 | 直道遇脏点/褶皱/反光突然变慢 | 优先调 `straight_noise_*`；不要先关闭 `curve_prepare_enable` 或提高 `base_speed` |
 | U 型弯入口冲出 | 先调 `lead_advance_ticks` 让驱动轮轴线中点到达顶点附近，再调 `lead_turn_delta` / `lead_turn_hold_ticks` |
 | U 型弯顶点全通道在线后直走丢线 | 检查 `lead_event_min_sum`、`lead_event_active_count_threshold`、`lead_event_center_error_threshold` 是否触发前探补偿 |
@@ -175,10 +175,10 @@
 |---|---|
 | 传感器 | UART、`sensor_invert_polarity=true`、`sensor_filter_alpha=0.35`、`line_detect_min_sum=780`、`line_detect_min_peak=260`、`line_detect_min_contrast=80` |
 | 权重 | `{1750,1250,750,250,-250,-750,-1250,-1750}` |
-| PID/速度 | `base_speed=150`、`adaptive_slow_speed=60`、`sharp_turn_speed=35`、`kp=0.10`、`kd=0.18`、`ki=0`、`max_correction=250` |
-| 输出限制 | `derivative_filter_alpha=0.60`、`max_output_delta_per_tick=35`、`max_motor_cmd=300`、`motor_deadband=0` |
-| 策略开关 | `straight_boost_enable=false`、`curve_prepare_enable=true`、`line_stability_enable=false`、`stable_direction_enable=false`、`fork_enable=false`、`obstacle_avoid_enable=false` |
-| 前探补偿 | `lead_advance_ticks=18`、`lead_advance_speed=65`、`lead_turn_hold_ticks=16`、`lead_turn_speed=55`、`lead_turn_delta=115` |
+| PID/速度 | `base_speed=150`、`adaptive_slow_speed=60`、`sharp_turn_speed=35`、`kp=0.10`、`kd=0.18`、`ki=0`、`max_correction=180` |
+| 输出限制 | `derivative_filter_alpha=0.60`、`max_output_delta_per_tick=20`、`max_motor_cmd=300`、`motor_deadband=0` |
+| 策略开关 | `straight_boost_enable=false`、`curve_prepare_enable=false`、`line_stability_enable=false`、`stable_direction_enable=false`、`fork_enable=false`、`obstacle_avoid_enable=false` |
+| 前探补偿 | `lead_event_center_error_threshold=350`、`lead_event_entry_error_threshold=650`、`lead_advance_ticks=18`、`lead_advance_speed=65`、`lead_turn_hold_ticks=16`、`lead_turn_speed=55`、`lead_turn_delta=115` |
 | 直线噪声 | `straight_noise_confirm_ticks=2`、`straight_noise_active_count_threshold=5`、`straight_noise_max_sum=1800`、`straight_noise_max_position_error=250`、`straight_noise_max_position_delta=120` |
 
 已试过但不好用或只适合特定阶段的参数：
@@ -187,7 +187,9 @@
 |---|---|---|
 | `base_speed=100`、`kp=0.08`、`kd=0.20`、`max_correction=50`、`max_output_delta_per_tick=15` | 直线保守，但 U 型弯没有明显右转动作，转向不足，抖动后丢线。 | 不要再用 `max_correction=50` 作为 U 型弯调试基线；它限制了差速能力。 |
 | `base_speed=180`、`sharp_turn_speed=40`、`max_correction=100` | 比 100 速更积极，但特殊线型和 U 型弯仍不可靠。 | 单纯加速度或小幅加修正不能解决长前探导致的过早转向。 |
-| `sensor_filter_alpha=0.45`、`kd=0.22`、`max_correction=180`、`curve_prepare_enable=false` | 弯前减速不足，直线和干扰处表现不稳定，U 型仍可能丢线。 | 不要靠关闭弯前减速来解决直线误减速；应使用 `straight_noise_*`。 |
+| `sensor_filter_alpha=0.45`、`kd=0.22`、`max_correction=180`、`curve_prepare_enable=false` | 曾作为直线较稳阶段，但 U 型转向不足、特殊线型仍可能丢线。 | 可作为保守参考，不要在此基础上继续同时增大输出限幅和输出变化率。 |
+| `max_correction=250`、`max_output_delta_per_tick=35`、`curve_prepare_enable=true` | 上次为救 U 型弯和弯前响应而改得过激，实车放在直线上又出现左右摆动，无法继续测岔路口。 | 禁止这样同时激进：直线稳定是基础验收项；若要提高转向能力，每次只改一个输出相关参数，并先通过直线段实测。 |
+| `lead_event_center_error_threshold=350`、`lead_event_entry_error_threshold=300/350` | center 和 entry 阈值重叠，导致 `frame_is_lead_event()` 的位置条件几乎总为真，宽噪声直线、反光或褶皱可能误进前探补偿。 | `lead_event_entry_error_threshold` 必须明显大于 center 阈值；当前 debug 用 `650`，并有回归测试保护。 |
 | 把 debug 权重改成 `{-1750,-1250,-750,-250,250,750,1250,1750}` | 实车直线不稳，箭头岔路摆头走到错误线上，U 型弯进弯会向左转。 | 当前 Yahboom UART 实车通道方向以 `{1750..-1750}` 为准；改权重前必须架空验证左右修正方向。 |
 | 仅提高 `kp` 或 `max_correction` 试图救 U 型弯 | 会改善打角，但路口/顶点仍可能因传感器提前 22 cm 看到特殊线型而过早转向或全通道在线后直走。 | 根因是长前探几何，不是纯 PID；优先调 `lead_advance_*`。 |
 | 直线突然变慢时优先调 PID 或提高 `base_speed` | 容易掩盖脏点/褶皱/反光误触发，后续在弯道和路口更难稳定。 | 直线误减速优先调 `straight_noise_*`。 |
