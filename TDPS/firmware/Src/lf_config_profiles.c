@@ -27,15 +27,15 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.sensor_weights[6] = -1250;
     g_lf_config.sensor_weights[7] = -1750;
 	
-    g_lf_config.kp  = 0.25f;    // 比例：比 0.15 多一丝，小偏差也有可见修正
+    g_lf_config.kp  = 0.16f;    // 比例：比 0.15 多一丝，小偏差也有可见修正
     g_lf_config.ki  = 0.0f;     // 积分：不开（会累积画龙）
-    g_lf_config.kd  = 0.28f;    // 微分：比 0.22 高，用强阻尼抵消小死区带来的抖动
+    g_lf_config.kd  = 0.32f;    // 微分：比 0.22 高，用强阻尼抵消小死区带来的抖动
 		
-    g_lf_config.control_error_deadband  = 40;    // ★ 几乎零死区，传感器偏一点就开修
+    g_lf_config.control_error_deadband  = 15;    // ★ 几乎零死区，传感器偏一点就开修
     g_lf_config.control_error_soft_zone = 80;   // ★ 误差 >5 立刻平滑过渡，>50 全量修正
 		
-    g_lf_config.max_correction            = 450;  // 低速弯道时有足够差速储备
-    g_lf_config.max_output_delta_per_tick = 60;   // 修正每帧最多变化程度
+    g_lf_config.max_correction            = 250;  // 低速弯道时有足够差速储备
+    g_lf_config.max_output_delta_per_tick = 18;   // 修正每帧最多变化程度
     g_lf_config.max_motor_cmd             = 300;
     g_lf_config.motor_deadband            = 0;
     g_lf_config.derivative_filter_alpha   = 0.35f; // 微分响应更快，尖角突变时瞬间阻尼
@@ -43,16 +43,16 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.base_speed          = 300;   // 直线巡线速度
 
 		g_lf_config.adaptive_slow_speed       = 60;    // 低置信度/低对比度时的速度
-    g_lf_config.adaptive_error_threshold  = 80;    // ★ 位置超阈值立即触发 sharp 降速（第一优先级）
+    g_lf_config.adaptive_error_threshold  = 180;    // ★ 位置超阈值立即触发 sharp 降速（第一优先级）
     g_lf_config.adaptive_confidence_threshold = 0.40f;  // 默认值
     g_lf_config.sharp_turn_speed          = 60;    // ★ 最慢爬行速度，尖角极限转向
 
     g_lf_config.straight_boost_enable          = false;
     g_lf_config.curve_prepare_enable           = true;
-    g_lf_config.curve_prepare_error_threshold  = 120;    // ★ 位置超阈值开始计弯道帧
-    g_lf_config.curve_prepare_delta_threshold  = 120;    // ★ 位置跳变超阈值也计入
-    g_lf_config.curve_prepare_confirm_ticks    = 2U;    // ★ 几帧之后确认进入弯道
-    g_lf_config.curve_prepare_speed            = 45;    // ★ 弯道速度
+    g_lf_config.curve_prepare_error_threshold  = 100;    // ★ 位置超阈值开始计弯道帧
+    g_lf_config.curve_prepare_delta_threshold  = 100;    // ★ 位置跳变超阈值也计入
+    g_lf_config.curve_prepare_confirm_ticks    = 3U;    // ★ 几帧之后确认进入弯道
+    g_lf_config.curve_prepare_speed            = 30;    // ★ 弯道速度
 		
     g_lf_config.lead_compensation_enable           = false;
     g_lf_config.lead_event_active_count_threshold  = 6U;
@@ -68,10 +68,10 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.lead_turn_delta     = 115;    // 前探转向差速量
     g_lf_config.lead_entry_memory_ticks = 40U; // 入口方向记忆时长
 		
-    g_lf_config.line_stability_enable               = false;
+    g_lf_config.line_stability_enable               = true;
     g_lf_config.stable_direction_enable             = true;
     g_lf_config.interference_active_count_threshold  = 5U;
-    g_lf_config.interference_position_jump_threshold = 180;
+    g_lf_config.interference_position_jump_threshold = 200;
     g_lf_config.direction_update_confidence_min      = 0.50f;
 
     g_lf_config.straight_noise_reject_enable         = true;
