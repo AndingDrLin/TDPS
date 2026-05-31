@@ -103,9 +103,6 @@ typedef struct {
     int16_t straight_delta_threshold;
     float straight_confidence_min;
     uint8_t straight_confirm_ticks;
-    int16_t straight_error_deadband;
-    uint8_t straight_error_scale_percent;
-    int16_t straight_correction_limit;
     int16_t curve_prepare_speed;
     int16_t curve_prepare_error_threshold;
     int16_t curve_prepare_delta_threshold;
@@ -200,7 +197,6 @@ typedef struct {
 extern LF_Config g_lf_config;
 
 void LF_Config_ApplyDebugProfile(void);
-void LF_Config_ApplyTrackProfile(void);
 void LF_Config_ApplyCompetitionProfile(void);
 
 #endif /* LF_CONFIG_H */

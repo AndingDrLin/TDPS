@@ -7,7 +7,7 @@
 - 固件逻辑改动前先查看 `TDPS/docs/basic_design.md`、`TDPS/docs/line_following.md`、`TDPS/docs/tuning.md`。
 - 不要阻塞巡线主循环；LoRa 和雷达服务必须非阻塞 tick 推进。
 - 调参优先改 `TDPS/firmware/Src/lf_config.c` 或 `TDPS/firmware/Src/lf_config_profiles.c` 的 profile 参数，每次只改少量参数并记录结果。
-- 当前实车入口使用 `LF_Config_ApplyTrackProfile()`；不要误改回低速 `LF_Config_ApplyDebugProfile()`，除非只是做低速诊断。
+- 当前实车入口默认使用 `LF_Config_ApplyDebugProfile()`；除非用户明确要求 competition，否则不要切换到 `LF_Config_ApplyCompetitionProfile()`。
 
 ## 常用离线构建
 

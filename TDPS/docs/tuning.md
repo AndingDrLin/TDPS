@@ -33,8 +33,8 @@
 
 | 参数 | 当前值 | 含义 | 调试方法 |
 |---|---:|---|---|
-| `sensor_input_mode` | `LF_SENSOR_INPUT_UART_PROTOCOL`（track profile） | 8 路传感器输入模式。track profile 走 Yahboom 8-LP UART；默认配置仍可用于 ADC/GPIO。 | 实机接 UART 就保持 track profile；如果 8-LP 用 IO 模式，改为 `LF_SENSOR_INPUT_DIGITAL_GPIO`。 |
-| `sensor_invert_polarity` | `true`（track profile） | 归一化后极性翻转。 | 黑线原始值比白底低或位置方向反时检查此项；若 ADC/GPIO 与 track profile 不同，先校验极性再调 PID。 |
+| `sensor_input_mode` | `LF_SENSOR_INPUT_UART_PROTOCOL`（debug profile） | 8 路传感器输入模式。默认 debug profile 走 Yahboom 8-LP UART；默认配置仍可用于 ADC/GPIO。 | 实机接 UART 就保持 debug profile；如果 8-LP 用 IO 模式，改为 `LF_SENSOR_INPUT_DIGITAL_GPIO`。 |
+| `sensor_invert_polarity` | `true`（debug profile） | 归一化后极性翻转。 | 黑线原始值比白底低或位置方向反时检查此项；若 ADC/GPIO 与 debug profile 不同，先校验极性再调 PID。 |
 | `sensor_digital_threshold` | `2048` | 数字/GPIO 判高低的阈值。 | 仅数字模式相关。临界抖动时远离黑白中间值。 |
 | `sensor_digital_active_high` | `false` | 数字模式下“在线”是否为高电平。 | 黑线时 IO 输出高则设 `true`，黑线时输出低则保持 `false`。 |
 | `sensor_use_dynamic_calibration` | `true` | 是否启用上电动态标定。 | ADC 模式建议开启；数字模式或标定动作不方便时关闭。 |
@@ -47,30 +47,27 @@
 
 | 参数 | 当前值 | 含义 | 调试方法 |
 |---|---:|---|---|
-| `base_speed` | `280`（track profile） | 正常巡线基础速度。 | 第一优先调。直道稳定后逐步加；弯道冲出或避障不稳就降。 |
-| `straight_boost_speed` | `340` | 连续稳定直道的高速速度。 | 直道稳定后逐步加；如果进入弯道前来不及降速就降低或提高确认帧数。 |
-| `curve_prepare_speed` | `170` | 检测到入弯趋势后的提前减速速度。 | U 型弯冲出就降低；直道误减速多就提高阈值或增加确认帧。 |
-| `sharp_turn_speed` | `145`（track profile） | 偏差超过急弯阈值后的低速。 | 急弯仍冲出就降低；急弯太慢就小幅提高。 |
-| `kp` | `0.07`（track profile） | 比例增益，决定偏离黑线后的纠正力度。 | 贴不住弯、回正慢就加；左右蛇形摆动就减。 |
-| `kd` | `0.22`（track profile） | 微分增益，抑制快速摆动。 | 加 `kp` 后抖动就加 `kd`；转弯变迟钝或电机尖叫就减。 |
+| `base_speed` | `100`（debug profile） | 正常巡线基础速度。 | 第一优先调。先用低速确认能走直线，再逐步加速；弯道冲出或避障不稳就降。 |
+| `straight_boost_speed` | `320`（debug 默认关闭） | 连续稳定直道的高速速度。 | debug profile 默认关闭直道高速；需要提速时先明确切换或重新开启。 |
+| `curve_prepare_speed` | `150`（debug 默认关闭） | 检测到入弯趋势后的提前减速速度。 | debug profile 默认关闭弯前减速；恢复高速巡线前再逐项验证。 |
+| `sharp_turn_speed` | `80`（debug profile） | 偏差超过急弯阈值后的低速。 | 急弯仍冲出就降低；急弯太慢就小幅提高。 |
+| `kp` | `0.08`（debug profile） | 比例增益，决定偏离黑线后的纠正力度。 | 贴不住弯、回正慢就加；左右蛇形摆动就减。 |
+| `kd` | `0.20`（debug profile） | 微分增益，抑制快速摆动。 | 加 `kp` 后抖动就加 `kd`；转弯变迟钝或电机尖叫就减。 |
 | `ki` | `0.0` | 积分增益，修长期偏差。 | 通常保持 0。只有持续偏一侧且机械问题排除后，再小幅增加。 |
-| `max_correction` | `70`（track profile） | PID 修正量总限幅。 | 弯道打角不够就加；急转导致甩尾或左右轮打满就减。直线摆头时优先先调直线专用限幅。 |
-| `max_motor_cmd` | `800`（track profile） | 电机命令绝对值上限。 | 保护电机/电池。速度不够可加，但先确认机械和供电。 |
-| `motor_deadband` | `80`（track profile） | 非零命令的最小起转补偿。 | 小命令车不动就加；低速动作太冲就减。 |
+| `max_correction` | `50`（debug profile） | PID 修正量总限幅。 | 弯道打角不够就加；急转导致甩尾或左右轮打满就减。 |
+| `max_motor_cmd` | `300`（debug profile） | 电机命令绝对值上限。 | 保护电机/电池。速度不够可加，但先确认机械和供电。 |
+| `motor_deadband` | `0`（debug profile） | 非零命令的最小起转补偿。 | 小命令车不动就加；低速动作太冲就减。 |
 
 ## 5. 直道高速、弯前减速与抗干扰参数
 
 | 参数 | 当前值 | 含义 | 调试方法 |
 |---|---:|---|---|
-| `straight_boost_enable` | `true` | 是否启用连续稳定直道高速。 | 初次上板建议保持开启，但先架空确认 profile 生效。 |
-| `straight_error_threshold` | `250` | 进入直道高速允许的最大位置偏差。 | 直道不提速可增大；误把小弯当直道就减小。 |
-| `straight_delta_threshold` | `120` | 直道高速允许的相邻可信位置变化。 | 传感器噪声导致不提速可增大；摆头明显就减小。 |
-| `straight_confidence_min` | `0.55` | 直道高速最低置信度。 | 低对比场地不提速可略降；误提速就提高。 |
-| `straight_confirm_ticks` | `8` | 连续多少个控制周期稳定后提速并启用直线低灵敏度。 | 提速太慢就减小；提速太早就增大。 |
-| `straight_error_deadband` | `150` | 稳定直线状态下的位置误差死区，小于该值不做 PID 修正。 | 直线仍摆头就增大；车持续偏一侧不回中就减小。 |
-| `straight_error_scale_percent` | `35` | 稳定直线状态下超过死区后的误差缩放比例。 | 直线修正过猛就降低；直线偏移回正太慢就升高。 |
-| `straight_correction_limit` | `30` | 稳定直线状态下 PID 修正量的额外小限幅。 | 三轮后驱车头摆幅大就降低；直线偏离后拉不回来就升高。 |
-| `curve_prepare_enable` | `true` | 是否启用弯前趋势减速。 | U 型弯测试应保持开启；进入弯前会退出直线低灵敏度并恢复转向能力。 |
+| `straight_boost_enable` | `false`（debug profile） | 是否启用连续稳定直道高速。 | 当前默认关闭；先验证低速直线稳定，再考虑重新开启。 |
+| `straight_error_threshold` | `250` | 进入直道高速允许的最大位置偏差。 | 仅开启直道高速后相关；直道不提速可增大，误把小弯当直道就减小。 |
+| `straight_delta_threshold` | `120` | 直道高速允许的相邻可信位置变化。 | 仅开启直道高速后相关；传感器噪声导致不提速可增大，摆头明显就减小。 |
+| `straight_confidence_min` | `0.55` | 直道高速最低置信度。 | 仅开启直道高速后相关；低对比场地不提速可略降，误提速就提高。 |
+| `straight_confirm_ticks` | `8` | 连续多少个控制周期稳定后提速。 | 仅开启直道高速后相关；提速太慢就减小，提速太早就增大。 |
+| `curve_prepare_enable` | `false`（debug profile） | 是否启用弯前趋势减速。 | 当前默认关闭；恢复高速巡线前再逐项验证。 |
 | `curve_prepare_error_threshold` | `600` | 入弯趋势的位置偏差阈值。 | U 型弯冲出就降低；直道误减速就提高。 |
 | `curve_prepare_delta_threshold` | `180` | 入弯趋势的位置变化阈值。 | 弯前减速慢就降低；箭头干扰误减速就提高。 |
 | `curve_prepare_confirm_ticks` | `2` | 连续多少个控制周期确认入弯。 | 减速不及时就减小；误触发就增大。 |
@@ -82,12 +79,12 @@
 
 | 参数 | 当前值 | 含义 | 调试方法 |
 |---|---:|---|---|
-| `line_lost_grace_ticks` | `5`（track profile） | 短暂丢线后保持最后可信方向的周期数。 | U 型顶点短暂丢线就加；保持方向过久偏离就减。 |
-| `line_hold_speed` | `90`（track profile） | grace 阶段低速前进速度。 | 找线太慢就加；冲过线就减。 |
-| `line_hold_turn_speed` | `60`（track profile） | grace 阶段按可信方向转向的速度差。 | U 型弯转不过去就加；原地转圈倾向明显就减。 |
-| `recover_sweep_start_speed` | `100`（track profile） | 进入扫线时的初始转向速度。 | 找线太慢就加；扫过线就减。 |
-| `recover_sweep_max_speed` | `190`（track profile） | 恢复扫线最大转向速度。 | 超时前仍找不到线就加；原地转圈明显就减。 |
-| `recover_timeout_ms` | `1500`（track profile） | 丢线恢复最长时间，超时停车。 | 短暂离线即可找回但停车太早就加；失控转圈太久就减。 |
+| `line_lost_grace_ticks` | `4`（默认值） | 短暂丢线后保持最后可信方向的周期数。 | U 型顶点短暂丢线就加；保持方向过久偏离就减。 |
+| `line_hold_speed` | `0`（debug profile） | grace 阶段低速前进速度。 | debug baseline 默认不做保持前进；找线太慢再小步加。 |
+| `line_hold_turn_speed` | `0`（debug profile） | grace 阶段按可信方向转向的速度差。 | debug baseline 默认不做保持转向；U 型弯转不过去再小步加。 |
+| `recover_sweep_start_speed` | `180`（默认值） | 进入扫线时的初始转向速度。 | 找线太慢就加；扫过线就减。 |
+| `recover_sweep_max_speed` | `280`（默认值） | 恢复扫线最大转向速度。 | 超时前仍找不到线就加；原地转圈明显就减。 |
+| `recover_timeout_ms` | `3000`（debug profile） | 丢线恢复最长时间，超时停车。 | 短暂离线即可找回但停车太早就加；失控转圈太久就减。 |
 
 ## 7. 雷达判定参数
 
@@ -139,20 +136,18 @@
 
 ## 10. 仿真参数选择依据
 
-当前 track profile 是实车测试初值，不是单次最快值：
+当前默认 debug profile 是实车低速保守基线：
 
-- `base_speed=280`
-- `straight_boost_speed=340`
-- `curve_prepare_speed=170`
-- `sharp_turn_speed=145`
-- `kp=0.07`
-- `kd=0.22`
-- `max_correction=70`
-- `straight_error_deadband=150`
-- `straight_error_scale_percent=35`
-- `straight_correction_limit=30`
+- `base_speed=100`
+- `sharp_turn_speed=80`
+- `kp=0.08`
+- `kd=0.20`
+- `max_correction=50`
+- `max_motor_cmd=300`
+- `motor_deadband=0`
+- `fork_enable=false`
 
-Simulator 默认 override 仍用于离线 normal/stress 回归，并默认启用直道高速、弯前减速、抗干扰和可信方向更新。
+Simulator 默认 override 仍用于离线 normal/stress 回归；上板验证默认以 debug profile 的低速直线稳定为准。
 
 已验证命令示例：
 

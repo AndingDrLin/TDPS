@@ -21,7 +21,7 @@
 
 与 Yahboom 8-LP 的接口匹配策略：
 
-- UART 模式：当前 track profile 使用 `LF_SENSOR_INPUT_UART_PROTOCOL`。
+- UART 模式：当前默认 debug profile 使用 `LF_SENSOR_INPUT_UART_PROTOCOL`。
 - GPIO 模式：通过 `LF_SENSOR_INPUT_DIGITAL_GPIO` 读取 8 路高低电平。
 - ADC 模式：保留 `LF_SENSOR_INPUT_ANALOG_ADC` 路径。
 - 极性通过配置解决：
@@ -136,4 +136,4 @@
 - 雷达解析已支持保留测试帧、LD2410S 最小帧和已知标准帧目标/距离字段，仍需实机确认距离单位、波特率和目标状态语义
 - 当前避障只有前向雷达信息，不能直接感知障碍在左侧还是右侧；左右绕行依赖配置、上次线方向和失败反向重试
 - 避障动作是定时开环，换电池、电机、地面摩擦或车体负载后必须重新调参
-- `LF_Config_ApplyTrackProfile()` 默认启用直道加速、弯前减速、抗干扰、可信方向恢复和岔路识别；这些参数是实车测试初值，换硬件后需要重新标定
+- `LF_Config_ApplyDebugProfile()` 是默认启动配置，使用低速保守参数；`LF_Config_ApplyCompetitionProfile()` 仅在明确切换时用于比赛参数。

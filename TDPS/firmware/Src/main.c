@@ -10,14 +10,12 @@
 #include "lf_run_log.h"
 #include "wireless_hooks.h"
 
-extern void LF_Config_ApplyTrackProfile(void);
-
 int main(void)
 {
     bool wireless_ready;
     char profile_line[192];
 
-    LF_Config_ApplyTrackProfile();
+    LF_Config_ApplyDebugProfile();
     LF_Platform_BoardInit();
     LF_LedBlink_Init();
     LF_RunLog_Init();
@@ -28,16 +26,13 @@ int main(void)
 
     snprintf(profile_line,
              sizeof(profile_line),
-             "Profile track invert=%u base=%d boost=%d curve=%d kp=%ld kd=%ld straight_dead=%d scale=%u limit=%d fork=%u hold=%d/%d recover=%d/%d\n",
+             "Profile debug invert=%u base=%d kp=%ld kd=%ld max_corr=%d max_motor=%d fork=%u hold=%d/%d recover=%d/%d\n",
              g_lf_config.sensor_invert_polarity ? 1U : 0U,
              (int)g_lf_config.base_speed,
-             (int)g_lf_config.straight_boost_speed,
-             (int)g_lf_config.curve_prepare_speed,
              (long)(g_lf_config.kp * 1000.0f),
              (long)(g_lf_config.kd * 1000.0f),
-             (int)g_lf_config.straight_error_deadband,
-             (unsigned)g_lf_config.straight_error_scale_percent,
-             (int)g_lf_config.straight_correction_limit,
+             (int)g_lf_config.max_correction,
+             (int)g_lf_config.max_motor_cmd,
              g_lf_config.fork_enable ? 1U : 0U,
              (int)g_lf_config.line_hold_speed,
              (int)g_lf_config.line_hold_turn_speed,

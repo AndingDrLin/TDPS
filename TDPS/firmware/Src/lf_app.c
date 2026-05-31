@@ -162,27 +162,6 @@ static int32_t abs_i32(int32_t value)
     return (value < 0) ? -value : value;
 }
 
-static int16_t abs_i16(int16_t value)
-{
-    return (value < 0) ? (int16_t)(-value) : value;
-}
-
-static int16_t clamp_i16_local(int16_t value, int16_t limit)
-{
-    int16_t abs_limit = abs_i16(limit);
-
-    if (abs_limit <= 0) {
-        return value;
-    }
-    if (value > abs_limit) {
-        return abs_limit;
-    }
-    if (value < (int16_t)(-abs_limit)) {
-        return (int16_t)(-abs_limit);
-    }
-    return value;
-}
-
 static void bump_counter(uint8_t *counter)
 {
     if (counter != NULL && *counter < UINT8_MAX) {
@@ -250,46 +229,6 @@ static void update_running_window(const LF_SensorFrame *frame, bool interference
     } else {
         s_app.curve_prepare_count = 0U;
     }
-}
-
-static bool straight_correction_suppression_active(void)
-{
-    if (!g_lf_config.straight_boost_enable || g_lf_config.straight_correction_limit <= 0) {
-        return false;
-    }
-    if (s_app.curve_prepare_count >= g_lf_config.curve_prepare_confirm_ticks) {
-        return false;
-    }
-    return s_app.straight_stable_count >= g_lf_config.straight_confirm_ticks;
-}
-
-static float apply_straight_error_suppression(float error)
-{
-    int32_t abs_error;
-    uint8_t scale;
-
-    if (!straight_correction_suppression_active()) {
-        return error;
-    }
-
-    abs_error = abs_i32((int32_t)error);
-    if (abs_error <= g_lf_config.straight_error_deadband) {
-        return 0.0f;
-    }
-
-    scale = g_lf_config.straight_error_scale_percent;
-    if (scale > 100U) {
-        scale = 100U;
-    }
-    return error * ((float)scale / 100.0f);
-}
-
-static int16_t apply_straight_correction_limit(int16_t correction)
-{
-    if (!straight_correction_suppression_active()) {
-        return correction;
-    }
-    return clamp_i16_local(correction, g_lf_config.straight_correction_limit);
 }
 
 static int16_t choose_running_speed(const LF_SensorFrame *frame)
@@ -793,10 +732,7 @@ static void process_running(uint32_t now_ms, float dt_s)
      */
     base_speed = choose_running_speed(&s_app.last_frame);
     error = (float)(interference ? s_app.last_trusted_position : s_app.last_frame.position);
-    error = apply_straight_error_suppression(error);
     correction = LF_Control_UpdatePid(error, dt_s, &s_app.pid);
-    correction = apply_straight_correction_limit(correction);
-    s_app.pid.prev_output = (float)correction;
     LF_Control_ComputeMotorCmd(base_speed, correction, &left_cmd, &right_cmd);
     left_cmd = limit_degraded_speed(left_cmd);
     right_cmd = limit_degraded_speed(right_cmd);
