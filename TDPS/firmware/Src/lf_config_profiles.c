@@ -43,13 +43,13 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.base_speed          = 300;   // 直线巡线速度
 
 		g_lf_config.adaptive_slow_speed       = 60;    // 低置信度/低对比度时的速度
-    g_lf_config.adaptive_error_threshold  = 180;    // ★ 位置超阈值立即触发 sharp 降速（第一优先级）
+    g_lf_config.adaptive_error_threshold  = 100;    // ★ 位置超阈值立即触发 sharp 降速（第一优先级）
     g_lf_config.adaptive_confidence_threshold = 0.40f;  // 默认值
     g_lf_config.sharp_turn_speed          = 60;    // ★ 最慢爬行速度，尖角极限转向
 
     g_lf_config.straight_boost_enable          = false;
     g_lf_config.curve_prepare_enable           = true;
-    g_lf_config.curve_prepare_error_threshold  = 100;    // ★ 位置超阈值开始计弯道帧
+    g_lf_config.curve_prepare_error_threshold  = 80;    // ★ 位置超阈值开始计弯道帧
     g_lf_config.curve_prepare_delta_threshold  = 100;    // ★ 位置跳变超阈值也计入
     g_lf_config.curve_prepare_confirm_ticks    = 3U;    // ★ 几帧之后确认进入弯道
     g_lf_config.curve_prepare_speed            = 30;    // ★ 弯道速度
