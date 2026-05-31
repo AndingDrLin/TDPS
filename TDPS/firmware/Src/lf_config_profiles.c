@@ -82,7 +82,7 @@ void LF_Config_ApplyTrackProfile(void)
     g_lf_config.straight_boost_speed = 340;
     g_lf_config.straight_error_deadband = 150;
     g_lf_config.straight_error_scale_percent = 35U;
-    g_lf_config.straight_correction_limit = 30;
+    g_lf_config.straight_correction_limit = 20;
     g_lf_config.curve_prepare_speed = 170;
     g_lf_config.derivative_filter_alpha = 0.85f;
     g_lf_config.max_output_delta_per_tick = 8;
