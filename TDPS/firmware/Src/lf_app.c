@@ -184,6 +184,130 @@ static bool frame_is_interference(const LF_SensorFrame *frame)
     return position_jump >= g_lf_config.interference_position_jump_threshold;
 }
 
+static bool frame_is_straight_noise(const LF_SensorFrame *frame)
+{
+    int32_t position_delta;
+
+    if (!g_lf_config.straight_noise_reject_enable || frame == NULL || !frame->line_detected ||
+        !s_app.trusted_line_valid) {
+        return false;
+    }
+    if (frame->active_count < g_lf_config.straight_noise_active_count_threshold ||
+        frame->signal_sum > g_lf_config.straight_noise_max_sum ||
+        abs_i32(frame->position) > g_lf_config.straight_noise_max_position_error) {
+        return false;
+    }
+    position_delta = abs_i32(frame->position - s_app.last_trusted_position);
+    return position_delta <= g_lf_config.straight_noise_max_position_delta;
+}
+
+static bool frame_is_lead_event(const LF_SensorFrame *frame)
+{
+    int32_t abs_position;
+
+    if (!g_lf_config.lead_compensation_enable || frame == NULL || !frame->line_detected ||
+        frame_is_straight_noise(frame)) {
+        return false;
+    }
+    if (frame->active_count < g_lf_config.lead_event_active_count_threshold ||
+        frame->signal_sum < g_lf_config.lead_event_min_sum) {
+        return false;
+    }
+
+    abs_position = abs_i32(frame->position);
+    return abs_position <= g_lf_config.lead_event_center_error_threshold ||
+           abs_position >= g_lf_config.lead_event_entry_error_threshold ||
+           frame->edge_hint != 0;
+}
+
+static void reset_lead_phase(void)
+{
+    s_app.lead_phase = (uint8_t)LF_LEAD_PHASE_IDLE;
+    s_app.lead_event_count = 0U;
+    s_app.lead_phase_ticks = 0U;
+}
+
+static void start_lead_advance(void)
+{
+    s_app.lead_phase = (uint8_t)LF_LEAD_PHASE_ADVANCE;
+    s_app.lead_phase_ticks = 0U;
+    s_app.lead_event_count = 0U;
+}
+
+static int8_t choose_lead_turn_dir(void)
+{
+    if (s_app.lead_entry_memory_count > 0U && s_app.lead_entry_dir != 0) {
+        return s_app.lead_entry_dir;
+    }
+    return 0;
+}
+
+static void update_lead_entry_memory(const LF_SensorFrame *frame, bool interference)
+{
+    if (frame == NULL || !frame->line_detected || interference) {
+        return;
+    }
+
+    if (frame->edge_hint != 0) {
+        s_app.lead_entry_dir = frame->edge_hint;
+        s_app.lead_entry_memory_count = g_lf_config.lead_entry_memory_ticks;
+    } else if (abs_i32(frame->position) >= g_lf_config.lead_event_entry_error_threshold) {
+        s_app.lead_entry_dir = (frame->position < 0) ? -1 : +1;
+        s_app.lead_entry_memory_count = g_lf_config.lead_entry_memory_ticks;
+    } else if (s_app.lead_entry_memory_count > 0U) {
+        s_app.lead_entry_memory_count--;
+    }
+}
+
+static void process_lead_phase(void)
+{
+    int16_t forward;
+    int16_t delta;
+    int8_t dir;
+
+    if (s_app.lead_phase == (uint8_t)LF_LEAD_PHASE_ADVANCE) {
+        forward = limit_degraded_speed(g_lf_config.lead_advance_speed);
+        LF_Chassis_SetCommand(forward, forward);
+        bump_counter(&s_app.lead_phase_ticks);
+        if (s_app.lead_phase_ticks >= g_lf_config.lead_advance_ticks) {
+            if (choose_lead_turn_dir() != 0) {
+                s_app.lead_phase = (uint8_t)LF_LEAD_PHASE_TURN_HOLD;
+                s_app.lead_phase_ticks = 0U;
+            } else {
+                reset_lead_phase();
+                LF_Control_ResetPid(&s_app.pid);
+            }
+        }
+        return;
+    }
+
+    if (s_app.lead_phase != (uint8_t)LF_LEAD_PHASE_TURN_HOLD) {
+        reset_lead_phase();
+        return;
+    }
+
+    dir = choose_lead_turn_dir();
+    if (dir == 0) {
+        reset_lead_phase();
+        LF_Control_ResetPid(&s_app.pid);
+        return;
+    }
+
+    forward = limit_degraded_speed(g_lf_config.lead_turn_speed);
+    delta = limit_degraded_speed(g_lf_config.lead_turn_delta);
+    if (dir < 0) {
+        LF_Chassis_SetCommand((int16_t)(forward - delta), (int16_t)(forward + delta));
+    } else {
+        LF_Chassis_SetCommand((int16_t)(forward + delta), (int16_t)(forward - delta));
+    }
+
+    bump_counter(&s_app.lead_phase_ticks);
+    if (s_app.lead_phase_ticks >= g_lf_config.lead_turn_hold_ticks) {
+        reset_lead_phase();
+        LF_Control_ResetPid(&s_app.pid);
+    }
+}
+
 static void update_running_window(const LF_SensorFrame *frame, bool interference)
 {
     int32_t abs_position;
@@ -194,18 +318,27 @@ static void update_running_window(const LF_SensorFrame *frame, bool interference
     if (frame == NULL || !frame->line_detected) {
         s_app.straight_stable_count = 0U;
         s_app.curve_prepare_count = 0U;
+        s_app.straight_noise_count = 0U;
         return;
     }
 
     if (interference) {
         bump_counter(&s_app.interference_count);
         s_app.straight_stable_count = 0U;
+        s_app.straight_noise_count = 0U;
         return;
     }
 
     s_app.interference_count = 0U;
     abs_position = abs_i32(frame->position);
     position_delta = s_app.trusted_line_valid ? abs_i32(frame->position - s_app.last_trusted_position) : 0;
+
+    if (frame_is_straight_noise(frame)) {
+        bump_counter(&s_app.straight_noise_count);
+        s_app.curve_prepare_count = 0U;
+        return;
+    }
+    s_app.straight_noise_count = 0U;
 
     straight_frame = g_lf_config.straight_boost_enable &&
                      abs_position <= g_lf_config.straight_error_threshold &&
@@ -239,6 +372,9 @@ static int16_t choose_running_speed(const LF_SensorFrame *frame)
         ((frame->position > g_lf_config.adaptive_error_threshold) ||
          (frame->position < (int32_t)(-g_lf_config.adaptive_error_threshold)))) {
         speed = g_lf_config.sharp_turn_speed;
+    } else if (g_lf_config.straight_noise_reject_enable &&
+               s_app.straight_noise_count >= g_lf_config.straight_noise_confirm_ticks) {
+        speed = g_lf_config.base_speed;
     } else if (g_lf_config.curve_prepare_enable &&
                s_app.curve_prepare_count >= g_lf_config.curve_prepare_confirm_ticks) {
         speed = g_lf_config.curve_prepare_speed;
@@ -681,6 +817,8 @@ static void process_running(uint32_t now_ms, float dt_s)
     interference = frame_is_interference(&s_app.last_frame);
 
     if (!s_app.last_frame.line_detected) {
+        reset_lead_phase();
+        s_app.straight_noise_count = 0U;
         s_app.fork_detect_count = 0U;
         if (!g_lf_config.stable_direction_enable && s_app.last_frame.edge_hint != 0) {
             s_app.last_seen_dir = s_app.last_frame.edge_hint;
@@ -701,6 +839,7 @@ static void process_running(uint32_t now_ms, float dt_s)
         return;
     }
     s_app.line_lost_count = 0U;
+    update_lead_entry_memory(&s_app.last_frame, interference);
     update_running_window(&s_app.last_frame, interference);
 
     fork_candidate = !interference &&
@@ -721,9 +860,26 @@ static void process_running(uint32_t now_ms, float dt_s)
 
     if (!fork_candidate && g_lf_config.obstacle_avoid_enable &&
         s_app.obstacle_state == LF_RADAR_OBSTACLE_BLOCK) {
+        reset_lead_phase();
         set_reason(LF_APP_REASON_RADAR_BLOCK);
         start_avoidance(now_ms);
         return;
+    }
+
+    if (s_app.lead_phase != (uint8_t)LF_LEAD_PHASE_IDLE) {
+        process_lead_phase();
+        return;
+    }
+
+    if (frame_is_lead_event(&s_app.last_frame)) {
+        bump_counter(&s_app.lead_event_count);
+        if (s_app.lead_event_count >= g_lf_config.lead_event_confirm_ticks) {
+            start_lead_advance();
+            process_lead_phase();
+            return;
+        }
+    } else {
+        s_app.lead_event_count = 0U;
     }
 
     /*
@@ -1036,6 +1192,12 @@ void LF_App_Init(void)
     s_app.straight_stable_count = 0U;
     s_app.curve_prepare_count = 0U;
     s_app.interference_count = 0U;
+    s_app.lead_phase = (uint8_t)LF_LEAD_PHASE_IDLE;
+    s_app.lead_event_count = 0U;
+    s_app.lead_phase_ticks = 0U;
+    s_app.lead_entry_memory_count = 0U;
+    s_app.lead_entry_dir = 0;
+    s_app.straight_noise_count = 0U;
     s_app.last_trusted_position = 0;
     s_app.trusted_line_dir = +1;
     s_app.trusted_line_valid = false;

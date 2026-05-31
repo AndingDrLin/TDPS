@@ -114,6 +114,24 @@ typedef struct {
     uint8_t interference_active_count_threshold;
     int16_t interference_position_jump_threshold;
     float direction_update_confidence_min;
+    bool lead_compensation_enable;
+    uint8_t lead_event_active_count_threshold;
+    uint16_t lead_event_min_sum;
+    int16_t lead_event_center_error_threshold;
+    int16_t lead_event_entry_error_threshold;
+    uint8_t lead_event_confirm_ticks;
+    uint8_t lead_advance_ticks;
+    int16_t lead_advance_speed;
+    uint8_t lead_turn_hold_ticks;
+    int16_t lead_turn_speed;
+    int16_t lead_turn_delta;
+    uint8_t lead_entry_memory_ticks;
+    bool straight_noise_reject_enable;
+    uint8_t straight_noise_confirm_ticks;
+    uint8_t straight_noise_active_count_threshold;
+    uint16_t straight_noise_max_sum;
+    int16_t straight_noise_max_position_error;
+    int16_t straight_noise_max_position_delta;
 
     int16_t line_hold_speed;
     int16_t line_hold_turn_speed;

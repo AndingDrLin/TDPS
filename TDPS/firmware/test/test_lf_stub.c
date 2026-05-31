@@ -304,6 +304,18 @@ static void set_right_branch_line(void)
     LF_PlatformStub_SetLineSensorRaw(raw);
 }
 
+static void set_wide_center_line(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {1200U, 2200U, 3300U, 4095U, 4095U, 3300U, 2200U, 1200U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
+static void set_dirty_straight_noise(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {0U, 1230U, 1230U, 1230U, 1230U, 1230U, 1230U, 0U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
 static void set_left_only_line(void)
 {
     const uint16_t raw[LF_SENSOR_COUNT] = {3300U, 3300U, 2500U, 900U, 900U, 900U, 900U, 900U};
@@ -428,6 +440,152 @@ static int test_app_recovery_timeout(void)
 
     return expect_true(ctx->state == LF_APP_STATE_STOPPED, "recovery timeout enters STOPPED") |
            expect_true(ctx->reason == LF_APP_REASON_RECOVERY_TIMEOUT, "recovery timeout reason recorded");
+}
+
+static int test_straight_noise_keeps_base_speed(void)
+{
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.curve_prepare_enable = true;
+    g_lf_config.curve_prepare_speed = 40;
+    g_lf_config.straight_noise_reject_enable = true;
+    g_lf_config.straight_noise_confirm_ticks = 1U;
+    g_lf_config.straight_noise_active_count_threshold = 5U;
+    g_lf_config.straight_noise_max_sum = 2200U;
+    g_lf_config.straight_noise_max_position_error = 300;
+    g_lf_config.straight_noise_max_position_delta = 300;
+    set_center_line();
+    run_app_for(40U);
+    set_dirty_straight_noise();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->current_target_speed == g_lf_config.base_speed,
+                            "straight noise keeps base speed");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_lead_event_advances_before_turning(void)
+{
+    const LF_AppContext *ctx;
+    int16_t left;
+    int16_t right;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.lead_compensation_enable = true;
+    g_lf_config.lead_event_confirm_ticks = 1U;
+    g_lf_config.lead_advance_ticks = 3U;
+    g_lf_config.lead_advance_speed = 44;
+    g_lf_config.lead_turn_hold_ticks = 3U;
+    g_lf_config.lead_turn_speed = 40;
+    g_lf_config.lead_turn_delta = 90;
+    g_lf_config.lead_entry_memory_ticks = 20U;
+    g_lf_config.lead_event_active_count_threshold = 5U;
+    g_lf_config.lead_event_min_sum = 1800U;
+    g_lf_config.lead_event_center_error_threshold = 350;
+    g_lf_config.lead_event_entry_error_threshold = 300;
+
+    set_right_branch_line();
+    run_app_step_after(10U);
+    set_wide_center_line();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    LF_DebugMonitor_GetLastMotorCommand(&left, &right);
+    failures += expect_true(ctx->lead_phase == (uint8_t)LF_LEAD_PHASE_ADVANCE,
+                            "lead event starts advance phase");
+    failures += expect_true(left == right, "lead advance drives straight before turning");
+
+    run_app_for(40U);
+    ctx = LF_App_GetContext();
+    LF_DebugMonitor_GetLastMotorCommand(&left, &right);
+    failures += expect_true(ctx->state == LF_APP_STATE_RUNNING, "lead phase stays in RUNNING");
+    failures += expect_true(left > right, "lead turn hold keeps right turn after advance");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_lead_event_without_entry_direction_does_not_random_turn(void)
+{
+    int16_t left;
+    int16_t right;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.lead_compensation_enable = true;
+    g_lf_config.lead_event_confirm_ticks = 1U;
+    g_lf_config.lead_advance_ticks = 1U;
+    g_lf_config.lead_advance_speed = 44;
+    g_lf_config.lead_turn_hold_ticks = 3U;
+    g_lf_config.lead_turn_speed = 40;
+    g_lf_config.lead_turn_delta = 90;
+    g_lf_config.lead_entry_memory_ticks = 20U;
+    g_lf_config.lead_event_active_count_threshold = 5U;
+    g_lf_config.lead_event_min_sum = 1800U;
+    g_lf_config.lead_event_center_error_threshold = 350;
+    g_lf_config.lead_event_entry_error_threshold = 1200;
+
+    set_wide_center_line();
+    run_app_step_after(10U);
+    run_app_for(30U);
+    LF_DebugMonitor_GetLastMotorCommand(&left, &right);
+    failures += expect_true(left == right, "lead event without entry direction does not force turn");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_line_loss_resets_lead_phase(void)
+{
+    const uint16_t lost_raw[LF_SENSOR_COUNT] = {900U, 900U, 900U, 900U, 900U, 900U, 900U, 900U};
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.lead_compensation_enable = true;
+    g_lf_config.lead_event_confirm_ticks = 1U;
+    g_lf_config.lead_advance_ticks = 20U;
+    g_lf_config.lead_advance_speed = 44;
+    g_lf_config.lead_event_active_count_threshold = 5U;
+    g_lf_config.lead_event_min_sum = 1800U;
+    g_lf_config.lead_event_center_error_threshold = 350;
+    g_lf_config.lead_event_entry_error_threshold = 300;
+    set_right_branch_line();
+    run_app_step_after(10U);
+    set_wide_center_line();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->lead_phase == (uint8_t)LF_LEAD_PHASE_ADVANCE,
+                            "lead phase starts before line loss");
+
+    LF_PlatformStub_SetLineSensorRaw(lost_raw);
+    run_app_for(120U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->lead_phase == (uint8_t)LF_LEAD_PHASE_IDLE,
+                            "line loss resets lead phase");
+    failures += expect_true(ctx->state == LF_APP_STATE_RECOVERING,
+                            "line loss still enters recovery");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
 }
 
 static int test_fork_left_blocked_commits_right(void)
@@ -597,6 +755,10 @@ int main(void)
     failures += test_app_degraded_calibration_runs_limited();
     failures += test_debug_monitor_raw_and_reason();
     failures += test_app_recovery_timeout();
+    failures += test_straight_noise_keeps_base_speed();
+    failures += test_lead_event_advances_before_turning();
+    failures += test_lead_event_without_entry_direction_does_not_random_turn();
+    failures += test_line_loss_resets_lead_phase();
     failures += test_fork_left_blocked_commits_right();
     failures += test_fork_left_clear_commits_left();
     failures += test_fork_stale_radar_uses_fallback();

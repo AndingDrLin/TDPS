@@ -28,6 +28,12 @@ typedef enum {
 } LF_AppState;
 
 typedef enum {
+    LF_LEAD_PHASE_IDLE = 0,
+    LF_LEAD_PHASE_ADVANCE,
+    LF_LEAD_PHASE_TURN_HOLD,
+} LF_LeadPhase;
+
+typedef enum {
     LF_APP_REASON_NONE = 0,
     LF_APP_REASON_WAIT_START,
     LF_APP_REASON_CALIBRATION_STARTED,
@@ -99,6 +105,12 @@ typedef struct {
     uint8_t straight_stable_count;
     uint8_t curve_prepare_count;
     uint8_t interference_count;
+    uint8_t lead_phase;
+    uint8_t lead_event_count;
+    uint8_t lead_phase_ticks;
+    uint8_t lead_entry_memory_count;
+    int8_t lead_entry_dir;
+    uint8_t straight_noise_count;
     int32_t last_trusted_position;
     int8_t trusted_line_dir;
     bool trusted_line_valid;
