@@ -39,7 +39,8 @@
 - 控制器类型：PID
 - 输入：线位置偏差
 - 输出：修正量 `correction`
-- 底盘命令：`left = base - correction`，`right = base + correction`
+- 底盘命令：`left = base + correction`，`right = base - correction`
+- `correction > 0` 时左轮更快、右轮更慢，车向右修正；`correction < 0` 时向左修正
 - 对输出和电机命令做限幅，避免打满
 
 相关文件：
@@ -56,6 +57,8 @@
 - `CALIBRATING`：左右摆动采样，提高 min/max 覆盖度
 - `RUNNING`：按固定周期读传感器 + 更新 PID
 - `RUNNING`：维护短窗口计数，连续稳定直道使用 `straight_boost_speed`，入弯趋势使用 `curve_prepare_speed` 或 `sharp_turn_speed`
+- `RUNNING`：识别直线脏点、地图褶皱和反光造成的弱异常帧，通过 `straight_noise_*` 避免误触发弯前减速
+- `RUNNING`：识别宽黑、T 字、直角、圆形入口、U 型顶点等特殊线型，通过 `lead_compensation` 先低速直行补偿，再按入口方向保持转向
 - `RUNNING`：识别宽黑/箭头类干扰帧，避免单帧跳变污染恢复方向或立即触发岔路
 - `RUNNING`：并行轮询雷达状态（非阻塞），`WARN` 减速，`BLOCK` 进入避障
 - `RECOVERING`：按可信的最后看到线方向搜索；若遇到 `BLOCK` 也进入避障
@@ -69,20 +72,23 @@
 
 ## 3. 参数策略
 
-参数集中在 `Src/lf_config.c` 的 `g_lf_config`。逐项含义和整车调试方法见 `docs/tuning.md`。
+参数集中在 `Src/lf_config.c` 的 `g_lf_config`。当前实车默认启动路径会调用 `LF_Config_ApplyDebugProfile()`，所以上板低速验证以 `Src/lf_config_profiles.c` 的 debug profile 覆盖值为准；默认结构体值主要作为未套 profile 或 competition profile 的基线。逐项含义和整车调试方法见 `docs/tuning.md`。
 
 建议顺序：
 
-1. `base_speed` / `straight_boost_speed`
-2. `curve_prepare_speed` / `sharp_turn_speed`
-3. `kp`
-4. `kd`
-5. `line_detect_min_sum`
-6. `straight_error_threshold` / `curve_prepare_error_threshold`
-7. `interference_active_count_threshold` / `interference_position_jump_threshold`
-8. `line_hold_speed` / `line_hold_turn_speed` / `recover_timeout_ms`
-9. `obstacle_turn_out_ms` / `obstacle_bypass_ms` / `obstacle_turn_in_ms`
-10. `obstacle_reacquire_timeout_ms` / `obstacle_preferred_side`
+1. 传感器极性、通道顺序和 `sensor_weights`
+2. `base_speed` / `sharp_turn_speed`
+3. `kp` / `kd`
+4. `max_correction` / `max_output_delta_per_tick`
+5. `straight_noise_*`
+6. `lead_advance_ticks`
+7. `lead_turn_delta` / `lead_turn_hold_ticks`
+8. `lead_event_confirm_ticks` / `lead_event_min_sum` / `lead_event_active_count_threshold`
+9. `line_detect_min_sum` / `line_detect_min_peak` / `line_detect_min_contrast`
+10. `interference_active_count_threshold` / `interference_position_jump_threshold`
+11. `line_hold_speed` / `line_hold_turn_speed` / `recover_timeout_ms`
+12. `obstacle_turn_out_ms` / `obstacle_bypass_ms` / `obstacle_turn_in_ms`
+13. `obstacle_reacquire_timeout_ms` / `obstacle_preferred_side`
 
 8-LP 相关关键参数：
 
@@ -133,6 +139,8 @@
 
 ## 6. 已知限制
 
+- 当前三轮差速车传感器阵列中心到左右驱动轮轴线中点约 22 cm，左右驱动轮中心距约 16 cm；路口、U 型顶点、直角和圆形入口应以驱动轮轴线中点作为实际转向参考点
+- `lead_advance_ticks` 目前是时间近似，不是编码器闭环距离；换速度、电池、电机或地面摩擦后，需要重新校准“传感器看到特殊线型后继续前进多远”
 - 雷达解析已支持保留测试帧、LD2410S 最小帧和已知标准帧目标/距离字段，仍需实机确认距离单位、波特率和目标状态语义
 - 当前避障只有前向雷达信息，不能直接感知障碍在左侧还是右侧；左右绕行依赖配置、上次线方向和失败反向重试
 - 避障动作是定时开环，换电池、电机、地面摩擦或车体负载后必须重新调参
