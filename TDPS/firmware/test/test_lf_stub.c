@@ -644,6 +644,34 @@ static int test_straight_noise_keeps_base_speed(void)
     return failures;
 }
 
+static int test_arrow_like_wide_frame_does_not_start_lead_without_entry(void)
+{
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.lead_compensation_enable = true;
+    g_lf_config.lead_event_confirm_ticks = 1U;
+    g_lf_config.lead_event_active_count_threshold = 5U;
+    g_lf_config.lead_event_min_sum = 1800U;
+    g_lf_config.lead_event_center_error_threshold = 350;
+    g_lf_config.lead_event_entry_error_threshold = 650;
+    set_wide_biased_straight_noise();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->lead_phase == (uint8_t)LF_LEAD_PHASE_IDLE,
+                            "arrow-like wide frame without entry does not start lead phase");
+    failures += expect_true(ctx->state == LF_APP_STATE_RUNNING,
+                            "arrow-like wide frame without entry stays running");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
 static int test_biased_wide_noise_does_not_start_lead_event(void)
 {
     const LF_AppContext *ctx;
@@ -687,9 +715,9 @@ static int test_lead_event_advances_before_turning(void)
     g_lf_config.lead_event_confirm_ticks = 1U;
     g_lf_config.lead_advance_ticks = 3U;
     g_lf_config.lead_advance_speed = 44;
-    g_lf_config.lead_turn_hold_ticks = 3U;
+    g_lf_config.lead_turn_hold_ticks = 2U;
     g_lf_config.lead_turn_speed = 40;
-    g_lf_config.lead_turn_delta = 90;
+    g_lf_config.lead_turn_delta = 70;
     g_lf_config.lead_entry_memory_ticks = 20U;
     g_lf_config.lead_event_active_count_threshold = 5U;
     g_lf_config.lead_event_min_sum = 1800U;
@@ -960,6 +988,7 @@ int main(void)
     failures += test_offset_line_still_turns_with_deadband();
     failures += test_wide_center_deadband_softens_motor_output();
     failures += test_straight_noise_keeps_base_speed();
+    failures += test_arrow_like_wide_frame_does_not_start_lead_without_entry();
     failures += test_biased_wide_noise_does_not_start_lead_event();
     failures += test_lead_event_advances_before_turning();
     failures += test_lead_event_without_entry_direction_does_not_random_turn();

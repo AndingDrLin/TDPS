@@ -97,18 +97,18 @@
 
 | 参数 | 当前值 | 含义 | 调试方法 |
 |---|---:|---|---|
-| `lead_compensation_enable` | `false`（debug profile） | 是否启用特殊线型前探补偿。 | 1343f3c 能直走时没有这套前探状态机；当前默认关闭，必须先确认直线稳定，再单独打开验证路口/U 型弯。 |
+| `lead_compensation_enable` | `true`（debug profile） | 是否启用特殊线型前探补偿。 | 当前在 `56ecd1b` 直线稳定基线上保守开启，用于 U 型顶点先低速前探再轻转；若直线明显退化，优先回退到该基线对照。 |
 | `lead_event_active_count_threshold` | `6`（debug profile） | 判定特殊线型所需在线通道数。 | 路口漏触发可降到 5；直线误触发就升高。 |
 | `lead_event_min_sum` | `2200`（debug profile） | 特殊线型最小总强度。 | 路口/U 型顶点漏触发可降低；脏点/反光误触发就提高。 |
 | `lead_event_center_error_threshold` | `350`（debug profile） | 宽线/交点中心帧允许的中心偏差。 | U 型顶点全通道在线但 `position≈0` 时靠它触发。误触发则收紧。 |
 | `lead_event_entry_error_threshold` | `650`（debug profile） | 记录入弯/入口方向的位置偏差阈值。 | 必须显著大于 `lead_event_center_error_threshold`，避免阈值重叠导致几乎所有宽线/噪声都触发前探。 |
 | `lead_event_confirm_ticks` | `2`（debug profile） | 连续多少帧确认特殊线型。 | 路口漏触发可减到 1；直线误触发前探就增大。 |
-| `lead_advance_ticks` | `18`（debug profile） | 检测到特殊线型后继续低速直行的 tick 数。 | 最优先调。过早转弯就增大；冲过交点/顶点才转就减小。 |
-| `lead_advance_speed` | `65`（debug profile） | 前探补偿阶段左右轮同速。 | 先保持低速；调距离优先改 `lead_advance_ticks`，不要先大幅改速度。 |
-| `lead_turn_hold_ticks` | `16`（debug profile） | 补偿后保持差速转向的 tick 数。 | 转向保持不够就增大；过度转向或摆头就减小。 |
-| `lead_turn_speed` | `55`（debug profile） | 转向保持阶段前进速度。 | 当前低速保守；过快会冲出，过慢可能原地抖。 |
-| `lead_turn_delta` | `115`（debug profile） | 转向保持阶段左右轮速度差。 | 补偿后仍转不过去就增大；转向过猛/甩头就减小。 |
-| `lead_entry_memory_ticks` | `40`（debug profile） | 入口方向记忆保留时间。 | 方向丢得太快就增大；过旧方向导致误转就减小。 |
+| `lead_advance_ticks` | `14`（debug profile） | 检测到特殊线型后继续低速直行的 tick 数。 | 最优先调。U 型过早转弯就增大；冲过交点/顶点才转就减小。 |
+| `lead_advance_speed` | `60`（debug profile） | 前探补偿阶段左右轮同速。 | 当前用于让驱动轮轴线接近 U 型顶点；调距离优先改 `lead_advance_ticks`，不要先大幅改速度。 |
+| `lead_turn_hold_ticks` | `7`（debug profile） | 补偿后保持差速转向的 tick 数。 | 当前刻意短保持，避免 U 型顶点过度向左；转向保持不够才小步增大。 |
+| `lead_turn_speed` | `50`（debug profile） | 转向保持阶段前进速度。 | 当前低速保守；过快会冲出，过慢可能原地抖。 |
+| `lead_turn_delta` | `80`（debug profile） | 转向保持阶段左右轮速度差。 | 当前从 115 降低，避免 U 型顶点强制转向过猛；补偿后仍转不过去再小步增大。 |
+| `lead_entry_memory_ticks` | `32`（debug profile） | 入口方向记忆保留时间。 | 当前缩短以减少过旧方向导致误转；方向丢得太快再增大。 |
 
 调参顺序固定为：先 `lead_advance_ticks`，再 `lead_turn_delta`，再 `lead_turn_hold_ticks`，最后才调 `lead_event_*`。如果没有明确入口方向，代码只做保守前探，不随机强制转向。`lead_event_entry_error_threshold` 不能小于或接近 `lead_event_center_error_threshold`；阈值重叠会让宽噪声直线、反光或地图褶皱几乎无条件进入前探补偿。
 
@@ -187,14 +187,20 @@
 | 权重 | `{1750,1250,750,250,-250,-750,-1250,-1750}` |
 | PID/速度 | `base_speed=150`、`adaptive_slow_speed=60`、`sharp_turn_speed=35`、`kp=0.09`、`kd=0.22`、`ki=0`、`max_correction=250`、`control_error_deadband=80`、`control_error_soft_zone=240` |
 | 输出限制 | `derivative_filter_alpha=0.60`、`max_output_delta_per_tick=28`、`max_motor_cmd=300`、`motor_deadband=0` |
-| 策略开关 | `straight_boost_enable=false`、`curve_prepare_enable=true`、`line_stability_enable=true`、`stable_direction_enable=true`、`sensor_edge_noise_reject_enable=true`、`lead_compensation_enable=false`、`fork_enable=false`、`obstacle_avoid_enable=false` |
-| 前探补偿 | `lead_event_center_error_threshold=350`、`lead_event_entry_error_threshold=650`、`lead_advance_ticks=18`、`lead_advance_speed=65`、`lead_turn_hold_ticks=16`、`lead_turn_speed=55`、`lead_turn_delta=115` |
+| 策略开关 | `straight_boost_enable=false`、`curve_prepare_enable=true`、`line_stability_enable=true`、`stable_direction_enable=true`、`sensor_edge_noise_reject_enable=true`、`lead_compensation_enable=true`、`fork_enable=false`、`obstacle_avoid_enable=false` |
+| 前探补偿 | `lead_event_center_error_threshold=350`、`lead_event_entry_error_threshold=650`、`lead_advance_ticks=14`、`lead_advance_speed=60`、`lead_turn_hold_ticks=7`、`lead_turn_speed=50`、`lead_turn_delta=80` |
 | 直线噪声 | `sensor_edge_noise_neighbor_threshold=220`、`straight_noise_confirm_ticks=2`、`straight_noise_active_count_threshold=5`、`straight_noise_max_sum=1800`、`straight_noise_max_position_error=250`、`straight_noise_max_position_delta=120` |
 | 速度模式确认 | `curve_prepare_delta_threshold=180`、`curve_prepare_confirm_ticks=3` |
 
 本轮关键结论：线宽约等于 3 个传感器通道时，车稍微放歪或箭头岔路多通道先后扫到线，都会制造小幅位置偏差；如果直接交给 PID 和速度模式，小修正会被放大成左右摆头。优先用 `control_error_*`、`sensor_edge_noise_*` 和 `curve_prepare_confirm_ticks` 降低输入抖动，但死区/软区不能过大，否则会从“抗摆”变成“偏了也不修、弯道也不转”。
 
 本轮不转弯根因：`control_error_deadband=140`、`control_error_soft_zone=420` 对中等偏差压缩过强；同时干扰帧判断会把部分真实偏侧线/弯道线当作跳变干扰，继续用上一可信位置控制。当前修正为 `80/240`，并且强偏侧且有 `edge_hint` 的帧不再作为干扰冻结。
+
+实车参考基线：`56ecd1b5d98ffc8404930787a5c12d5a2e350e49`（2026-05-31 22:31，`fix: 调整控制参数以优化巡线性能，减少误差死区和软区`）目前能基本稳定走到 U 型弯顶点。若后续直线、箭头岔路或 U 型入口效果明显变差，优先与该提交对照代码和参数差异。
+
+当前剩余现象：直线遇箭头型岔路有轻微抖动但不丢线；进入 U 型弯后会多次抖动，随后车头向左过度转向并丢线。该现象更像“弯道内转向响应/车身几何时序问题”，不是直线基础巡线问题。
+
+当前修正方向：在不使用双 PID 的前提下，保守开启已有 `lead_phase` 前探补偿。U 型顶点先低速直行 `lead_advance_ticks=14`，再用更弱更短的 `lead_turn_delta=80`、`lead_turn_hold_ticks=7` 轻转；同时 `frame_is_lead_event()` 增加入口记忆/强特殊线型保护，避免普通宽线或箭头岔路误触发强制转向。
 
 已试过但不好用或只适合特定阶段的参数：
 
