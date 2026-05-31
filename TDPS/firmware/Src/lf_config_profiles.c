@@ -27,9 +27,9 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.sensor_weights[6] = -1250;
     g_lf_config.sensor_weights[7] = -1750;
 	
-    g_lf_config.kp  = 0.16f;    // 比例：比 0.15 多一丝，小偏差也有可见修正
+    g_lf_config.kp  = 0.22f;    // 比例：比 0.15 多一丝，小偏差也有可见修正
     g_lf_config.ki  = 0.0f;     // 积分：不开（会累积画龙）
-    g_lf_config.kd  = 0.32f;    // 微分：比 0.22 高，用强阻尼抵消小死区带来的抖动
+    g_lf_config.kd  = 0.35f;    // 微分：比 0.22 高，用强阻尼抵消小死区带来的抖动
 		
     g_lf_config.control_error_deadband  = 15;    // ★ 几乎零死区，传感器偏一点就开修
     g_lf_config.control_error_soft_zone = 80;   // ★ 误差 >5 立刻平滑过渡，>50 全量修正

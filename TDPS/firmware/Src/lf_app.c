@@ -928,7 +928,14 @@ static void process_running(uint32_t now_ms, float dt_s)
     base_speed = choose_running_speed(&s_app.last_frame);
     error = (float)(interference ? s_app.last_trusted_position : s_app.last_frame.position);
     error = shape_control_error(error);
-    correction = LF_Control_UpdatePid(error, dt_s, &s_app.pid);
+    {
+        float saved_kp = g_lf_config.kp;
+        float ratio = (float)base_speed / (float)g_lf_config.base_speed;
+        if (ratio < 0.18f) ratio = 0.18f;
+        g_lf_config.kp = saved_kp * ratio;
+        correction = LF_Control_UpdatePid(error, dt_s, &s_app.pid);
+        g_lf_config.kp = saved_kp;
+    }
     LF_Control_ComputeMotorCmd(base_speed, correction, &left_cmd, &right_cmd);
     left_cmd = limit_degraded_speed(left_cmd);
     right_cmd = limit_degraded_speed(right_cmd);
