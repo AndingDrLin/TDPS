@@ -79,6 +79,8 @@ typedef struct {
 
     /* 左右半区强度差超过该阈值时，更新丢线恢复方向。 */
     uint16_t edge_hint_threshold;
+    bool sensor_edge_noise_reject_enable;
+    uint16_t sensor_edge_noise_neighbor_threshold;
 
     /* 传感器横向权重。左负右正。 */
     int16_t sensor_weights[LF_SENSOR_COUNT];
@@ -93,6 +95,8 @@ typedef struct {
 
     /* PID 输出限幅，避免急剧打角。 */
     int16_t max_correction;
+    int16_t control_error_deadband;
+    int16_t control_error_soft_zone;
     int16_t adaptive_slow_speed;
     int16_t adaptive_error_threshold;
     float adaptive_confidence_threshold;

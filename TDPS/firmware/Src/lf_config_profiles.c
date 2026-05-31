@@ -16,6 +16,8 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.line_detect_min_sum = 780U;
     g_lf_config.line_detect_min_peak = 260U;
     g_lf_config.line_detect_min_contrast = 80U;
+    g_lf_config.sensor_edge_noise_reject_enable = true;
+    g_lf_config.sensor_edge_noise_neighbor_threshold = 220U;
     g_lf_config.sensor_weights[0] = 1750;
     g_lf_config.sensor_weights[1] = 1250;
     g_lf_config.sensor_weights[2] = 750;
@@ -31,6 +33,8 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.adaptive_slow_speed = 60;
     g_lf_config.sharp_turn_speed = 35;
     g_lf_config.max_correction = 250;
+    g_lf_config.control_error_deadband = 140;
+    g_lf_config.control_error_soft_zone = 420;
     g_lf_config.straight_boost_enable = false;
     g_lf_config.curve_prepare_enable = true;
     g_lf_config.line_stability_enable = true;
@@ -38,6 +42,8 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.interference_active_count_threshold = 5U;
     g_lf_config.interference_position_jump_threshold = 320;
     g_lf_config.direction_update_confidence_min = 0.50f;
+    g_lf_config.curve_prepare_delta_threshold = 180;
+    g_lf_config.curve_prepare_confirm_ticks = 3U;
     g_lf_config.lead_compensation_enable = false;
     g_lf_config.lead_event_active_count_threshold = 6U;
     g_lf_config.lead_event_min_sum = 2200U;

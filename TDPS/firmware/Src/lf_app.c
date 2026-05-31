@@ -356,7 +356,9 @@ static void update_running_window(const LF_SensorFrame *frame, bool interference
     curve_frame = g_lf_config.curve_prepare_enable &&
                   (abs_position >= g_lf_config.curve_prepare_error_threshold ||
                    position_delta >= g_lf_config.curve_prepare_delta_threshold ||
-                   frame->edge_hint != 0 ||
+                   (frame->edge_hint != 0 &&
+                    (abs_position >= g_lf_config.curve_prepare_error_threshold ||
+                     position_delta >= g_lf_config.curve_prepare_delta_threshold)) ||
                    frame->line_confidence < g_lf_config.adaptive_confidence_threshold ||
                    frame->contrast_value < g_lf_config.line_detect_min_contrast);
     if (curve_frame) {
@@ -364,6 +366,39 @@ static void update_running_window(const LF_SensorFrame *frame, bool interference
     } else {
         s_app.curve_prepare_count = 0U;
     }
+}
+
+static float shape_control_error(float error)
+{
+    int16_t deadband = g_lf_config.control_error_deadband;
+    int16_t soft_zone = g_lf_config.control_error_soft_zone;
+    float sign = 1.0f;
+    float abs_error;
+
+    if (deadband < 0) {
+        deadband = (int16_t)(-deadband);
+    }
+    if (soft_zone < deadband) {
+        soft_zone = deadband;
+    }
+    if (deadband == 0 && soft_zone == 0) {
+        return error;
+    }
+    if (error < 0.0f) {
+        sign = -1.0f;
+        abs_error = -error;
+    } else {
+        abs_error = error;
+    }
+    if (abs_error <= (float)deadband) {
+        return 0.0f;
+    }
+    if (soft_zone > deadband && abs_error < (float)soft_zone) {
+        float span = (float)(soft_zone - deadband);
+        float shaped = (abs_error - (float)deadband) * (abs_error - (float)deadband) / span;
+        return sign * shaped;
+    }
+    return sign * (abs_error - (float)deadband);
 }
 
 static int16_t choose_running_speed(const LF_SensorFrame *frame)
@@ -890,6 +925,7 @@ static void process_running(uint32_t now_ms, float dt_s)
      */
     base_speed = choose_running_speed(&s_app.last_frame);
     error = (float)(interference ? s_app.last_trusted_position : s_app.last_frame.position);
+    error = shape_control_error(error);
     correction = LF_Control_UpdatePid(error, dt_s, &s_app.pid);
     LF_Control_ComputeMotorCmd(base_speed, correction, &left_cmd, &right_cmd);
     left_cmd = limit_degraded_speed(left_cmd);

@@ -32,6 +32,8 @@ LF_Config g_lf_config = {
     .line_detect_min_contrast = 120U,
     .line_lost_grace_ticks = 4U,
     .edge_hint_threshold = 120U,
+    .sensor_edge_noise_reject_enable = true,
+    .sensor_edge_noise_neighbor_threshold = 260U,
     .sensor_weights = {-1750, -1250, -750, -250, 250, 750, 1250, 1750},
 
     /* 巡线 PID：整车速度和稳定性主要由这组参数决定。 */
@@ -40,6 +42,8 @@ LF_Config g_lf_config = {
     .kd = 1.90f,
     .base_speed = 300,
     .max_correction = 340,
+    .control_error_deadband = 0,
+    .control_error_soft_zone = 0,
     .adaptive_slow_speed = 210,
     .adaptive_error_threshold = 800,
     .adaptive_confidence_threshold = 0.40f,

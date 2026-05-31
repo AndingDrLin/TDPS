@@ -244,6 +244,72 @@ static int test_sensor_degraded_calibration_masks_bad_channels(void)
     return failures;
 }
 
+static int test_sensor_isolated_edge_noise_ignored_for_position(void)
+{
+    const uint16_t left_edge_noise[LF_SENSOR_COUNT] = {4095U, 0U, 0U, 4095U, 4095U, 0U, 0U, 0U};
+    const uint16_t right_edge_noise[LF_SENSOR_COUNT] = {0U, 0U, 0U, 4095U, 4095U, 0U, 0U, 4095U};
+    LF_SensorFrame frame;
+    int failures = 0;
+
+    LF_Platform_BoardInit();
+    g_lf_config.sensor_input_mode = LF_SENSOR_INPUT_UART_PROTOCOL;
+    g_lf_config.sensor_use_dynamic_calibration = false;
+    g_lf_config.sensor_fast_calibration = true;
+    g_lf_config.sensor_invert_polarity = false;
+    g_lf_config.sensor_filter_alpha = 1.0f;
+    g_lf_config.sensor_edge_noise_reject_enable = true;
+    g_lf_config.sensor_edge_noise_neighbor_threshold = 260U;
+    g_lf_config.line_detect_min_sum = 780U;
+    g_lf_config.line_detect_min_peak = 260U;
+    g_lf_config.line_detect_min_contrast = 80U;
+    g_lf_config.sensor_weights[0] = -1750;
+    g_lf_config.sensor_weights[1] = -1250;
+    g_lf_config.sensor_weights[2] = -750;
+    g_lf_config.sensor_weights[3] = -250;
+    g_lf_config.sensor_weights[4] = 250;
+    g_lf_config.sensor_weights[5] = 750;
+    g_lf_config.sensor_weights[6] = 1250;
+    g_lf_config.sensor_weights[7] = 1750;
+    LF_Sensor_Init();
+    LF_Sensor_StartCalibration();
+
+    LF_PlatformStub_SetLineSensorRaw(left_edge_noise);
+    LF_Sensor_ReadFrame(&frame);
+    failures += expect_true(frame.line_detected, "left edge noise frame still detects center line");
+    failures += expect_true(frame.filtered_u16[0] >= g_lf_config.line_detect_min_peak,
+                            "left edge raw filtered value remains observable");
+    failures += expect_true(frame.position == 0, "isolated left edge noise does not pull position");
+    failures += expect_true(frame.edge_hint == 0, "isolated left edge noise does not set edge hint");
+
+    LF_Sensor_Init();
+    LF_Sensor_StartCalibration();
+    LF_PlatformStub_SetLineSensorRaw(right_edge_noise);
+    LF_Sensor_ReadFrame(&frame);
+    failures += expect_true(frame.line_detected, "right edge noise frame still detects center line");
+    failures += expect_true(frame.filtered_u16[7] >= g_lf_config.line_detect_min_peak,
+                            "right edge raw filtered value remains observable");
+    failures += expect_true(frame.position == 0, "isolated right edge noise does not pull position");
+    failures += expect_true(frame.edge_hint == 0, "isolated right edge noise does not set edge hint");
+    g_lf_config.sensor_input_mode = LF_SENSOR_INPUT_UART_PROTOCOL;
+    g_lf_config.sensor_use_dynamic_calibration = true;
+    g_lf_config.sensor_fast_calibration = false;
+    g_lf_config.sensor_invert_polarity = false;
+    g_lf_config.sensor_filter_alpha = 0.35f;
+    g_lf_config.line_detect_min_sum = 780U;
+    g_lf_config.line_detect_min_peak = 260U;
+    g_lf_config.line_detect_min_contrast = 120U;
+    g_lf_config.sensor_weights[0] = -1750;
+    g_lf_config.sensor_weights[1] = -1250;
+    g_lf_config.sensor_weights[2] = -750;
+    g_lf_config.sensor_weights[3] = -250;
+    g_lf_config.sensor_weights[4] = 250;
+    g_lf_config.sensor_weights[5] = 750;
+    g_lf_config.sensor_weights[6] = 1250;
+    g_lf_config.sensor_weights[7] = 1750;
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
 static int test_pid_output_slew_limit(void)
 {
     LF_PIDState pid;
@@ -452,6 +518,72 @@ static int test_app_recovery_timeout(void)
 
     return expect_true(ctx->state == LF_APP_STATE_STOPPED, "recovery timeout enters STOPPED") |
            expect_true(ctx->reason == LF_APP_REASON_RECOVERY_TIMEOUT, "recovery timeout reason recorded");
+}
+
+static int test_single_edge_hint_noise_does_not_slow_to_curve_speed(void)
+{
+    const uint16_t edge_hint_noise[LF_SENSOR_COUNT] = {4095U, 0U, 0U, 4095U, 4095U, 0U, 0U, 0U};
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.curve_prepare_enable = true;
+    g_lf_config.curve_prepare_speed = 40;
+    g_lf_config.curve_prepare_error_threshold = 400;
+    g_lf_config.curve_prepare_delta_threshold = 180;
+    g_lf_config.curve_prepare_confirm_ticks = 1U;
+    g_lf_config.adaptive_confidence_threshold = 0.20f;
+    g_lf_config.sensor_edge_noise_reject_enable = true;
+    g_lf_config.sensor_edge_noise_neighbor_threshold = 260U;
+    g_lf_config.sensor_filter_alpha = 1.0f;
+    set_center_line();
+    run_app_for(40U);
+    LF_PlatformStub_SetLineSensorRaw(edge_hint_noise);
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->current_target_speed == g_lf_config.base_speed,
+                            "single isolated edge noise does not select curve speed");
+    failures += expect_true(ctx->last_frame.edge_hint == 0,
+                            "isolated edge noise is removed before edge hint calculation");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_wide_center_deadband_softens_motor_output(void)
+{
+    const LF_AppContext *ctx;
+    int16_t left;
+    int16_t right;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.lead_compensation_enable = false;
+    g_lf_config.stable_direction_enable = true;
+    g_lf_config.line_stability_enable = true;
+    g_lf_config.control_error_deadband = 140;
+    g_lf_config.control_error_soft_zone = 420;
+    g_lf_config.max_output_delta_per_tick = 200;
+    set_center_line();
+    run_app_for(40U);
+    set_wide_biased_straight_noise();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    LF_DebugMonitor_GetLastMotorCommand(&left, &right);
+    failures += expect_true(ctx->last_frame.line_detected, "wide biased center frame remains detected");
+    failures += expect_true((left - right) < 80 && (right - left) < 80,
+                            "wide center small bias produces softened differential command");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
 }
 
 static int test_straight_noise_keeps_base_speed(void)
@@ -789,10 +921,13 @@ int main(void)
     failures += test_radar_timeout_clears_block();
     failures += test_sensor_weighted_position_and_edge_hint();
     failures += test_sensor_degraded_calibration_masks_bad_channels();
+    failures += test_sensor_isolated_edge_noise_ignored_for_position();
     failures += test_pid_output_slew_limit();
     failures += test_app_degraded_calibration_runs_limited();
     failures += test_debug_monitor_raw_and_reason();
     failures += test_app_recovery_timeout();
+    failures += test_single_edge_hint_noise_does_not_slow_to_curve_speed();
+    failures += test_wide_center_deadband_softens_motor_output();
     failures += test_straight_noise_keeps_base_speed();
     failures += test_biased_wide_noise_does_not_start_lead_event();
     failures += test_lead_event_advances_before_turning();

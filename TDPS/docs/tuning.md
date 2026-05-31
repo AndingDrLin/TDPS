@@ -44,7 +44,11 @@
 | `sensor_use_dynamic_calibration` | `false`（debug profile） | 是否启用上电动态标定。 | ADC 模式建议开启；当前 Yahboom UART debug profile 关闭动态标定并使用快速标定。 |
 | `sensor_filter_alpha` | `0.35`（debug profile） | 低通滤波系数。越大越灵敏，越小越平滑。 | 当前以 `0.35` 为低速实车基准；若调大，必须单独验证直线不蛇形。 |
 | `line_detect_min_sum` | `780` | 判定“检测到线”的总强度阈值。 | 经常误丢线就降低；白底也被认为在线就升高。先确认极性再调。 |
+| `line_detect_min_peak` | `260` | 单通道在线峰值阈值。 | 偶发脏点被认为在线就升高；真实线峰值偏低才降低。 |
+| `line_detect_min_contrast` | `80`（debug profile） | 峰值与背景差值阈值。 | 当前为低速上板基准；过高会在宽线/低对比处误进入低速或丢线。 |
 | `edge_hint_threshold` | `120` | 左右半区强度差超过该值时更新丢线恢复方向。 | 丢线后总往错边找线就检查权重/极性，再调此值；方向变化太敏感就升高。 |
+| `sensor_edge_noise_reject_enable` | `true`（debug profile） | 计算位置/方向前，抑制 0/7 通道孤立假阳性。 | 直线地面灰尘、褶皱阴影让 0 或 7 单独亮时保持开启；若真实极边线被忽略，再检查邻居阈值。 |
+| `sensor_edge_noise_neighbor_threshold` | `220`（debug profile） | 0/7 假点抑制所需的相邻通道阈值。 | 值越高越容易把孤立边缘点剔除；若边缘真实线被剔除就降低。 |
 | `sensor_weights` | `{1750,1250,750,250,-250,-750,-1250,-1750}`（debug profile） | 8 路横向位置权重；当前 Yahboom UART 实车通道顺序与常规“左负右正”表述相反，以 debug profile 为准。 | 不要随意改回 `{-1750..1750}`：曾导致直线不稳、箭头岔路摆头走错线、U 型弯入口反向左转。 |
 
 ## 4. 巡线 PID 与电机参数
@@ -59,6 +63,8 @@
 | `kd` | `0.22`（debug profile） | 微分增益，抑制快速摆动。 | 从 1343 基线 `0.18` 小增，用于增加阻尼。若弯道响应变钝，再回退到 `0.20`。 |
 | `ki` | `0.0` | 积分增益，修长期偏差。 | 通常保持 0。只有持续偏一侧且机械问题排除后，再小幅增加。 |
 | `max_correction` | `250`（debug profile，1343 直线基线） | PID 修正量总限幅。 | 这是 1343f3c 能直走时的基线值；不要擅自改成更小来“保守”，否则可能只剩原地左右找线而不前进。 |
+| `control_error_deadband` | `140`（debug profile） | PID 前的位置误差死区，小偏差按 0 处理。 | 用于宽线约等于 3 个通道时减少小幅左右修正；若弯道入口跟线明显迟钝，再小步降低。 |
+| `control_error_soft_zone` | `420`（debug profile） | PID 前的位置误差软区，死区外的小误差被压缩。 | 软区必须大于死区；抖动仍明显可小步增大，U 型弯跟不上则小步减小。 |
 | `max_motor_cmd` | `300`（debug profile） | 电机命令绝对值上限。 | 保护电机/电池。速度不够可加，但先确认机械和供电。 |
 | `motor_deadband` | `0`（debug profile） | 非零命令的最小起转补偿。 | 小命令车不动就加；低速动作太冲就减。 |
 
@@ -73,8 +79,8 @@
 | `straight_confirm_ticks` | `8` | 连续多少个控制周期稳定后提速。 | 仅开启直道高速后相关；提速太慢就减小，提速太早就增大。 |
 | `curve_prepare_enable` | `true`（debug profile，保留 1343 直线基线） | 是否启用弯前趋势减速。 | 保留 1343f3c 能直走时的基线开关；本轮稳定化不再改它，避免重现原地左右转。 |
 | `curve_prepare_error_threshold` | `400` | 入弯趋势的位置偏差阈值。 | U 型弯冲出就降低；直道误减速先检查 `straight_noise_*`，再考虑提高。 |
-| `curve_prepare_delta_threshold` | `100` | 入弯趋势的位置变化阈值。 | 弯前减速慢就降低；箭头干扰误减速先检查 `straight_noise_*` 和 `interference_*`。 |
-| `curve_prepare_confirm_ticks` | `1` | 连续多少个控制周期确认入弯。 | 减速不及时就保持 1；误触发优先调直线噪声识别，而不是盲目增大。 |
+| `curve_prepare_delta_threshold` | `180`（debug profile） | 入弯趋势的位置变化阈值。 | 本轮从 100 提到 180，避免单帧边缘假点/宽线时间差让直线误进入低速；弯前减速太晚再小步降低。 |
+| `curve_prepare_confirm_ticks` | `3`（debug profile） | 连续多少个控制周期确认入弯。 | 本轮从 1 提到 3，给速度模式增加确认；直线速度误降优先保持 3，真实急弯减速慢再回到 2。 |
 | `straight_noise_reject_enable` | `true`（debug profile） | 是否把弱宽线/脏点/褶皱/反光识别为直线噪声。 | 当前用于解决直线突然变慢；若真弯道被当噪声，收紧下面几个阈值。 |
 | `straight_noise_confirm_ticks` | `2`（debug profile） | 连续多少帧确认直线噪声。 | 直线仍常误减速可减小到 1；真弯被误判噪声就增大。 |
 | `straight_noise_active_count_threshold` | `5`（debug profile） | 触发直线噪声候选的最小在线通道数。 | 脏点/反光漏识别可降低；普通弯道被误判可提高。 |
@@ -154,7 +160,10 @@
 | 上电标定后一直认为丢线 | `sensor_invert_polarity`、`sensor_digital_active_high`、`line_detect_min_sum` |
 | 直道能走但左右晃动很厉害 | 在 1343 直线基线上小步稳定化：`kp=0.09`、`kd=0.22`、`max_output_delta_per_tick=28`；不要动权重、极性和 `curve_prepare_enable` |
 | 直道原地左右转、不往前走 | 先恢复 1343f3c 直线基线：`max_correction=250`、`max_output_delta_per_tick=35`、`curve_prepare_enable=true`、`lead_compensation_enable=false`；不要先测岔路口 |
-| 直道遇脏点/褶皱/反光突然变慢 | 优先调 `straight_noise_*`；不要先关闭 `curve_prepare_enable` 或提高 `base_speed` |
+| 直道遇脏点/褶皱/反光突然变慢 | 优先调 `straight_noise_*`、`sensor_edge_noise_*`、`curve_prepare_confirm_ticks`；不要先关闭 `curve_prepare_enable` 或提高 `base_speed` |
+| 宽线约 3 个通道导致小幅左右摆头 | 优先调 `control_error_deadband` / `control_error_soft_zone`，让小偏差不被 PID 放大；不要先大幅改 `kp/kd/max_correction` |
+| 0 或 7 通道在无线处偶发亮起 | 保持 `sensor_edge_noise_reject_enable=true`，先调 `sensor_edge_noise_neighbor_threshold`；不要让孤立边缘点刷新位置和方向记忆 |
+| 箭头形岔路多通道时间差导致摆头 | 先用 `control_error_*` 降低小偏差响应，并用 `curve_prepare_confirm_ticks=3` 避免单帧误低速；仍走错再单独收紧岔路识别 |
 | U 型弯入口冲出 | 先调 `lead_advance_ticks` 让驱动轮轴线中点到达顶点附近，再调 `lead_turn_delta` / `lead_turn_hold_ticks` |
 | U 型弯顶点全通道在线后直走丢线 | 检查 `lead_event_min_sum`、`lead_event_active_count_threshold`、`lead_event_center_error_threshold` 是否触发前探补偿 |
 | T 字/直角/圆形入口自动进入丢线 | 先调 `lead_advance_ticks`，不要让传感器一看到交点就立即确定性转向 |
@@ -176,11 +185,14 @@
 |---|---|
 | 传感器 | UART、`sensor_invert_polarity=true`、`sensor_filter_alpha=0.35`、`line_detect_min_sum=780`、`line_detect_min_peak=260`、`line_detect_min_contrast=80` |
 | 权重 | `{1750,1250,750,250,-250,-750,-1250,-1750}` |
-| PID/速度 | `base_speed=150`、`adaptive_slow_speed=60`、`sharp_turn_speed=35`、`kp=0.09`、`kd=0.22`、`ki=0`、`max_correction=250` |
+| PID/速度 | `base_speed=150`、`adaptive_slow_speed=60`、`sharp_turn_speed=35`、`kp=0.09`、`kd=0.22`、`ki=0`、`max_correction=250`、`control_error_deadband=140`、`control_error_soft_zone=420` |
 | 输出限制 | `derivative_filter_alpha=0.60`、`max_output_delta_per_tick=28`、`max_motor_cmd=300`、`motor_deadband=0` |
-| 策略开关 | `straight_boost_enable=false`、`curve_prepare_enable=true`、`line_stability_enable=true`、`stable_direction_enable=true`、`lead_compensation_enable=false`、`fork_enable=false`、`obstacle_avoid_enable=false` |
+| 策略开关 | `straight_boost_enable=false`、`curve_prepare_enable=true`、`line_stability_enable=true`、`stable_direction_enable=true`、`sensor_edge_noise_reject_enable=true`、`lead_compensation_enable=false`、`fork_enable=false`、`obstacle_avoid_enable=false` |
 | 前探补偿 | `lead_event_center_error_threshold=350`、`lead_event_entry_error_threshold=650`、`lead_advance_ticks=18`、`lead_advance_speed=65`、`lead_turn_hold_ticks=16`、`lead_turn_speed=55`、`lead_turn_delta=115` |
-| 直线噪声 | `straight_noise_confirm_ticks=2`、`straight_noise_active_count_threshold=5`、`straight_noise_max_sum=1800`、`straight_noise_max_position_error=250`、`straight_noise_max_position_delta=120` |
+| 直线噪声 | `sensor_edge_noise_neighbor_threshold=220`、`straight_noise_confirm_ticks=2`、`straight_noise_active_count_threshold=5`、`straight_noise_max_sum=1800`、`straight_noise_max_position_error=250`、`straight_noise_max_position_delta=120` |
+| 速度模式确认 | `curve_prepare_delta_threshold=180`、`curve_prepare_confirm_ticks=3` |
+
+本轮关键结论：线宽约等于 3 个传感器通道时，车稍微放歪或箭头岔路多通道先后扫到线，都会制造小幅位置偏差；如果直接交给 PID 和速度模式，小修正会被放大成左右摆头。优先用 `control_error_*`、`sensor_edge_noise_*` 和 `curve_prepare_confirm_ticks` 降低输入抖动，不要把问题简单归因到 `kp/kd` 或继续叠加复杂状态机。
 
 已试过但不好用或只适合特定阶段的参数：
 

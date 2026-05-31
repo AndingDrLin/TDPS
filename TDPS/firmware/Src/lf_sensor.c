@@ -147,6 +147,7 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
     uint16_t active_threshold = g_lf_config.line_detect_min_peak;
     uint8_t active_count = 0U;
     uint8_t peak_index = 0U;
+    uint16_t calc_u16[LF_SENSOR_COUNT];
 
     if (out_frame == NULL) {
         return;
@@ -178,26 +179,46 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
         out_frame->norm[i] = norm;
         out_frame->filtered[i] = filt;
         out_frame->filtered_u16[i] = TDPS_ClampU16((int32_t)filt, 0U, 1000U);
+        calc_u16[i] = out_frame->filtered_u16[i];
+    }
 
-        if (out_frame->filtered_u16[i] > peak_value) {
-            peak_value = out_frame->filtered_u16[i];
+    if (g_lf_config.sensor_edge_noise_reject_enable && LF_SENSOR_COUNT >= 8U) {
+        uint16_t neighbor_threshold = g_lf_config.sensor_edge_noise_neighbor_threshold;
+        if (neighbor_threshold == 0U) {
+            neighbor_threshold = g_lf_config.line_detect_min_peak;
+        }
+        if (calc_u16[0] >= active_threshold &&
+            calc_u16[1] < neighbor_threshold && calc_u16[2] < neighbor_threshold) {
+            calc_u16[0] = 0U;
+        }
+        if (calc_u16[7] >= active_threshold &&
+            calc_u16[5] < neighbor_threshold && calc_u16[6] < neighbor_threshold) {
+            calc_u16[7] = 0U;
+        }
+    }
+
+    for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
+        uint16_t calc_value = calc_u16[i];
+
+        if (calc_value > peak_value) {
+            peak_value = calc_value;
             peak_index = (uint8_t)i;
         }
-        if (out_frame->filtered_u16[i] < min_value) {
-            min_value = out_frame->filtered_u16[i];
+        if (calc_value < min_value) {
+            min_value = calc_value;
         }
-        if (out_frame->filtered_u16[i] >= active_threshold) {
+        if (calc_value >= active_threshold) {
             active_count += 1U;
         }
 
         if (i < (LF_SENSOR_COUNT / 2U)) {
-            left_sum += out_frame->filtered_u16[i];
+            left_sum += calc_value;
         } else {
-            right_sum += out_frame->filtered_u16[i];
+            right_sum += calc_value;
         }
 
-        signal_sum += out_frame->filtered_u16[i];
-        weighted_sum += (int64_t)g_lf_config.sensor_weights[i] * (int64_t)out_frame->filtered_u16[i];
+        signal_sum += calc_value;
+        weighted_sum += (int64_t)g_lf_config.sensor_weights[i] * (int64_t)calc_value;
     }
 
     out_frame->signal_sum = signal_sum;
