@@ -188,11 +188,13 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
             neighbor_threshold = g_lf_config.line_detect_min_peak;
         }
         if (calc_u16[0] >= active_threshold &&
-            calc_u16[1] < neighbor_threshold && calc_u16[2] < neighbor_threshold) {
+            calc_u16[1] < neighbor_threshold && calc_u16[2] < neighbor_threshold &&
+            calc_u16[3] >= active_threshold && calc_u16[4] >= active_threshold) {
             calc_u16[0] = 0U;
         }
         if (calc_u16[7] >= active_threshold &&
-            calc_u16[5] < neighbor_threshold && calc_u16[6] < neighbor_threshold) {
+            calc_u16[5] < neighbor_threshold && calc_u16[6] < neighbor_threshold &&
+            calc_u16[3] >= active_threshold && calc_u16[4] >= active_threshold) {
             calc_u16[7] = 0U;
         }
     }

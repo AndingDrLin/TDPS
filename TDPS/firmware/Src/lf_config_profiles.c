@@ -33,8 +33,8 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.adaptive_slow_speed = 60;
     g_lf_config.sharp_turn_speed = 35;
     g_lf_config.max_correction = 250;
-    g_lf_config.control_error_deadband = 140;
-    g_lf_config.control_error_soft_zone = 420;
+    g_lf_config.control_error_deadband = 80;
+    g_lf_config.control_error_soft_zone = 240;
     g_lf_config.straight_boost_enable = false;
     g_lf_config.curve_prepare_enable = true;
     g_lf_config.line_stability_enable = true;

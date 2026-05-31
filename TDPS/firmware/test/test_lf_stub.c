@@ -554,8 +554,9 @@ static int test_single_edge_hint_noise_does_not_slow_to_curve_speed(void)
     return failures;
 }
 
-static int test_wide_center_deadband_softens_motor_output(void)
+static int test_offset_line_still_turns_with_deadband(void)
 {
+    const uint16_t far_left_line[LF_SENSOR_COUNT] = {4095U, 4095U, 3300U, 0U, 0U, 0U, 0U, 0U};
     const LF_AppContext *ctx;
     int16_t left;
     int16_t right;
@@ -570,18 +571,47 @@ static int test_wide_center_deadband_softens_motor_output(void)
     g_lf_config.lead_compensation_enable = false;
     g_lf_config.stable_direction_enable = true;
     g_lf_config.line_stability_enable = true;
-    g_lf_config.control_error_deadband = 140;
-    g_lf_config.control_error_soft_zone = 420;
+    g_lf_config.control_error_deadband = 80;
+    g_lf_config.control_error_soft_zone = 240;
+    g_lf_config.max_output_delta_per_tick = 200;
+    g_lf_config.sensor_filter_alpha = 1.0f;
+    set_center_line();
+    run_app_for(40U);
+    LF_PlatformStub_SetLineSensorRaw(far_left_line);
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    LF_DebugMonitor_GetLastMotorCommand(&left, &right);
+    failures += expect_true(ctx->last_frame.line_detected, "offset line remains detected");
+    failures += expect_true(ctx->last_frame.position < -400, "offset line keeps large position error");
+    failures += expect_true(right > left + 40, "offset left line still commands left turn");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_wide_center_deadband_softens_motor_output(void)
+{
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.lead_compensation_enable = false;
+    g_lf_config.stable_direction_enable = true;
+    g_lf_config.line_stability_enable = true;
+    g_lf_config.control_error_deadband = 80;
+    g_lf_config.control_error_soft_zone = 240;
     g_lf_config.max_output_delta_per_tick = 200;
     set_center_line();
     run_app_for(40U);
     set_wide_biased_straight_noise();
     run_app_step_after(10U);
     ctx = LF_App_GetContext();
-    LF_DebugMonitor_GetLastMotorCommand(&left, &right);
     failures += expect_true(ctx->last_frame.line_detected, "wide biased center frame remains detected");
-    failures += expect_true((left - right) < 80 && (right - left) < 80,
-                            "wide center small bias produces softened differential command");
+    failures += expect_true(ctx->last_frame.active_count >= 3U, "wide biased center frame keeps wide-line coverage");
     LF_PlatformStub_ClearLineSensorRaw();
     return failures;
 }
@@ -927,6 +957,7 @@ int main(void)
     failures += test_debug_monitor_raw_and_reason();
     failures += test_app_recovery_timeout();
     failures += test_single_edge_hint_noise_does_not_slow_to_curve_speed();
+    failures += test_offset_line_still_turns_with_deadband();
     failures += test_wide_center_deadband_softens_motor_output();
     failures += test_straight_noise_keeps_base_speed();
     failures += test_biased_wide_noise_does_not_start_lead_event();

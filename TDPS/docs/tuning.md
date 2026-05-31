@@ -63,8 +63,8 @@
 | `kd` | `0.22`（debug profile） | 微分增益，抑制快速摆动。 | 从 1343 基线 `0.18` 小增，用于增加阻尼。若弯道响应变钝，再回退到 `0.20`。 |
 | `ki` | `0.0` | 积分增益，修长期偏差。 | 通常保持 0。只有持续偏一侧且机械问题排除后，再小幅增加。 |
 | `max_correction` | `250`（debug profile，1343 直线基线） | PID 修正量总限幅。 | 这是 1343f3c 能直走时的基线值；不要擅自改成更小来“保守”，否则可能只剩原地左右找线而不前进。 |
-| `control_error_deadband` | `140`（debug profile） | PID 前的位置误差死区，小偏差按 0 处理。 | 用于宽线约等于 3 个通道时减少小幅左右修正；若弯道入口跟线明显迟钝，再小步降低。 |
-| `control_error_soft_zone` | `420`（debug profile） | PID 前的位置误差软区，死区外的小误差被压缩。 | 软区必须大于死区；抖动仍明显可小步增大，U 型弯跟不上则小步减小。 |
+| `control_error_deadband` | `80`（debug profile） | PID 前的位置误差死区，小偏差按 0 处理。 | 用于宽线约等于 3 个通道时减少小幅左右修正；若弯道入口跟线明显迟钝，再小步降低。 |
+| `control_error_soft_zone` | `240`（debug profile） | PID 前的位置误差软区，死区外的小误差被压缩。 | 软区必须大于死区；抖动仍明显可小步增大，U 型弯跟不上则小步减小。 |
 | `max_motor_cmd` | `300`（debug profile） | 电机命令绝对值上限。 | 保护电机/电池。速度不够可加，但先确认机械和供电。 |
 | `motor_deadband` | `0`（debug profile） | 非零命令的最小起转补偿。 | 小命令车不动就加；低速动作太冲就减。 |
 
@@ -185,19 +185,22 @@
 |---|---|
 | 传感器 | UART、`sensor_invert_polarity=true`、`sensor_filter_alpha=0.35`、`line_detect_min_sum=780`、`line_detect_min_peak=260`、`line_detect_min_contrast=80` |
 | 权重 | `{1750,1250,750,250,-250,-750,-1250,-1750}` |
-| PID/速度 | `base_speed=150`、`adaptive_slow_speed=60`、`sharp_turn_speed=35`、`kp=0.09`、`kd=0.22`、`ki=0`、`max_correction=250`、`control_error_deadband=140`、`control_error_soft_zone=420` |
+| PID/速度 | `base_speed=150`、`adaptive_slow_speed=60`、`sharp_turn_speed=35`、`kp=0.09`、`kd=0.22`、`ki=0`、`max_correction=250`、`control_error_deadband=80`、`control_error_soft_zone=240` |
 | 输出限制 | `derivative_filter_alpha=0.60`、`max_output_delta_per_tick=28`、`max_motor_cmd=300`、`motor_deadband=0` |
 | 策略开关 | `straight_boost_enable=false`、`curve_prepare_enable=true`、`line_stability_enable=true`、`stable_direction_enable=true`、`sensor_edge_noise_reject_enable=true`、`lead_compensation_enable=false`、`fork_enable=false`、`obstacle_avoid_enable=false` |
 | 前探补偿 | `lead_event_center_error_threshold=350`、`lead_event_entry_error_threshold=650`、`lead_advance_ticks=18`、`lead_advance_speed=65`、`lead_turn_hold_ticks=16`、`lead_turn_speed=55`、`lead_turn_delta=115` |
 | 直线噪声 | `sensor_edge_noise_neighbor_threshold=220`、`straight_noise_confirm_ticks=2`、`straight_noise_active_count_threshold=5`、`straight_noise_max_sum=1800`、`straight_noise_max_position_error=250`、`straight_noise_max_position_delta=120` |
 | 速度模式确认 | `curve_prepare_delta_threshold=180`、`curve_prepare_confirm_ticks=3` |
 
-本轮关键结论：线宽约等于 3 个传感器通道时，车稍微放歪或箭头岔路多通道先后扫到线，都会制造小幅位置偏差；如果直接交给 PID 和速度模式，小修正会被放大成左右摆头。优先用 `control_error_*`、`sensor_edge_noise_*` 和 `curve_prepare_confirm_ticks` 降低输入抖动，不要把问题简单归因到 `kp/kd` 或继续叠加复杂状态机。
+本轮关键结论：线宽约等于 3 个传感器通道时，车稍微放歪或箭头岔路多通道先后扫到线，都会制造小幅位置偏差；如果直接交给 PID 和速度模式，小修正会被放大成左右摆头。优先用 `control_error_*`、`sensor_edge_noise_*` 和 `curve_prepare_confirm_ticks` 降低输入抖动，但死区/软区不能过大，否则会从“抗摆”变成“偏了也不修、弯道也不转”。
+
+本轮不转弯根因：`control_error_deadband=140`、`control_error_soft_zone=420` 对中等偏差压缩过强；同时干扰帧判断会把部分真实偏侧线/弯道线当作跳变干扰，继续用上一可信位置控制。当前修正为 `80/240`，并且强偏侧且有 `edge_hint` 的帧不再作为干扰冻结。
 
 已试过但不好用或只适合特定阶段的参数：
 
 | 版本/参数 | 现象 | 结论 |
 |---|---|---|
+| `control_error_deadband=140`、`control_error_soft_zone=420` | 直线很稳，但偏离后几乎不修正；可能左轮一直压线前进，弯道入口直接直走。 | 抗摆参数过强会吃掉中等偏差；当前 debug 改为 `80/240`，并用回归测试保护偏侧线仍有明确差速。 |
 | `base_speed=100`、`kp=0.08`、`kd=0.20`、`max_correction=50`、`max_output_delta_per_tick=15` | 直线保守，但 U 型弯没有明显右转动作，转向不足，抖动后丢线。 | 不要再用 `max_correction=50` 作为 U 型弯调试基线；它限制了差速能力。 |
 | `base_speed=180`、`sharp_turn_speed=40`、`max_correction=100` | 比 100 速更积极，但特殊线型和 U 型弯仍不可靠。 | 单纯加速度或小幅加修正不能解决长前探导致的过早转向。 |
 | `sensor_filter_alpha=0.45`、`kd=0.22`、`max_correction=180`、`curve_prepare_enable=false` | 曾作为直线较稳阶段，但 U 型转向不足、特殊线型仍可能丢线。 | 可作为保守参考，不要在此基础上继续同时增大输出限幅和输出变化率。 |

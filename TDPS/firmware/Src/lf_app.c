@@ -180,6 +180,9 @@ static bool frame_is_interference(const LF_SensorFrame *frame)
     if (frame->active_count < g_lf_config.interference_active_count_threshold) {
         return false;
     }
+    if (frame->edge_hint != 0 && abs_i32(frame->position) >= g_lf_config.curve_prepare_error_threshold) {
+        return false;
+    }
     position_jump = abs_i32(frame->position - s_app.last_trusted_position);
     return position_jump >= g_lf_config.interference_position_jump_threshold;
 }
