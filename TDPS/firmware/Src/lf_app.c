@@ -357,13 +357,12 @@ static void update_running_window(const LF_SensorFrame *frame, bool interference
     }
 
     curve_frame = g_lf_config.curve_prepare_enable &&
+                (abs_position >= g_lf_config.curve_prepare_error_threshold ||
+                 position_delta >= g_lf_config.curve_prepare_delta_threshold ||
+                 (frame->edge_hint != 0 &&
                   (abs_position >= g_lf_config.curve_prepare_error_threshold ||
-                   position_delta >= g_lf_config.curve_prepare_delta_threshold ||
-                   (frame->edge_hint != 0 &&
-                    (abs_position >= g_lf_config.curve_prepare_error_threshold ||
-                     position_delta >= g_lf_config.curve_prepare_delta_threshold)) ||
-                   frame->line_confidence < g_lf_config.adaptive_confidence_threshold ||
-                   frame->contrast_value < g_lf_config.line_detect_min_contrast);
+                   position_delta >= g_lf_config.curve_prepare_delta_threshold)));
+		
     if (curve_frame) {
         bump_counter(&s_app.curve_prepare_count);
     } else {
