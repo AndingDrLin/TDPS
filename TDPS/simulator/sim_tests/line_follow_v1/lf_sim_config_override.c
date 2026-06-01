@@ -25,7 +25,7 @@
 #endif
 
 #ifndef TDPS_SIM_KP
-#define TDPS_SIM_KP 0.48f
+#define TDPS_SIM_KP 0.25f
 #endif
 
 #ifndef TDPS_SIM_KI
@@ -33,15 +33,23 @@
 #endif
 
 #ifndef TDPS_SIM_KD
-#define TDPS_SIM_KD 1.90f
+#define TDPS_SIM_KD 1.20f
 #endif
 
 #ifndef TDPS_SIM_BASE_SPEED
-#define TDPS_SIM_BASE_SPEED 320
+#define TDPS_SIM_BASE_SPEED 280
+#endif
+
+#ifndef TDPS_SIM_MIN_SPEED
+#define TDPS_SIM_MIN_SPEED 60
+#endif
+
+#ifndef TDPS_SIM_KFF
+#define TDPS_SIM_KFF 0.0008f
 #endif
 
 #ifndef TDPS_SIM_MAX_CORRECTION
-#define TDPS_SIM_MAX_CORRECTION 340
+#define TDPS_SIM_MAX_CORRECTION 300
 #endif
 
 #ifndef TDPS_SIM_RECOVER_TURN
@@ -81,14 +89,16 @@ LF_Config g_lf_config = {
     .kp = TDPS_SIM_KP,
     .ki = TDPS_SIM_KI,
     .kd = TDPS_SIM_KD,
-    .base_speed = 300,
+    .base_speed = TDPS_SIM_BASE_SPEED,
+    .min_speed = TDPS_SIM_MIN_SPEED,
+    .kff = TDPS_SIM_KFF,
     .max_correction = TDPS_SIM_MAX_CORRECTION,
     .adaptive_slow_speed = 210,
     .adaptive_error_threshold = 800,
     .adaptive_confidence_threshold = 0.40f,
     .sharp_turn_speed = 190,
-    .straight_boost_enable = true,
-    .curve_prepare_enable = true,
+    .straight_boost_enable = false,
+    .curve_prepare_enable = false,
     .line_stability_enable = true,
     .stable_direction_enable = true,
     .straight_boost_speed = 320,
@@ -96,9 +106,6 @@ LF_Config g_lf_config = {
     .straight_delta_threshold = 120,
     .straight_confidence_min = 0.55f,
     .straight_confirm_ticks = 8U,
-    .straight_error_deadband = 150,
-    .straight_error_scale_percent = 35U,
-    .straight_correction_limit = 30,
     .curve_prepare_speed = 150,
     .curve_prepare_error_threshold = 600,
     .curve_prepare_delta_threshold = 180,

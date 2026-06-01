@@ -1,8 +1,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-SIM_ROOT="${ROOT_DIR}/TDPS-Simulator"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+SIM_ROOT="${ROOT_DIR}/TDPS/simulator"
 SIM_TEST_DIR="${SIM_ROOT}/sim_tests"
 LF_COMMON_DIR="${SIM_TEST_DIR}/common"
 LF_SUITE_DIR="${SIM_TEST_DIR}/line_follow_v1"
@@ -32,6 +32,8 @@ for name in \
   TDPS_SIM_KI \
   TDPS_SIM_KD \
   TDPS_SIM_BASE_SPEED \
+  TDPS_SIM_MIN_SPEED \
+  TDPS_SIM_KFF \
   TDPS_SIM_MAX_CORRECTION \
   TDPS_SIM_RECOVER_TURN \
   TDPS_SIM_RECOVER_TIMEOUT \

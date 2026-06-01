@@ -1,5 +1,7 @@
 #include "lf_app.h"
 
+#define TDPS_SIMPLE_CONTROL 1  /* 1=简化 6 参数 PD+kff，0=原始 PID+状态机 */
+
 #include <limits.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -372,6 +374,7 @@ static void update_running_window(const LF_SensorFrame *frame, bool interference
     }
 }
 
+#if !TDPS_SIMPLE_CONTROL
 static float shape_control_error(float error)
 {
     int16_t deadband = g_lf_config.control_error_deadband;
@@ -436,6 +439,7 @@ static int16_t choose_running_speed(const LF_SensorFrame *frame)
     s_app.current_target_speed = speed;
     return speed;
 }
+#endif /* !TDPS_SIMPLE_CONTROL */
 
 static void hold_last_line_direction(void)
 {
@@ -994,6 +998,40 @@ static void process_running(uint32_t now_ms, float dt_s)
         return;
 
     case LF_RUN_ACTION_PID_CONTROL:
+#if TDPS_SIMPLE_CONTROL
+        /* 简化 6 参数 PD+kff：连续速度函数，无死区/软区/积分/Kp 缩放 */
+        {
+            float abs_error;
+            float ratio;
+            int16_t raw_speed;
+
+            error = (float)(decision.interference
+                            ? s_app.last_trusted_position
+                            : s_app.last_frame.position);
+
+            /* 连续速度: base_speed..min_speed，按 |error| 线性插值 */
+            abs_error = (error > 0.0f) ? error : -error;
+            ratio = abs_error / 1750.0f;
+            if (ratio > 1.0f) ratio = 1.0f;
+            raw_speed = (int16_t)((float)g_lf_config.base_speed -
+                         (float)(g_lf_config.base_speed - g_lf_config.min_speed) * ratio);
+            if (raw_speed < g_lf_config.min_speed) raw_speed = g_lf_config.min_speed;
+
+            /* 一阶 IIR 平滑速度变化，alpha=0.4 */
+            base_speed = (int16_t)(0.4f * (float)raw_speed + 0.6f * (float)s_app.current_target_speed);
+            if (base_speed < g_lf_config.min_speed) base_speed = g_lf_config.min_speed;
+            s_app.current_target_speed = base_speed;
+
+            /* PD + kff 前馈：kff*derivative*speed 在 UpdatePD 内部计算 */
+            correction = LF_Control_UpdatePD(error, dt_s, base_speed, &s_app.pid);
+        }
+        LF_Control_ComputeMotorCmd(base_speed, correction, &left_cmd, &right_cmd);
+        left_cmd = limit_degraded_speed(left_cmd);
+        right_cmd = limit_degraded_speed(right_cmd);
+        update_trusted_direction(&s_app.last_frame, decision.interference);
+        LF_Chassis_SetCommand(left_cmd, right_cmd);
+#else
+        /* 原始 6 级速度链 + 死区/软区 + Kp 缩放 + 积分 */
         base_speed = choose_running_speed(&s_app.last_frame);
         error = (float)(decision.interference
                         ? s_app.last_trusted_position
@@ -1012,6 +1050,7 @@ static void process_running(uint32_t now_ms, float dt_s)
         right_cmd = limit_degraded_speed(right_cmd);
         update_trusted_direction(&s_app.last_frame, decision.interference);
         LF_Chassis_SetCommand(left_cmd, right_cmd);
+#endif
         return;
 
     default:

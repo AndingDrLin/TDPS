@@ -93,6 +93,12 @@ typedef struct {
     /* 基础速度（-1000~1000）。 */
     int16_t base_speed;
 
+    /* 弯道最低速度（简化控制用）。 */
+    int16_t min_speed;
+
+    /* 曲率前馈增益（简化控制用）。 */
+    float kff;
+
     /* PID 输出限幅，避免急剧打角。 */
     int16_t max_correction;
     int16_t control_error_deadband;

@@ -9,17 +9,23 @@ import sys
 from pathlib import Path
 
 PARAM_NAMES = [
-    "TDPS_SIM_BASE_SPEED",
     "TDPS_SIM_KP",
     "TDPS_SIM_KD",
+    "TDPS_SIM_KFF",
+    "TDPS_SIM_BASE_SPEED",
+    "TDPS_SIM_MIN_SPEED",
     "TDPS_SIM_MAX_CORRECTION",
 ]
 
+# kff 精扫：围绕粗扫最佳值邻域搜索 kff 最优值
+# kp 邻域 0.15-0.25, kd 邻域 0.8-1.2, kff 0.0-0.0008
 COARSE_GRID = {
-    "TDPS_SIM_BASE_SPEED": [280, 320, 360, 400, 440],
-    "TDPS_SIM_KP": [0.32, 0.38, 0.42, 0.48, 0.54],
-    "TDPS_SIM_KD": [1.20, 1.50, 1.65, 1.90, 2.20],
-    "TDPS_SIM_MAX_CORRECTION": [260, 300, 340, 380],
+    "TDPS_SIM_KP": [0.15, 0.20, 0.25],
+    "TDPS_SIM_KD": [0.80, 1.00, 1.20],
+    "TDPS_SIM_KFF": [0.0, 0.0004, 0.0008],
+    "TDPS_SIM_BASE_SPEED": [280],
+    "TDPS_SIM_MIN_SPEED": [60],
+    "TDPS_SIM_MAX_CORRECTION": [300],
 }
 
 SUMMARY_FIELDS = [
@@ -62,7 +68,7 @@ SUMMARY_FIELDS = [
 
 
 def repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    return Path(__file__).resolve().parents[3]
 
 
 def parse_args() -> argparse.Namespace:
@@ -105,7 +111,7 @@ def normalize_params(row: dict) -> dict:
     params = {}
     for name in PARAM_NAMES:
         value = row[name]
-        if name in ("TDPS_SIM_BASE_SPEED", "TDPS_SIM_MAX_CORRECTION"):
+        if name in ("TDPS_SIM_BASE_SPEED", "TDPS_SIM_MIN_SPEED", "TDPS_SIM_MAX_CORRECTION"):
             params[name] = int(float(value))
         else:
             params[name] = float(value)
@@ -135,14 +141,16 @@ def refine_params(input_path: Path, top: int) -> list[dict]:
     refined = []
     for base in bases:
         candidates = {
-            "TDPS_SIM_BASE_SPEED": sorted({int(base["TDPS_SIM_BASE_SPEED"]) + delta for delta in (-20, 0, 20)}),
             "TDPS_SIM_KP": sorted({round(float(base["TDPS_SIM_KP"]) + delta, 4) for delta in (-0.04, 0.0, 0.04)}),
-            "TDPS_SIM_KD": sorted({round(float(base["TDPS_SIM_KD"]) + delta, 4) for delta in (-0.20, 0.0, 0.20)}),
-            "TDPS_SIM_MAX_CORRECTION": sorted({int(base["TDPS_SIM_MAX_CORRECTION"]) + delta for delta in (-30, 0, 30)}),
+            "TDPS_SIM_KD": sorted({round(float(base["TDPS_SIM_KD"]) + delta, 4) for delta in (-0.10, 0.0, 0.10)}),
+            "TDPS_SIM_KFF": sorted({round(float(base["TDPS_SIM_KFF"]) + delta, 6) for delta in (-0.0002, 0.0, 0.0002)}),
+            "TDPS_SIM_BASE_SPEED": sorted({int(base["TDPS_SIM_BASE_SPEED"]) + delta for delta in (-20, 0, 20)}),
+            "TDPS_SIM_MIN_SPEED": sorted({int(base["TDPS_SIM_MIN_SPEED"]) + delta for delta in (-10, 0, 10)}),
+            "TDPS_SIM_MAX_CORRECTION": sorted({int(base["TDPS_SIM_MAX_CORRECTION"]) + delta for delta in (-20, 0, 20)}),
         }
         for params in itertools.product(*(candidates[name] for name in PARAM_NAMES)):
             item = dict(zip(PARAM_NAMES, params))
-            if item["TDPS_SIM_BASE_SPEED"] <= 0 or item["TDPS_SIM_MAX_CORRECTION"] <= 0:
+            if item["TDPS_SIM_BASE_SPEED"] <= 0 or item["TDPS_SIM_MIN_SPEED"] < 0 or item["TDPS_SIM_MAX_CORRECTION"] <= 0:
                 continue
             key = tuple(item[name] for name in PARAM_NAMES)
             if key in seen:
@@ -354,7 +362,7 @@ def run_one(root: Path, args: argparse.Namespace, params: dict, set_id: str, out
     env.update({name: fmt_value(params[name]) for name in PARAM_NAMES})
 
     build = subprocess.run(
-        ["bash", "TDPS-Simulator/scripts/build_line_follow_runner.sh"],
+        ["bash", "TDPS/simulator/scripts/build_line_follow_runner.sh"],
         cwd=root,
         env=env,
         stdout=subprocess.PIPE,
@@ -362,7 +370,7 @@ def run_one(root: Path, args: argparse.Namespace, params: dict, set_id: str, out
         text=True,
     )
     (report_dir / "build.log").write_text(build.stdout, encoding="utf-8")
-    runner = root / "TDPS-Simulator/artifacts/line_follow_v1/bin/lf_autotest_runner"
+    runner = root / "TDPS/simulator/artifacts/line_follow_v1/bin/lf_autotest_runner"
     if build.returncode != 0 or not runner.exists():
         row = aggregate_reports([])
         row["exitCode"] = build.returncode or 2

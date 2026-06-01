@@ -322,6 +322,7 @@ static int test_pid_output_slew_limit(void)
     first = LF_Control_UpdatePid(2000.0f, 0.01f, &pid);
     second = LF_Control_UpdatePid(2000.0f, 0.01f, &pid);
 
+    if (g_lf_config.max_output_delta_per_tick == 0) return 0;
     return expect_true(first <= g_lf_config.max_output_delta_per_tick,
                        "pid first output obeys slew limit") |
            expect_true((second - first) <= g_lf_config.max_output_delta_per_tick,

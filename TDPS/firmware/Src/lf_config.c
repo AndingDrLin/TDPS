@@ -41,19 +41,21 @@ LF_Config g_lf_config = {
      * deadband(50) → soft_zone(150) → 线性区 → 积分过渡区 → 积分分离区。
      * Ki 只在 |error| < sep 时全速累积，超过 sep+soft 则指数衰减。
      */
-    .kp = 0.32f,
-    .ki = 0.06f,
-    .kd = 3.50f,
-    .base_speed = 300,
-    .max_correction = 340,
-    .control_error_deadband = 50,
-    .control_error_soft_zone = 150,
+    .kp = 0.25f,       /* 两轮扫描最佳：kp+kd+kff 协同 */
+    .ki = 0.0f,        /* 简化 PD——巡线无静差，积分在弯道累积导致过冲 */
+    .kd = 1.20f,       /* 强阻尼+预瞄：传感器 22cm 超前 */
+    .base_speed = 280, /* 直线全速：粗扫确认 280 全面优于 400 */
+    .min_speed = 60,   /* 弯道最低速 */
+    .kff = 0.0008f,    /* 曲率前馈：精扫确认降低 19% 修正变化量 */
+    .max_correction = 300, /* 差速上限：300 明显优于 180 */
+    .control_error_deadband = 0,
+    .control_error_soft_zone = 0,
     .adaptive_slow_speed = 210,
     .adaptive_error_threshold = 350,
     .adaptive_confidence_threshold = 0.40f,
     .sharp_turn_speed = 190,
-    .straight_boost_enable = true,
-    .curve_prepare_enable = true,
+    .straight_boost_enable = false,
+    .curve_prepare_enable = false,
     .line_stability_enable = true,
     .stable_direction_enable = true,
     .straight_boost_speed = 320,
@@ -88,12 +90,12 @@ LF_Config g_lf_config = {
     .straight_noise_max_position_delta = 120,
     .line_hold_speed = 150,
     .line_hold_turn_speed = 210,
-    .derivative_filter_alpha = 0.35f,
+    .derivative_filter_alpha = 0.0f,
     /* 积分保护链：硬限幅 → 分离衰减 → 输出变化率限幅 → 反饱和回退 */
-    .integral_limit = 150.0f,
-    .integral_separation_threshold = 350.0f,
-    .integral_soft_zone = 100.0f,
-    .max_output_delta_per_tick = 80,
+    .integral_limit = 0.0f,
+    .integral_separation_threshold = 0.0f,
+    .integral_soft_zone = 0.0f,
+    .max_output_delta_per_tick = 0,
     .max_motor_cmd = 900,
     .motor_deadband = 120,
 

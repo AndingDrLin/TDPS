@@ -127,6 +127,42 @@ int16_t LF_Control_UpdatePid(float error, float dt_s, LF_PIDState *pid)
     return result;
 }
 
+/*
+ * 简化 PD+kff 控制（无积分、无变化率限幅、无反饱和回退、无微分二次滤波）。
+ * 用于 TDPS_SIMPLE_CONTROL 模式，配合连续速度函数。
+ *
+ * correction = kp*error + kd*derivative + kff*derivative*speed
+ * kff 项利用传感器 22cm 预瞄优势——不等偏差出现就预打方向。
+ */
+int16_t LF_Control_UpdatePD(float error, float dt_s, int16_t speed, LF_PIDState *pid)
+{
+    float derivative;
+    float output;
+
+    if (pid == 0 || dt_s <= 0.0f) {
+        return 0;
+    }
+
+    if (pid->initialized == 0U) {
+        pid->prev_error = error;
+        pid->prev_output = 0.0f;
+        pid->initialized = 1U;
+    }
+
+    derivative = (error - pid->prev_error) / dt_s;
+    output = g_lf_config.kp * error + g_lf_config.kd * derivative;
+
+    if (g_lf_config.kff != 0.0f && speed > 0) {
+        output += g_lf_config.kff * derivative * (float)speed;
+    }
+
+    pid->prev_error = error;
+    pid->prev_output = output;
+    return (int16_t)TDPS_ClampI16((int32_t)output,
+                                   (int16_t)(-g_lf_config.max_correction),
+                                   g_lf_config.max_correction);
+}
+
 void LF_Control_ComputeMotorCmd(int16_t base_speed, int16_t correction, int16_t *out_left, int16_t *out_right)
 {
     int32_t left = (int32_t)base_speed + correction;

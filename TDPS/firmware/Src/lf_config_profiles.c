@@ -27,20 +27,25 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.sensor_weights[6] = -1250;
     g_lf_config.sensor_weights[7] = -1750;
 	
-    g_lf_config.kp  = 0.22f;    // 比例：比 0.15 多一丝，小偏差也有可见修正
+    g_lf_config.kp  = 0.25f;    // 比例：kff 精扫最佳（27组扫描确认）
     g_lf_config.ki  = 0.0f;     // 积分：不开（会累积画龙）
-    g_lf_config.kd  = 0.35f;    // 微分：比 0.22 高，用强阻尼抵消小死区带来的抖动
+    g_lf_config.kd  = 1.20f;    // 微分：kff 精扫最佳，强阻尼预瞄
 		
-    g_lf_config.control_error_deadband  = 15;    // ★ 几乎零死区，传感器偏一点就开修
-    g_lf_config.control_error_soft_zone = 80;   // ★ 误差 >5 立刻平滑过渡，>50 全量修正
+    g_lf_config.control_error_deadband  = 0;     // 无死区——小偏差也需要修正
+    g_lf_config.control_error_soft_zone = 0;    // 无软区——线性响应，不用二次曲线
 		
-    g_lf_config.max_correction            = 250;  // 低速弯道时有足够差速储备
-    g_lf_config.max_output_delta_per_tick = 18;   // 修正每帧最多变化程度
+    g_lf_config.max_correction            = 300;  // 差速硬上限，粗扫最佳（300 明显优于 180）
+    g_lf_config.max_output_delta_per_tick = 0;    // 不限制修正变化速率
     g_lf_config.max_motor_cmd             = 300;
     g_lf_config.motor_deadband            = 0;
-    g_lf_config.derivative_filter_alpha   = 0.35f; // 微分响应更快，尖角突变时瞬间阻尼
+    g_lf_config.derivative_filter_alpha   = 0.0f;  // 无额外滤波——传感器前端已有 IIR
+    g_lf_config.integral_limit                = 0.0f;  // 无积分——巡线无静差
+    g_lf_config.integral_separation_threshold = 0.0f;
+    g_lf_config.integral_soft_zone            = 0.0f;
 
-    g_lf_config.base_speed          = 300;   // 直线巡线速度
+    g_lf_config.base_speed          = 280;   // 直线巡线速度，粗扫最佳（280 全面优于 400）
+    g_lf_config.min_speed           = 60;    // 弯道最低速度
+    g_lf_config.kff                 = 0.0008f;  // 曲率前馈：kff 精扫最佳（降低 19% 修正变化量）
 
 		g_lf_config.adaptive_slow_speed       = 60;    // 低置信度/低对比度时的速度
     g_lf_config.adaptive_error_threshold  = 100;    // ★ 位置超阈值立即触发 sharp 降速（第一优先级）
@@ -48,7 +53,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.sharp_turn_speed          = 60;    // ★ 最慢爬行速度，尖角极限转向
 
     g_lf_config.straight_boost_enable          = false;
-    g_lf_config.curve_prepare_enable           = true;
+    g_lf_config.curve_prepare_enable           = false; // 连续速度函数替代
     g_lf_config.curve_prepare_error_threshold  = 80;    // ★ 位置超阈值开始计弯道帧
     g_lf_config.curve_prepare_delta_threshold  = 100;    // ★ 位置跳变超阈值也计入
     g_lf_config.curve_prepare_confirm_ticks    = 3U;    // ★ 几帧之后确认进入弯道
