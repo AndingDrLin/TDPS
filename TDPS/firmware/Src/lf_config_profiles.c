@@ -27,9 +27,9 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.sensor_weights[6] = -1250;
     g_lf_config.sensor_weights[7] = -1750;
 	
-    g_lf_config.kp  = 0.25f;    // 比例：kff 精扫最佳（27组扫描确认）
+    g_lf_config.kp  = 0.10f;    // 实车直线基准：模拟器最优(0.25)在实车上摇头，降回保守值
     g_lf_config.ki  = 0.0f;     // 积分：不开（会累积画龙）
-    g_lf_config.kd  = 1.20f;    // 微分：kff 精扫最佳，强阻尼预瞄
+    g_lf_config.kd  = 1.20f;    // 实车保持：强阻尼利用 22cm 预瞄
 		
     g_lf_config.control_error_deadband  = 0;     // 无死区——小偏差也需要修正
     g_lf_config.control_error_soft_zone = 0;    // 无软区——线性响应，不用二次曲线
@@ -43,9 +43,9 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.integral_separation_threshold = 0.0f;
     g_lf_config.integral_soft_zone            = 0.0f;
 
-    g_lf_config.base_speed          = 280;   // 直线巡线速度，粗扫最佳（280 全面优于 400）
+    g_lf_config.base_speed          = 180;   // 实车直线速度：模拟器 280 在实车上摇头，先降速稳直线
     g_lf_config.min_speed           = 60;    // 弯道最低速度
-    g_lf_config.kff                 = 0.0008f;  // 曲率前馈：kff 精扫最佳（降低 19% 修正变化量）
+    g_lf_config.kff                 = 0.0f;  // 先关 kff 测纯 PD：直线稳后再从小到大加
 
 		g_lf_config.adaptive_slow_speed       = 60;    // 低置信度/低对比度时的速度
     g_lf_config.adaptive_error_threshold  = 100;    // ★ 位置超阈值立即触发 sharp 降速（第一优先级）
