@@ -375,7 +375,7 @@ static void set_right_branch_line(void)
 
 static void set_far_right_entry_line(void)
 {
-    const uint16_t raw[LF_SENSOR_COUNT] = {900U, 900U, 900U, 900U, 900U, 900U, 3300U, 3300U};
+    const uint16_t raw[LF_SENSOR_COUNT] = {900U, 900U, 900U, 3300U, 3300U, 3300U, 3300U, 3300U};
     LF_PlatformStub_SetLineSensorRaw(raw);
 }
 
@@ -716,19 +716,22 @@ static int test_lead_event_advances_before_turning(void)
     g_lf_config.obstacle_avoid_enable = false;
     g_lf_config.lead_compensation_enable = true;
     g_lf_config.lead_event_confirm_ticks = 1U;
-    g_lf_config.lead_advance_ticks = 3U;
+    g_lf_config.lead_advance_ticks = 10U;
     g_lf_config.lead_advance_speed = 44;
-    g_lf_config.lead_turn_hold_ticks = 2U;
+    g_lf_config.lead_turn_hold_ticks = 3U;
     g_lf_config.lead_turn_speed = 40;
     g_lf_config.lead_turn_delta = 70;
     g_lf_config.lead_entry_memory_ticks = 20U;
-    g_lf_config.lead_event_active_count_threshold = 5U;
+    g_lf_config.lead_event_active_count_threshold = 4U;
     g_lf_config.lead_event_min_sum = 1800U;
     g_lf_config.lead_event_center_error_threshold = 350;
     g_lf_config.lead_event_entry_error_threshold = 650;
+    g_lf_config.sensor_filter_alpha = 1.0f;
 
+    /* 用右侧入弯线运行 5 ticks，冲刷中值滤波器并触发 entry path → 启动 advance */
     set_far_right_entry_line();
-    run_app_step_after(10U);
+    run_app_for(50U);
+    /* 切换到宽中心线，验证仍在 advance 阶段（advance_ticks=10 > 5+1） */
     set_wide_center_line();
     run_app_step_after(10U);
     ctx = LF_App_GetContext();
@@ -737,7 +740,8 @@ static int test_lead_event_advances_before_turning(void)
                             "lead event starts advance phase");
     failures += expect_true(left == right, "lead advance drives straight before turning");
 
-    run_app_for(40U);
+    /* 继续运行直到 advance 结束，进入 turn_hold */
+    run_app_for(80U);
     ctx = LF_App_GetContext();
     LF_DebugMonitor_GetLastMotorCommand(&left, &right);
     failures += expect_true(ctx->state == LF_APP_STATE_RUNNING, "lead phase stays in RUNNING");
@@ -796,12 +800,14 @@ static int test_line_loss_resets_lead_phase(void)
     g_lf_config.lead_event_confirm_ticks = 1U;
     g_lf_config.lead_advance_ticks = 20U;
     g_lf_config.lead_advance_speed = 44;
-    g_lf_config.lead_event_active_count_threshold = 5U;
+    g_lf_config.lead_event_active_count_threshold = 4U;
     g_lf_config.lead_event_min_sum = 1800U;
     g_lf_config.lead_event_center_error_threshold = 350;
     g_lf_config.lead_event_entry_error_threshold = 650;
+    g_lf_config.sensor_filter_alpha = 1.0f;
+    /* 冲刷中值滤波器 → 入口路径触发 → 启动 advance */
     set_far_right_entry_line();
-    run_app_step_after(10U);
+    run_app_for(50U);
     set_wide_center_line();
     run_app_step_after(10U);
     ctx = LF_App_GetContext();

@@ -221,7 +221,7 @@ static bool frame_is_lead_event(const LF_SensorFrame *frame)
 
     abs_position = abs_i32(frame->position);
     if (abs_position <= g_lf_config.lead_event_center_error_threshold) {
-        return frame->edge_hint == 0 || s_app.lead_entry_memory_count > 0U;
+        return frame->edge_hint == 0 && s_app.lead_entry_memory_count > 0U;
     }
     return abs_position >= g_lf_config.lead_event_entry_error_threshold ||
            frame->edge_hint != 0;
