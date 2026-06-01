@@ -1009,6 +1009,14 @@ static void process_running(uint32_t now_ms, float dt_s)
                             ? s_app.last_trusted_position
                             : s_app.last_frame.position);
 
+            /* 死区：吸收直线上 sensor 噪声，防止 D 项放大引发震荡 */
+            {
+                int16_t db = g_lf_config.control_error_deadband;
+                if (db > 0 && error > -(float)db && error < (float)db) {
+                    error = 0.0f;
+                }
+            }
+
             /* 连续速度: base_speed..min_speed，按 |error| 线性插值 */
             abs_error = (error > 0.0f) ? error : -error;
             ratio = abs_error / 1750.0f;

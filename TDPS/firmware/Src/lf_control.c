@@ -170,6 +170,11 @@ int16_t LF_Control_UpdatePD(float error, float dt_s, int16_t speed, LF_PIDState 
         output += g_lf_config.kff * derivative * (float)speed;
     }
 
+    /* 先钳位到 max_correction，再在钳位值上做变化率限幅 */
+    output = (float)TDPS_ClampI16((int32_t)output,
+                                   (int16_t)(-g_lf_config.max_correction),
+                                   g_lf_config.max_correction);
+
     if (max_delta > 0) {
         float delta_output = output - pid->prev_output;
         if (delta_output > (float)max_delta) {
@@ -181,9 +186,7 @@ int16_t LF_Control_UpdatePD(float error, float dt_s, int16_t speed, LF_PIDState 
 
     pid->prev_error = error;
     pid->prev_output = output;
-    return (int16_t)TDPS_ClampI16((int32_t)output,
-                                   (int16_t)(-g_lf_config.max_correction),
-                                   g_lf_config.max_correction);
+    return (int16_t)output;
 }
 
 void LF_Control_ComputeMotorCmd(int16_t base_speed, int16_t correction, int16_t *out_left, int16_t *out_right)
