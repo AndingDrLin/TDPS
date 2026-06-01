@@ -2,7 +2,9 @@
 
 ## 已实现内容
 
-- 巡线：8 路灰度传感器处理、标定、归一化、滤波、PID、直道高速、弯前减速、直线噪声抑制、长前探特殊线型补偿、箭头/宽黑干扰保护、可信方向丢线恢复和岔路识别。
+- 巡线：8 路灰度传感器处理、标定、归一化、滤波、**6 参数简化 PD + 曲率前馈(kff)**、连续速度函数、直线噪声抑制、长前探特殊线型补偿、箭头/宽黑干扰保护、可信方向丢线恢复和岔路识别。
+- **控制架构（2026-06-01 重构）**：从 62 参数 PID 系统重构为 6 参数 PD+kff。`TDPS_SIMPLE_CONTROL` 条件编译开关（`lf_app.c:1`）。核心参数经两轮模拟器扫描确定：`kp=0.25, kd=1.20, kff=0.0008, base_speed=280, min_speed=60, max_correction=300`。
+- 雷达：HLK-LD2410S 串口帧解析、`CLEAR/WARN/BLOCK` 状态输出、WARN 减速、BLOCK 开环绕障与重新寻线。
 - 雷达：HLK-LD2410S 串口帧解析、`CLEAR/WARN/BLOCK` 状态输出、WARN 减速、BLOCK 开环绕障与重新寻线。
 - 无线：EWM22A LoRa 异步队列、超时重试、可选 ACK、检查点事件入口 `LF_App_NotifyCheckpoint(checkpoint_id)`。
 - 测试：PC stub、CMake/gcc 离线测试、Simulator 回归、板级测试程序和独立雷达参考程序。
@@ -14,7 +16,7 @@
 | 里程碑 | 内容 | 当前状态 |
 |---|---|---|
 | M1 | 底盘与外设联通 | 已完成 / 待用最新实物状态确认 |
-| M2 | 基础巡线闭环 | 已完成 / 离线可验证 |
+| M2 | 基础巡线闭环 | 已完成（2026-06-01 重构为简化 PD+kff 架构） |
 | M3 | 丢线恢复稳定 | on track |
 | M4 | LoRa 窗口发送接入 | on track |
 | M5 | 雷达决策接入 | 已有实现，待实机确认 |
@@ -22,28 +24,24 @@
 
 ## 仿真结果记录
 
-来源：`TDPS/docs/tuning.md`。
+最新参数扫描结果（2026-06-01）：
 
-- 最新 track quick normal：16 个场景 High。
-- `overall_score=95.41`
-- `avg_detect=100.00%`
-- `max_lost=0.000s`
-- 此前压力稳定性：5 个 seed 均为 High，`min_score=94.45`，`min_detect=99.95%`，`max_lost=0.160s`。
+- **粗扫 36 组**（kp/kd/base/max_correction）：`base_speed=280` 全面优于 400；`max_correction=300` 明显优于 180；`kd=1.0~1.2` 优于 0.4~0.8。
+- **kff 精扫 27 组**：`kp=0.25, kd=1.20, kff=0.0008` 最优；kff=0.0008 降低 19% 修正变化量 vs kff=0。
+- 历史 quick normal：16 个场景 High，`overall_score=95.41`。
 
 ## 当前主要风险
 
 - 雷达当前主要是前向距离信息；如果最终任务要求判断左右两条路线哪边有障碍，需要补充左右侧障碍感知或明确分叉处判定策略。
 - 避障动作是定时开环，换电池、电机、地面摩擦或负载后必须重新调参。
 - LoRa、雷达、巡线 UART 的实机波特率和接线需要用板级测试逐项确认。
-- `TDPS/simulator/` 是从原 `TDPS-Simulator` 整理迁入；当前 `line_follow_cli.sh`/runner 默认路径仍可能引用旧 `TDPS-Simulator/`，必要时手动用当前 `simulator/` 路径构建运行。
+- `TDPS/simulator/` 路径引用已全部修正（2026-06-01）；几何参数已与实车对齐（传感器前距 22cm、轮距 16cm）。
 - 默认 debug profile 使用低速保守巡线参数并关闭岔路识别；只有明确切换 competition profile 时才启用比赛参数。
 - 当前实车几何为传感器阵列中心到左右驱动轮轴线中点约 22 cm、左右轮距约 16 cm；`lead_advance_ticks` 仍是时间近似，需要在实车上按 T 字、直角、圆形入口和 U 型顶点重新标定。
 
 ## 下一步建议
 
-1. 用 `TDPS/tests/board/tdps_board_test/README.md` 的顺序完成供电、SWD、GPIO、编码器、电机、雷达、巡线和 LoRa 单项测试。
-2. 确认 8 路巡线传感器实际输入模式和极性，记录到 `TDPS/docs/tuning.md` 或测试记录。
-3. 在实车上先架空确认 `Profile debug` 打印、电机方向和 `correction > 0` 时右转，再低速测试直线、轻微偏离回正和 U 型弯。
-4. 按 `docs/tuning.md` 的参数台账记录每次实车测试，尤其是 `base_speed/kp/kd/max_correction`、`lead_advance_ticks/lead_turn_delta/lead_turn_hold_ticks` 和 `straight_noise_*`。
-5. 明确左右分叉路线的障碍检测方案，避免只用前向雷达做无法区分左右侧的决策。
-6. 将每次上板测试的日期、场地、电池电压、debug/competition 参数和现象写入实验记录。
+1. 用当前 debug profile 参数（`kp=0.25, kd=1.20, kff=0.0008, base=280, min=60, max_correction=300`）上板验证简化 PD+kff 架构。
+2. 按 `docs/tuning.md` 的参数台账记录每次实车测试，重点关注 `base_speed/kp/kd/kff` 和 `lead_advance_ticks/lead_turn_delta`。
+3. 明确左右分叉路线的障碍检测方案，避免只用前向雷达做无法区分左右侧的决策。
+4. 将每次上板测试的日期、场地、电池电压、debug 参数和现象写入实验记录。

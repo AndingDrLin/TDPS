@@ -36,12 +36,13 @@
 
 ### 2.2 控制器
 
-- 控制器类型：PID
-- 输入：线位置偏差
-- 输出：修正量 `correction`
-- 底盘命令：`left = base + correction`，`right = base - correction`
+- 控制器类型：**PD + 曲率前馈(kff)**（`TDPS_SIMPLE_CONTROL=1`，6 参数）
+- 核心公式：`correction = kp*error + kd*derivative + kff*derivative*speed`
+- 速度公式：`speed = base_speed - (base_speed - min_speed) * |error| / 1750`（连续函数 + IIR 平滑 alpha=0.4）
+- 底盘命令：`left = speed + correction`，`right = speed - correction`
 - `correction > 0` 时左轮更快、右轮更慢，车向右修正；`correction < 0` 时向左修正
 - 对输出和电机命令做限幅，避免打满
+- 与旧架构差异：无死区/软区/积分/速度缩放/变化率限幅/二重滤波；速度由连续函数决定而非 6 级优先级链
 
 相关文件：
 
@@ -55,8 +56,8 @@
 核心行为：
 
 - `CALIBRATING`：左右摆动采样，提高 min/max 覆盖度
-- `RUNNING`：按固定周期读传感器 + 更新 PID
-- `RUNNING`：维护短窗口计数，连续稳定直道使用 `straight_boost_speed`，入弯趋势使用 `curve_prepare_speed` 或 `sharp_turn_speed`
+- `RUNNING`：按固定周期读传感器 + 更新 PD + kff（简化模式）
+- `RUNNING`：连续速度函数自动调节快慢（straight_boost/curve_prepare 已关闭）
 - `RUNNING`：识别直线脏点、地图褶皱和反光造成的弱异常帧，通过 `straight_noise_*` 避免误触发弯前减速
 - `RUNNING`：识别宽黑、T 字、直角、圆形入口、U 型顶点等特殊线型，通过 `lead_compensation` 先低速直行补偿，再按入口方向保持转向
 - `RUNNING`：识别宽黑/箭头类干扰帧，避免单帧跳变污染恢复方向或立即触发岔路
@@ -77,12 +78,10 @@
 建议顺序：
 
 1. 传感器极性、通道顺序和 `sensor_weights`
-2. `base_speed` / `sharp_turn_speed`
-3. `kp` / `kd`
-4. `max_correction` / `max_output_delta_per_tick`
-5. `straight_noise_*`
-6. `lead_advance_ticks`
-7. `lead_turn_delta` / `lead_turn_hold_ticks`
+2. 6 核心参数：`base_speed` → `kp` → `kd` → `kff` → `min_speed` → `max_correction`
+3. `straight_noise_*`
+4. `lead_advance_ticks`
+5. `lead_turn_delta` / `lead_turn_hold_ticks`
 8. `lead_event_confirm_ticks` / `lead_event_min_sum` / `lead_event_active_count_threshold`
 9. `line_detect_min_sum` / `line_detect_min_peak` / `line_detect_min_contrast`
 10. `interference_active_count_threshold` / `interference_position_jump_threshold`
