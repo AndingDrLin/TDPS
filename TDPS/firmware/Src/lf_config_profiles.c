@@ -29,10 +29,10 @@ void LF_Config_ApplyDebugProfile(void)
 	
     g_lf_config.kp  = 0.22f;    // 旧验证值：直线上有死区保护，P 项可以给足
     g_lf_config.ki  = 0.0f;     // 积分：不开（会累积画龙）
-    g_lf_config.kd  = 0.35f;    // 旧验证值：配合 alpha=0.35 微分滤波，避免 dt=0.01 噪声放大
+    g_lf_config.kd  = 0.80f;    // 增强阻尼：配合 alpha=0.35 滤波，有效 D 约 0.52
 		
     g_lf_config.control_error_deadband  = 15;    // 死区：吸收 ±15 以内的 sensor 噪声
-    g_lf_config.control_error_soft_zone = 80;   // 软区二次平滑：消除硬死区跳变，kff 不会在边界放大导数
+    g_lf_config.control_error_soft_zone = 50;   // 软区二次平滑：span=35，position=50 即达满响应
 		
     g_lf_config.max_correction            = 300;  // 差速硬上限
     g_lf_config.max_output_delta_per_tick = 50;   // 弯道快速响应：死区保护直线，弯道无需限速
@@ -43,7 +43,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.integral_separation_threshold = 0.0f;
     g_lf_config.integral_soft_zone            = 0.0f;
 
-    g_lf_config.base_speed          = 300;   // 旧验证值：有死区+滤波+限幅后直线可跑全速
+    g_lf_config.base_speed          = 220;   // 降速入弯：速度用原始 position 计算，及时响应
     g_lf_config.min_speed           = 60;    // 弯道最低速度
     g_lf_config.kff                 = 0.0005f;  // 启用 22cm 预瞄前馈：传感器先看到弯不丢线
 
@@ -59,7 +59,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.curve_prepare_confirm_ticks    = 3U;    // ★ 几帧之后确认进入弯道
     g_lf_config.curve_prepare_speed            = 30;    // ★ 弯道速度
 		
-    g_lf_config.lead_compensation_enable           = false;
+    g_lf_config.lead_compensation_enable           = true;   // 箭头标记/路口前探直行，避免被斜线带偏
     g_lf_config.lead_event_active_count_threshold  = 6U;
     g_lf_config.lead_event_min_sum                 = 2200U;
     g_lf_config.lead_event_center_error_threshold  = 350;

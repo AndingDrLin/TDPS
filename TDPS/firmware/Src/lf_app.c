@@ -1001,7 +1001,6 @@ static void process_running(uint32_t now_ms, float dt_s)
 #if TDPS_SIMPLE_CONTROL
         /* 简化 6 参数 PD+kff：连续速度函数，无死区/软区/积分/Kp 缩放 */
         {
-            float abs_error;
             float ratio;
             int16_t raw_speed;
 
@@ -1009,15 +1008,17 @@ static void process_running(uint32_t now_ms, float dt_s)
                             ? s_app.last_trusted_position
                             : s_app.last_frame.position);
 
-            error = shape_control_error(error);
+            /* 速度用原始 |position| 计算——不受 soft_zone 衰减，入弯时及时降速 */
+            {
+                float raw_abs = (error > 0.0f) ? error : -error;
+                ratio = raw_abs / 1750.0f;
+                if (ratio > 1.0f) ratio = 1.0f;
+                raw_speed = (int16_t)((float)g_lf_config.base_speed -
+                             (float)(g_lf_config.base_speed - g_lf_config.min_speed) * ratio);
+                if (raw_speed < g_lf_config.min_speed) raw_speed = g_lf_config.min_speed;
+            }
 
-            /* 连续速度: base_speed..min_speed，按 |error| 线性插值 */
-            abs_error = (error > 0.0f) ? error : -error;
-            ratio = abs_error / 1750.0f;
-            if (ratio > 1.0f) ratio = 1.0f;
-            raw_speed = (int16_t)((float)g_lf_config.base_speed -
-                         (float)(g_lf_config.base_speed - g_lf_config.min_speed) * ratio);
-            if (raw_speed < g_lf_config.min_speed) raw_speed = g_lf_config.min_speed;
+            error = shape_control_error(error);
 
             /* 一阶 IIR 平滑速度变化，alpha=0.4 */
             base_speed = (int16_t)(0.4f * (float)raw_speed + 0.6f * (float)s_app.current_target_speed);
