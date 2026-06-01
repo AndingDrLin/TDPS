@@ -2,8 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-SIM_ROOT="${ROOT_DIR}/TDPS-Simulator"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+SIM_ROOT="${ROOT_DIR}/TDPS/simulator"
 ARTIFACT_BIN_DIR="${SIM_ROOT}/artifacts/tests/bin"
 WL_PC_BIN="${ARTIFACT_BIN_DIR}/wl_pc_serial_test"
 

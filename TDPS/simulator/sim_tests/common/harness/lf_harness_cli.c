@@ -343,9 +343,9 @@ static void lfh_set_default_config(LFH_TestConfig *cfg)
     cfg->line_threshold = 0.12;
     cfg->line_width_m = 0.03;
     cfg->max_wheel_speed_mps = 1.0;
-    cfg->track_width_m = 0.2;
+    cfg->track_width_m = 0.16;
     cfg->disturbance_profile = LFH_PROFILE_NORMAL;
-    cfg->report_path = "TDPS-Simulator/artifacts/line_follow_v1/reports/single_run/last_autotest_report.json";
+    cfg->report_path = "TDPS/simulator/artifacts/line_follow_v1/reports/single_run/last_autotest_report.json";
     cfg->base_seed = 20260319U;
 }
 
@@ -698,7 +698,7 @@ static int lfh_run_full_course_command(int argc, char **argv)
 
     lfh_set_default_config(&cfg);
     cfg.duration_sec = 90.0;
-    cfg.report_path = "TDPS-Simulator/artifacts/line_follow_v1/reports/single_run/last_full_course_report.json";
+    cfg.report_path = "TDPS/simulator/artifacts/line_follow_v1/reports/single_run/last_full_course_report.json";
     scenario_config_path = argv[2];
 
     if (argc >= 4 && lfh_parse_double_arg(argv[3], 1.0, 180.0, &cfg.duration_sec) == false) {
@@ -754,7 +754,7 @@ static int lfh_run_run_config_command(int argc, char **argv)
     }
 
     lfh_set_default_config(&cfg);
-    cfg.report_path = "TDPS-Simulator/artifacts/line_follow_v1/reports/single_run/last_runconfig_report.json";
+    cfg.report_path = "TDPS/simulator/artifacts/line_follow_v1/reports/single_run/last_runconfig_report.json";
     scenario_config_path = argv[2];
 
     if (argc >= 4 && lfh_parse_double_arg(argv[3], 1.0, 180.0, &cfg.duration_sec) == false) {
@@ -805,7 +805,7 @@ static int lfh_run_stability_command(int argc, char **argv)
     double line_threshold = 0.12;
     uint32_t seed_start = 20260319U;
     uint32_t runs = 8U;
-    const char *report_dir = "TDPS-Simulator/artifacts/line_follow_v1/reports/stability_runs";
+    const char *report_dir = "TDPS/simulator/artifacts/line_follow_v1/reports/stability_runs";
     const char *scenario_config_path = NULL;
     const char *baseline_report_path = NULL;
     LFH_DisturbanceProfile profile = LFH_PROFILE_NORMAL;

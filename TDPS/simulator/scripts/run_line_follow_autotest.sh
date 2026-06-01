@@ -1,8 +1,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-SIM_ROOT="${ROOT_DIR}/TDPS-Simulator"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+SIM_ROOT="${ROOT_DIR}/TDPS/simulator"
 DEFAULT_SCENARIO_CONFIG="${SIM_ROOT}/sim_tests/line_follow_v1/config/scenarios_default.csv"
 
 DURATION_SEC="${1:-15}"

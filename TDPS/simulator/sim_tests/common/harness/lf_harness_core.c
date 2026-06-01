@@ -41,7 +41,7 @@ static bool g_led_on = false;
 static LFH_TrackType g_track = LFH_TRACK_CIRCLE;
 static double g_line_width_m = 0.03;
 static double g_max_wheel_speed_mps = 1.0;
-static double g_track_width_m = 0.2;
+static double g_track_width_m = 0.16;
 static double g_left_wheel_speed_mps = 0.0;
 static double g_right_wheel_speed_mps = 0.0;
 static double g_motor_tau_sec = 0.10;
@@ -78,14 +78,14 @@ static uint16_t g_last_sensor_raw[LF_SENSOR_COUNT];
 static bool g_sensor_sample_cached = false;
 
 static const double k_sensor_xy[LF_SENSOR_COUNT][2] = {
-    {0.16, 0.0875},
-    {0.16, 0.0625},
-    {0.16, 0.0375},
-    {0.16, 0.0125},
-    {0.16, -0.0125},
-    {0.16, -0.0375},
-    {0.16, -0.0625},
-    {0.16, -0.0875},
+    {0.22, 0.0875},
+    {0.22, 0.0625},
+    {0.22, 0.0375},
+    {0.22, 0.0125},
+    {0.22, -0.0125},
+    {0.22, -0.0375},
+    {0.22, -0.0625},
+    {0.22, -0.0875},
 };
 
 static const LFH_Point2 k_patio_path[] = {
@@ -936,6 +936,11 @@ void LF_Platform_BoardInit(void)
 uint32_t LF_Platform_GetMillis(void)
 {
     return (uint32_t)llround(g_sim_time_sec * 1000.0);
+}
+
+uint32_t LF_Platform_GetMicros(void)
+{
+    return (uint32_t)llround(g_sim_time_sec * 1000000.0);
 }
 
 void LF_Platform_DelayMs(uint32_t ms)

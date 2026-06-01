@@ -1,8 +1,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-SIM_ROOT="${ROOT_DIR}/TDPS-Simulator"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+SIM_ROOT="${ROOT_DIR}/TDPS/simulator"
 ARTIFACT_BIN_DIR="${SIM_ROOT}/artifacts/tests/bin"
 WL_BIN="${ARTIFACT_BIN_DIR}/wl_async_autotest"
 INT_BIN="${ARTIFACT_BIN_DIR}/lf_radar_lora_integration_autotest"

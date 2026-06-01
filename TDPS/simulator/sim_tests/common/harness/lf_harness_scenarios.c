@@ -17,7 +17,7 @@ static LFH_Scenario g_scenarios[LFH_SCENARIO_MAX];
 static char g_ids[LFH_SCENARIO_MAX][LFH_ID_MAX];
 static char g_names[LFH_SCENARIO_MAX][LFH_NAME_MAX];
 static size_t g_entry_count = 0U;
-static const char *k_default_config_path = "TDPS-Simulator/sim_tests/line_follow_v1/config/scenarios_default.csv";
+static const char *k_default_config_path = "TDPS/simulator/sim_tests/line_follow_v1/config/scenarios_default.csv";
 
 static char *lfh_trim(char *text)
 {
