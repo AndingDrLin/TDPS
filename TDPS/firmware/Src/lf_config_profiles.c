@@ -43,7 +43,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.integral_separation_threshold = 0.0f;
     g_lf_config.integral_soft_zone            = 0.0f;
 
-    g_lf_config.base_speed          = 220;   // 降速入弯：速度用原始 position 计算，及时响应
+    g_lf_config.base_speed          = 300;   // 降速入弯：速度用原始 position 计算，及时响应
     g_lf_config.min_speed           = 60;    // 弯道最低速度
     g_lf_config.kff                 = 0.0005f;  // 启用 22cm 预瞄前馈：传感器先看到弯不丢线
 
@@ -59,9 +59,9 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.curve_prepare_confirm_ticks    = 3U;    // ★ 几帧之后确认进入弯道
     g_lf_config.curve_prepare_speed            = 30;    // ★ 弯道速度
 		
-    g_lf_config.lead_compensation_enable           = true;   // 箭头标记/路口前探直行，避免被斜线带偏
+    g_lf_config.lead_compensation_enable           = true;  // 先关：min_sum=2200 对正常直线也会误触发，需上板测实际箭头 sum 后再开
     g_lf_config.lead_event_active_count_threshold  = 6U;
-    g_lf_config.lead_event_min_sum                 = 2200U;
+    g_lf_config.lead_event_min_sum                 = 4000U;
     g_lf_config.lead_event_center_error_threshold  = 350;
     g_lf_config.lead_event_entry_error_threshold   = 650;
     g_lf_config.lead_event_confirm_ticks           = 2U;
