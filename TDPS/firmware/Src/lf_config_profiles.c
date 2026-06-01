@@ -35,7 +35,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.control_error_soft_zone = 0;    // 无软区——线性响应，不用二次曲线
 		
     g_lf_config.max_correction            = 300;  // 差速硬上限
-    g_lf_config.max_output_delta_per_tick = 18;   // 旧验证值：单拍修正最多变 18，渐进转向
+    g_lf_config.max_output_delta_per_tick = 50;   // 弯道快速响应：死区保护直线，弯道无需限速
     g_lf_config.max_motor_cmd             = 300;
     g_lf_config.motor_deadband            = 0;
     g_lf_config.derivative_filter_alpha   = 0.35f; // D 项一阶低通，抑制 dt=0.01 下的噪声放大
@@ -45,7 +45,7 @@ void LF_Config_ApplyDebugProfile(void)
 
     g_lf_config.base_speed          = 300;   // 旧验证值：有死区+滤波+限幅后直线可跑全速
     g_lf_config.min_speed           = 60;    // 弯道最低速度
-    g_lf_config.kff                 = 0.0f;  // 先关 kff 测纯 PD：直线稳后再从小到大加
+    g_lf_config.kff                 = 0.0005f;  // 启用 22cm 预瞄前馈：传感器先看到弯不丢线
 
 		g_lf_config.adaptive_slow_speed       = 60;    // 低置信度/低对比度时的速度
     g_lf_config.adaptive_error_threshold  = 100;    // ★ 位置超阈值立即触发 sharp 降速（第一优先级）
