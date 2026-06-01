@@ -29,7 +29,7 @@ void LF_Config_ApplyDebugProfile(void)
 	
     g_lf_config.kp  = 0.10f;    // 实车直线基准：模拟器最优(0.25)在实车上摇头，降回保守值
     g_lf_config.ki  = 0.0f;     // 积分：不开（会累积画龙）
-    g_lf_config.kd  = 1.20f;    // 实车保持：强阻尼利用 22cm 预瞄
+    g_lf_config.kd  = 0.30f;    // 实车保持：强阻尼利用 22cm 预瞄
 		
     g_lf_config.control_error_deadband  = 0;     // 无死区——小偏差也需要修正
     g_lf_config.control_error_soft_zone = 0;    // 无软区——线性响应，不用二次曲线
