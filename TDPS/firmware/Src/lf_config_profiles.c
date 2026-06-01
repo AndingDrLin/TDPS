@@ -32,7 +32,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.kd  = 0.35f;    // 旧验证值：配合 alpha=0.35 微分滤波，避免 dt=0.01 噪声放大
 		
     g_lf_config.control_error_deadband  = 15;    // 死区：吸收 ±15 以内的 sensor 噪声
-    g_lf_config.control_error_soft_zone = 0;    // 无软区——线性响应，不用二次曲线
+    g_lf_config.control_error_soft_zone = 80;   // 软区二次平滑：消除硬死区跳变，kff 不会在边界放大导数
 		
     g_lf_config.max_correction            = 300;  // 差速硬上限
     g_lf_config.max_output_delta_per_tick = 50;   // 弯道快速响应：死区保护直线，弯道无需限速

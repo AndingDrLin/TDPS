@@ -374,7 +374,6 @@ static void update_running_window(const LF_SensorFrame *frame, bool interference
     }
 }
 
-#if !TDPS_SIMPLE_CONTROL
 static float shape_control_error(float error)
 {
     int16_t deadband = g_lf_config.control_error_deadband;
@@ -408,6 +407,7 @@ static float shape_control_error(float error)
     return sign * (abs_error - (float)deadband);
 }
 
+#if !TDPS_SIMPLE_CONTROL
 static int16_t choose_running_speed(const LF_SensorFrame *frame)
 {
     int16_t speed = g_lf_config.base_speed;
@@ -1009,13 +1009,7 @@ static void process_running(uint32_t now_ms, float dt_s)
                             ? s_app.last_trusted_position
                             : s_app.last_frame.position);
 
-            /* 死区：吸收直线上 sensor 噪声，防止 D 项放大引发震荡 */
-            {
-                int16_t db = g_lf_config.control_error_deadband;
-                if (db > 0 && error > -(float)db && error < (float)db) {
-                    error = 0.0f;
-                }
-            }
+            error = shape_control_error(error);
 
             /* 连续速度: base_speed..min_speed，按 |error| 线性插值 */
             abs_error = (error > 0.0f) ? error : -error;
