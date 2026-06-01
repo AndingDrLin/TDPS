@@ -41,9 +41,9 @@ LF_Config g_lf_config = {
      * deadband(50) → soft_zone(150) → 线性区 → 积分过渡区 → 积分分离区。
      * Ki 只在 |error| < sep 时全速累积，超过 sep+soft 则指数衰减。
      */
-    .kp = 0.10f,       /* 实车直线基准：模拟器最优(0.25)在实车上摇头震荡，降回保守值 */
+    .kp = 0.10f,       /* P 项：保守值，兼顾直线稳定；有 deadband/变化率限幅保护后可调高 */
     .ki = 0.0f,        /* 简化 PD——巡线无静差，积分在弯道累积导致过冲 */
-    .kd = 1.20f,       /* 实车保持：强阻尼利用传感器 22cm 预瞄优势 */
+    .kd = 1.20f,       /* D 项：需配合 derivative_filter_alpha 抑制 dt=0.01 噪声放大 */
     .base_speed = 180, /* 实车直线速度：模拟器 280 在实车上摇头，先降速稳直线 */
     .min_speed = 60,   /* 弯道最低速 */
     .kff = 0.0f,       /* 先关 kff 测纯 PD；直线稳后再从小到大加（0.0003→0.0005→0.0008） */
@@ -90,12 +90,12 @@ LF_Config g_lf_config = {
     .straight_noise_max_position_delta = 120,
     .line_hold_speed = 150,
     .line_hold_turn_speed = 210,
-    .derivative_filter_alpha = 0.0f,
+    .derivative_filter_alpha = 0.0f,  /* D 项一阶低通滤波：UpdatePid 和 UpdatePD 共用，实车建议 0.35 */
     /* 积分保护链：硬限幅 → 分离衰减 → 输出变化率限幅 → 反饱和回退 */
     .integral_limit = 0.0f,
     .integral_separation_threshold = 0.0f,
     .integral_soft_zone = 0.0f,
-    .max_output_delta_per_tick = 0,
+    .max_output_delta_per_tick = 0,  /* 单拍修正变化上限：UpdatePid 和 UpdatePD 共用，实车建议 30 */
     .max_motor_cmd = 900,
     .motor_deadband = 120,
 

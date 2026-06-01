@@ -128,32 +128,55 @@ int16_t LF_Control_UpdatePid(float error, float dt_s, LF_PIDState *pid)
 }
 
 /*
- * 简化 PD+kff 控制（无积分、无变化率限幅、无反饱和回退、无微分二次滤波）。
+ * 简化 PD+kff 控制（无积分、无反饱和回退）。
  * 用于 TDPS_SIMPLE_CONTROL 模式，配合连续速度函数。
  *
  * correction = kp*error + kd*derivative + kff*derivative*speed
  * kff 项利用传感器 22cm 预瞄优势——不等偏差出现就预打方向。
+	 *
+	 * 保留两层实车必需的保护：
+	 *   derivative_filter_alpha  — D 项一阶低通滤波，抑制传感器噪声放大
+	 *   max_output_delta_per_tick — 单拍修正变化上限，防止 overshoot 正反馈
  */
 int16_t LF_Control_UpdatePD(float error, float dt_s, int16_t speed, LF_PIDState *pid)
 {
+    float raw_derivative;
     float derivative;
     float output;
+    float alpha = g_lf_config.derivative_filter_alpha;
+    int16_t max_delta = g_lf_config.max_output_delta_per_tick;
 
     if (pid == 0 || dt_s <= 0.0f) {
         return 0;
     }
 
+    if (alpha < 0.0f) alpha = 0.0f;
+    else if (alpha > 0.98f) alpha = 0.98f;
+
     if (pid->initialized == 0U) {
         pid->prev_error = error;
+        pid->filtered_derivative = 0.0f;
         pid->prev_output = 0.0f;
         pid->initialized = 1U;
     }
 
-    derivative = (error - pid->prev_error) / dt_s;
+    raw_derivative = (error - pid->prev_error) / dt_s;
+    derivative = alpha * pid->filtered_derivative + (1.0f - alpha) * raw_derivative;
+    pid->filtered_derivative = derivative;
+
     output = g_lf_config.kp * error + g_lf_config.kd * derivative;
 
     if (g_lf_config.kff != 0.0f && speed > 0) {
         output += g_lf_config.kff * derivative * (float)speed;
+    }
+
+    if (max_delta > 0) {
+        float delta_output = output - pid->prev_output;
+        if (delta_output > (float)max_delta) {
+            output = pid->prev_output + (float)max_delta;
+        } else if (delta_output < (float)(-max_delta)) {
+            output = pid->prev_output - (float)max_delta;
+        }
     }
 
     pid->prev_error = error;

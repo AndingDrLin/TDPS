@@ -27,18 +27,18 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.sensor_weights[6] = -1250;
     g_lf_config.sensor_weights[7] = -1750;
 	
-    g_lf_config.kp  = 0.10f;    // 实车直线基准：模拟器最优(0.25)在实车上摇头，降回保守值
+    g_lf_config.kp  = 0.15f;    // 有变化率限幅保护后可适度加强 P 项跟线性
     g_lf_config.ki  = 0.0f;     // 积分：不开（会累积画龙）
-    g_lf_config.kd  = 0.30f;    // 实车保持：强阻尼利用 22cm 预瞄
+    g_lf_config.kd  = 0.50f;    // 适中预瞄：微分滤波抑制噪声后可用更高 kd
 		
     g_lf_config.control_error_deadband  = 0;     // 无死区——小偏差也需要修正
     g_lf_config.control_error_soft_zone = 0;    // 无软区——线性响应，不用二次曲线
 		
     g_lf_config.max_correction            = 300;  // 差速硬上限，粗扫最佳（300 明显优于 180）
-    g_lf_config.max_output_delta_per_tick = 0;    // 不限制修正变化速率
+    g_lf_config.max_output_delta_per_tick = 30;   // 单拍修正最多变 30，防止 overshoot 正反馈
     g_lf_config.max_motor_cmd             = 300;
     g_lf_config.motor_deadband            = 0;
-    g_lf_config.derivative_filter_alpha   = 0.0f;  // 无额外滤波——传感器前端已有 IIR
+    g_lf_config.derivative_filter_alpha   = 0.35f; // D 项一阶低通，抑制 dt=0.01 下的噪声放大
     g_lf_config.integral_limit                = 0.0f;  // 无积分——巡线无静差
     g_lf_config.integral_separation_threshold = 0.0f;
     g_lf_config.integral_soft_zone            = 0.0f;
