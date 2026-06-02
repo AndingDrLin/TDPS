@@ -20,10 +20,10 @@ PARAM_NAMES = [
 # kff 精扫：围绕粗扫最佳值邻域搜索 kff 最优值
 # kp 邻域 0.15-0.25, kd 邻域 0.8-1.2, kff 0.0-0.0008
 COARSE_GRID = {
-    "TDPS_SIM_KP": [0.15, 0.20, 0.25],
-    "TDPS_SIM_KD": [0.80, 1.00, 1.20],
-    "TDPS_SIM_KFF": [0.0, 0.0004, 0.0008],
-    "TDPS_SIM_BASE_SPEED": [280],
+    "TDPS_SIM_KP": [0.05, 0.08, 0.10, 0.12, 0.15],
+    "TDPS_SIM_KD": [0.6, 0.8, 1.0, 1.2, 1.5],
+    "TDPS_SIM_KFF": [0.0],
+    "TDPS_SIM_BASE_SPEED": [200],
     "TDPS_SIM_MIN_SPEED": [60],
     "TDPS_SIM_MAX_CORRECTION": [300],
 }

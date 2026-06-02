@@ -27,25 +27,25 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.sensor_weights[6] = -1250;
     g_lf_config.sensor_weights[7] = -1750;
 	
-    g_lf_config.kp  = 0.22f;    // 旧验证值：直线上有死区保护，P 项可以给足
-    g_lf_config.ki  = 0.0f;     // 积分：不开（会累积画龙）
-    g_lf_config.kd  = 0.80f;    // 增强阻尼：配合 alpha=0.35 滤波，有效 D 约 0.52
+    g_lf_config.kp  = 0.15f;    // 倒三轮：传感器距轮轴 ~4cm，P 项比正三轮 (0.22) 低
+    g_lf_config.ki  = 0.0f;     // 积分：不开
+    g_lf_config.kd  = 0.60f;    // 倒三轮：短前探降低高频振荡，kd=0.6 转向最平滑
 		
     g_lf_config.control_error_deadband  = 15;    // 死区：吸收 ±15 以内的 sensor 噪声
     g_lf_config.control_error_soft_zone = 50;   // 软区二次平滑：span=35，position=50 即达满响应
 		
     g_lf_config.max_correction            = 300;  // 差速硬上限
-    g_lf_config.max_output_delta_per_tick = 50;   // 弯道快速响应：死区保护直线，弯道无需限速
-    g_lf_config.max_motor_cmd             = 300;
-    g_lf_config.motor_deadband            = 0;
+    g_lf_config.max_output_delta_per_tick = 50;   // 弯道快速响应
+    g_lf_config.max_motor_cmd             = 900;  // 恢复满功率，死区由 motor_deadband 处理
+    g_lf_config.motor_deadband            = 120;
     g_lf_config.derivative_filter_alpha   = 0.35f; // D 项一阶低通，抑制 dt=0.01 下的噪声放大
     g_lf_config.integral_limit                = 0.0f;  // 无积分——巡线无静差
     g_lf_config.integral_separation_threshold = 0.0f;
     g_lf_config.integral_soft_zone            = 0.0f;
 
-    g_lf_config.base_speed          = 300;   // 降速入弯：速度用原始 position 计算，及时响应
+    g_lf_config.base_speed          = 200;   // 倒三轮：降速保证直线稳定，后续逐步提升
     g_lf_config.min_speed           = 60;    // 弯道最低速度
-    g_lf_config.kff                 = 0.0005f;  // 启用 22cm 预瞄前馈：传感器先看到弯不丢线
+    g_lf_config.kff                 = 0.0f;  // 倒三轮：传感器距轮轴仅 ~4cm，无有效预瞄距离，关前馈
 
 		g_lf_config.adaptive_slow_speed       = 60;    // 低置信度/低对比度时的速度
     g_lf_config.adaptive_error_threshold  = 100;    // ★ 位置超阈值立即触发 sharp 降速（第一优先级）
@@ -59,7 +59,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.curve_prepare_confirm_ticks    = 3U;    // ★ 几帧之后确认进入弯道
     g_lf_config.curve_prepare_speed            = 30;    // ★ 弯道速度
 		
-    g_lf_config.lead_compensation_enable           = true;  // 先关：min_sum=2200 对正常直线也会误触发，需上板测实际箭头 sum 后再开
+    g_lf_config.lead_compensation_enable           = false; // 倒三轮：传感器距轮轴仅 4cm，无物理前探距离，关前探
     g_lf_config.lead_event_active_count_threshold  = 6U;
     g_lf_config.lead_event_min_sum                 = 4000U;
     g_lf_config.lead_event_center_error_threshold  = 350;
@@ -105,8 +105,8 @@ void LF_Config_ApplyCompetitionProfile(void)
 {
     LF_Config_ApplyDebugProfile();
 
-    g_lf_config.base_speed = 400;
-    g_lf_config.adaptive_slow_speed = 280;
+    g_lf_config.base_speed = 300;
+    g_lf_config.adaptive_slow_speed = 200;
     g_lf_config.max_correction = 400;
     g_lf_config.max_motor_cmd = 900;
     g_lf_config.auto_start_delay_ms = 800U;

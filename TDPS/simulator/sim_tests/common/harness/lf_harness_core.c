@@ -78,14 +78,14 @@ static uint16_t g_last_sensor_raw[LF_SENSOR_COUNT];
 static bool g_sensor_sample_cached = false;
 
 static const double k_sensor_xy[LF_SENSOR_COUNT][2] = {
-    {0.22, 0.0875},
-    {0.22, 0.0625},
-    {0.22, 0.0375},
-    {0.22, 0.0125},
-    {0.22, -0.0125},
-    {0.22, -0.0375},
-    {0.22, -0.0625},
-    {0.22, -0.0875},
+    {0.04, 0.0875},
+    {0.04, 0.0625},
+    {0.04, 0.0375},
+    {0.04, 0.0125},
+    {0.04, -0.0125},
+    {0.04, -0.0375},
+    {0.04, -0.0625},
+    {0.04, -0.0875},
 };
 
 static const LFH_Point2 k_patio_path[] = {
@@ -1001,8 +1001,9 @@ uint16_t LF_Platform_RadarRead(uint8_t *out_buf, uint16_t max_len)
 
 void LF_Platform_SetMotorCommand(int16_t left_cmd, int16_t right_cmd)
 {
-    g_left_cmd = left_cmd;
-    g_right_cmd = right_cmd;
+    /* 倒三轮：底盘层取反电机命令，模拟器在此抵消取反，使车走赛道正向 */
+    g_left_cmd = -left_cmd;
+    g_right_cmd = -right_cmd;
 }
 
 void LF_Platform_SetStatusLed(bool on)
