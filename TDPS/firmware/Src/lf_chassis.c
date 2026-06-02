@@ -33,7 +33,7 @@ void LF_Chassis_SetCommand(int16_t left_cmd, int16_t right_cmd)
     left = apply_deadband(left);
     right = apply_deadband(right);
 
-    LF_Platform_SetMotorCommand(left, right);
+    LF_Platform_SetMotorCommand(-left, -right);
 }
 
 void LF_Chassis_Stop(void)

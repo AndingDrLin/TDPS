@@ -586,7 +586,7 @@ static int test_offset_line_still_turns_with_deadband(void)
     LF_DebugMonitor_GetLastMotorCommand(&left, &right);
     failures += expect_true(ctx->last_frame.line_detected, "offset line remains detected");
     failures += expect_true(ctx->last_frame.position < -400, "offset line keeps large position error");
-    failures += expect_true(right > left + 40, "offset left line still commands left turn");
+    failures += expect_true(left > right + 40, "offset left line still commands left turn");
     LF_PlatformStub_ClearLineSensorRaw();
     return failures;
 }
@@ -745,7 +745,7 @@ static int test_lead_event_advances_before_turning(void)
     ctx = LF_App_GetContext();
     LF_DebugMonitor_GetLastMotorCommand(&left, &right);
     failures += expect_true(ctx->state == LF_APP_STATE_RUNNING, "lead phase stays in RUNNING");
-    failures += expect_true(left > right, "lead turn hold keeps right turn after advance");
+    failures += expect_true(left < right, "lead turn hold keeps right turn after advance");
     LF_PlatformStub_ClearLineSensorRaw();
     return failures;
 }
