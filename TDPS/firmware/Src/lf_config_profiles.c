@@ -27,15 +27,15 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.sensor_weights[6] = -1250;
     g_lf_config.sensor_weights[7] = -1750;
 	
-    g_lf_config.kp  = 0.15f;    // 倒三轮：传感器距轮轴 ~4cm，P 项比正三轮 (0.22) 低
+    g_lf_config.kp  = 0.10f;    // 倒三轮：传感器距轮轴 ~4cm，P 项比正三轮 (0.22) 低
     g_lf_config.ki  = 0.0f;     // 积分：不开
-    g_lf_config.kd  = 0.60f;    // 倒三轮：短前探降低高频振荡，kd=0.6 转向最平滑
+    g_lf_config.kd  = 0.40f;    // 倒三轮：短前探降低高频振荡，kd=0.6 转向最平滑
 		
-    g_lf_config.control_error_deadband  = 0;    // 简化控制：不屏蔽小偏差
-    g_lf_config.control_error_soft_zone = 0;   // 简化控制：不做软区衰减
+    g_lf_config.control_error_deadband  = 80;    // 简化控制：不屏蔽小偏差
+    g_lf_config.control_error_soft_zone = 150;   // 简化控制：不做软区衰减
 		
     g_lf_config.max_correction            = 220;  // 调试限幅，避免一次跳变急转
-    g_lf_config.max_output_delta_per_tick = 30;   // 降低单拍修正跳变
+    g_lf_config.max_output_delta_per_tick = 20;   // 降低单拍修正跳变
     g_lf_config.max_motor_cmd             = 900;  // 恢复满功率，死区由 motor_deadband 处理
     g_lf_config.motor_deadband            = 120;
     g_lf_config.derivative_filter_alpha   = 0.35f; // D 项一阶低通，抑制 dt=0.01 下的噪声放大
