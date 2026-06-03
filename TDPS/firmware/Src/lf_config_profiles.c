@@ -31,11 +31,11 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.ki  = 0.0f;     // 积分：不开
     g_lf_config.kd  = 0.60f;    // 倒三轮：短前探降低高频振荡，kd=0.6 转向最平滑
 		
-    g_lf_config.control_error_deadband  = 15;    // 死区：吸收 ±15 以内的 sensor 噪声
-    g_lf_config.control_error_soft_zone = 50;   // 软区二次平滑：span=35，position=50 即达满响应
+    g_lf_config.control_error_deadband  = 0;    // 简化控制：不屏蔽小偏差
+    g_lf_config.control_error_soft_zone = 0;   // 简化控制：不做软区衰减
 		
-    g_lf_config.max_correction            = 300;  // 差速硬上限
-    g_lf_config.max_output_delta_per_tick = 50;   // 弯道快速响应
+    g_lf_config.max_correction            = 220;  // 调试限幅，避免一次跳变急转
+    g_lf_config.max_output_delta_per_tick = 30;   // 降低单拍修正跳变
     g_lf_config.max_motor_cmd             = 900;  // 恢复满功率，死区由 motor_deadband 处理
     g_lf_config.motor_deadband            = 120;
     g_lf_config.derivative_filter_alpha   = 0.35f; // D 项一阶低通，抑制 dt=0.01 下的噪声放大
@@ -43,7 +43,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.integral_separation_threshold = 0.0f;
     g_lf_config.integral_soft_zone            = 0.0f;
 
-    g_lf_config.base_speed          = 200;   // 倒三轮：降速保证直线稳定，后续逐步提升
+    g_lf_config.base_speed          = 160;   // 倒三轮：低速定位直线稳定问题
     g_lf_config.min_speed           = 60;    // 弯道最低速度
     g_lf_config.kff                 = 0.0f;  // 倒三轮：传感器距轮轴仅 ~4cm，无有效预瞄距离，关前馈
 
