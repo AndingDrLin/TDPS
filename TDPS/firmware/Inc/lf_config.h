@@ -159,6 +159,12 @@ typedef struct {
     int16_t edge_realign_speed;
     int16_t edge_realign_delta;
     uint8_t edge_realign_confirm_ticks;
+    bool curve_arc_enable;
+    int8_t curve_arc_dir_sign;
+    int16_t curve_arc_speed;
+    int16_t curve_arc_delta;
+    uint8_t curve_arc_confirm_ticks;
+    uint8_t curve_arc_release_ticks;
     float derivative_filter_alpha;
     float integral_limit;
     /*

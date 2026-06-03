@@ -118,6 +118,12 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.edge_realign_speed       = 135;
     g_lf_config.edge_realign_delta       = 35;
     g_lf_config.edge_realign_confirm_ticks = 2U;
+    g_lf_config.curve_arc_enable         = true;
+    g_lf_config.curve_arc_dir_sign       = 1;
+    g_lf_config.curve_arc_speed          = 115;
+    g_lf_config.curve_arc_delta          = 50;
+    g_lf_config.curve_arc_confirm_ticks  = 3U;
+    g_lf_config.curve_arc_release_ticks  = 4U;
 		
     g_lf_config.radar_enable         = false;
     g_lf_config.obstacle_avoid_enable = false;

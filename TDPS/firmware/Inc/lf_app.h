@@ -122,6 +122,9 @@ typedef struct {
     uint32_t run_start_ms;
     uint8_t edge_realign_count;
     int8_t edge_realign_side;
+    uint8_t curve_arc_count;
+    uint8_t curve_arc_release_count;
+    int8_t curve_arc_side;
     int32_t last_trusted_position;
     int8_t trusted_line_dir;
     bool trusted_line_valid;

@@ -300,6 +300,60 @@ static int8_t detect_edge_realign_side(const LF_SensorFrame *frame)
     return 0;
 }
 
+static int8_t detect_side_wide_curve_arc_side(const LF_SensorFrame *frame)
+{
+    uint8_t left_side_count;
+    uint8_t right_side_count;
+
+    if (frame == NULL || !frame->line_detected) {
+        return 0;
+    }
+
+    left_side_count = count_active_range(frame, 0U, 4U);
+    right_side_count = count_active_range(frame, 3U, 7U);
+
+    if (sensor_lane_active(frame, 0U) && left_side_count >= 5U &&
+        left_side_count >= (uint8_t)(right_side_count + 2U)) {
+        return -1;
+    }
+    if (sensor_lane_active(frame, 7U) && right_side_count >= 5U &&
+        right_side_count >= (uint8_t)(left_side_count + 2U)) {
+        return +1;
+    }
+    return 0;
+}
+
+static int8_t detect_curve_arc_side(const LF_SensorFrame *frame)
+{
+    uint8_t left_mid_count;
+    uint8_t right_mid_count;
+    int8_t side_wide;
+
+    if (!g_lf_config.curve_arc_enable || frame == NULL || !frame->line_detected) {
+        return 0;
+    }
+
+    side_wide = detect_side_wide_curve_arc_side(frame);
+    if (side_wide != 0) {
+        return side_wide;
+    }
+
+    left_mid_count = count_active_range(frame, 1U, 3U);
+    right_mid_count = count_active_range(frame, 4U, 6U);
+
+    if (middle_lane_is_good(frame) || detect_edge_realign_side(frame) != 0) {
+        return 0;
+    }
+
+    if (left_mid_count >= (uint8_t)(right_mid_count + 2U) && left_mid_count >= 2U) {
+        return -1;
+    }
+    if (right_mid_count >= (uint8_t)(left_mid_count + 2U) && right_mid_count >= 2U) {
+        return +1;
+    }
+    return 0;
+}
+
 static bool frame_is_straight_noise(const LF_SensorFrame *frame)
 {
     int32_t position_delta;
@@ -979,6 +1033,7 @@ typedef enum {
     LF_RUN_ACTION_OBSTACLE,
     LF_RUN_ACTION_LEAD_COMPENSATION,
     LF_RUN_ACTION_EDGE_REALIGN,
+    LF_RUN_ACTION_CURVE_ARC,
     LF_RUN_ACTION_PID_CONTROL,
 } LF_RunAction;
 
@@ -1028,6 +1083,24 @@ static void process_edge_realign(void)
     correction = (int16_t)((int16_t)s_app.edge_realign_side * (int16_t)sign *
                            (int16_t)steering_sign * delta);
     LF_Chassis_SetCommand((int16_t)(speed + correction), (int16_t)(speed - correction));
+    s_app.current_target_speed = speed;
+}
+
+static void process_curve_arc(void)
+{
+    int16_t speed = limit_degraded_speed(g_lf_config.curve_arc_speed);
+    int16_t delta = limit_degraded_speed(g_lf_config.curve_arc_delta);
+    int8_t sign = (g_lf_config.curve_arc_dir_sign < 0) ? -1 : +1;
+    int16_t correction;
+    int16_t left_cmd;
+    int16_t right_cmd;
+
+    reset_lead_phase();
+    LF_Control_ResetPid(&s_app.pid);
+
+    correction = (int16_t)((int16_t)s_app.curve_arc_side * (int16_t)sign * delta);
+    LF_Control_ComputeMotorCmd(speed, correction, &left_cmd, &right_cmd);
+    LF_Chassis_SetCommand(left_cmd, right_cmd);
     s_app.current_target_speed = speed;
 }
 
@@ -1082,7 +1155,7 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
         if (confirm_ticks == 0U) {
             confirm_ticks = 1U;
         }
-        if (edge_side != 0) {
+        if (edge_side != 0 && detect_curve_arc_side(&s_app.last_frame) == 0) {
             if (s_app.edge_realign_side == edge_side) {
                 bump_counter(&s_app.edge_realign_count);
             } else {
@@ -1096,6 +1169,54 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
         } else {
             s_app.edge_realign_count = 0U;
             s_app.edge_realign_side = 0;
+        }
+    }
+
+    {
+        int8_t strong_curve_side = detect_side_wide_curve_arc_side(&s_app.last_frame);
+        bool lead_active = (s_app.lead_phase != (uint8_t)LF_LEAD_PHASE_IDLE) ||
+                           frame_is_lead_event(&s_app.last_frame);
+        bool curve_allowed = (!lead_active && (!d.start_guard_active || strong_curve_side != 0));
+        if (curve_allowed) {
+            int8_t curve_side = detect_curve_arc_side(&s_app.last_frame);
+            uint8_t confirm_ticks = g_lf_config.curve_arc_confirm_ticks;
+            uint8_t release_ticks = g_lf_config.curve_arc_release_ticks;
+            if (confirm_ticks == 0U) {
+                confirm_ticks = 1U;
+            }
+            if (release_ticks == 0U) {
+                release_ticks = 1U;
+            }
+
+            if (curve_side != 0) {
+                s_app.curve_arc_release_count = 0U;
+                if (s_app.curve_arc_side == curve_side) {
+                    bump_counter(&s_app.curve_arc_count);
+                } else {
+                    s_app.curve_arc_side = curve_side;
+                    s_app.curve_arc_count = 1U;
+                }
+            } else if (middle_lane_is_good(&s_app.last_frame)) {
+                bump_counter(&s_app.curve_arc_release_count);
+                if (s_app.curve_arc_release_count >= release_ticks) {
+                    s_app.curve_arc_count = 0U;
+                    s_app.curve_arc_release_count = 0U;
+                    s_app.curve_arc_side = 0;
+                }
+            } else {
+                s_app.curve_arc_count = 0U;
+                s_app.curve_arc_release_count = 0U;
+                s_app.curve_arc_side = 0;
+            }
+
+            if (s_app.curve_arc_side != 0 && s_app.curve_arc_count >= confirm_ticks) {
+                d.action = LF_RUN_ACTION_CURVE_ARC;
+                return d;
+            }
+        } else {
+            s_app.curve_arc_count = 0U;
+            s_app.curve_arc_release_count = 0U;
+            s_app.curve_arc_side = 0;
         }
     }
 
@@ -1156,6 +1277,10 @@ static void process_running(uint32_t now_ms, float dt_s)
 
     case LF_RUN_ACTION_EDGE_REALIGN:
         process_edge_realign();
+        return;
+
+    case LF_RUN_ACTION_CURVE_ARC:
+        process_curve_arc();
         return;
 
     case LF_RUN_ACTION_PID_CONTROL:
@@ -1547,6 +1672,9 @@ void LF_App_Init(void)
     s_app.run_start_ms = 0U;
     s_app.edge_realign_count = 0U;
     s_app.edge_realign_side = 0;
+    s_app.curve_arc_count = 0U;
+    s_app.curve_arc_release_count = 0U;
+    s_app.curve_arc_side = 0;
     s_app.last_trusted_position = 0;
     s_app.trusted_line_dir = +1;
     s_app.trusted_line_valid = false;

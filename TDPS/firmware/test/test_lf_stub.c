@@ -415,6 +415,18 @@ static void set_left_edge_three_lamps(void)
     LF_PlatformStub_SetLineSensorRaw(raw);
 }
 
+static void set_left_curve_arc_line(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {900U, 3300U, 3300U, 3300U, 900U, 900U, 900U, 900U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
+static void set_left_side_wide_curve_arc_line(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {3300U, 3300U, 3300U, 3300U, 3300U, 900U, 900U, 900U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
 static int init_app_to_running_with_start_guard(bool start_guard_enable)
 {
     LF_Platform_BoardInit();
@@ -696,7 +708,7 @@ static int test_edge_realign_uses_small_motor_delta(void)
     int16_t diff;
     int failures = 0;
 
-    if (init_app_to_running()) {
+    if (init_app_to_running_with_start_guard(true)) {
         return 1;
     }
 
@@ -720,6 +732,92 @@ static int test_edge_realign_uses_small_motor_delta(void)
     failures += expect_true(ctx->edge_realign_side == -1, "left edge lamps enter edge realign");
     failures += expect_true(diff <= g_lf_config.max_motor_delta, "edge realign obeys global small turn limit");
     failures += expect_true(diff > 0, "edge realign applies a small correction");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_curve_arc_uses_independent_small_delta(void)
+{
+    const LF_AppContext *ctx;
+    int16_t left;
+    int16_t right;
+    int16_t diff;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.lead_compensation_enable = false;
+    g_lf_config.edge_realign_enable = true;
+    g_lf_config.edge_realign_confirm_ticks = 1U;
+    g_lf_config.curve_arc_enable = true;
+    g_lf_config.curve_arc_dir_sign = 1;
+    g_lf_config.curve_arc_speed = 115;
+    g_lf_config.curve_arc_delta = 50;
+    g_lf_config.curve_arc_confirm_ticks = 1U;
+    g_lf_config.curve_arc_release_ticks = 2U;
+    g_lf_config.max_motor_delta = 70;
+    g_lf_config.sensor_filter_alpha = 1.0f;
+
+    set_left_curve_arc_line();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    LF_DebugMonitor_GetLastMotorCommand(&left, &right);
+    diff = (left > right) ? (int16_t)(left - right) : (int16_t)(right - left);
+
+    failures += expect_true(ctx->curve_arc_side == -1, "left-biased middle lamps enter curve arc");
+    failures += expect_true(ctx->edge_realign_side == 0, "curve arc does not use edge realign");
+    failures += expect_true(diff > 0 && diff <= g_lf_config.max_motor_delta,
+                            "curve arc applies bounded small motor delta");
+
+    set_center_line();
+    run_app_for(30U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->curve_arc_side == 0, "center lamps release curve arc");
+    g_lf_config.curve_arc_enable = false;
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_side_wide_lamps_enter_curve_arc_before_edge_realign(void)
+{
+    const LF_AppContext *ctx;
+    int16_t left;
+    int16_t right;
+    int16_t diff;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.lead_compensation_enable = false;
+    g_lf_config.edge_realign_enable = true;
+    g_lf_config.edge_realign_confirm_ticks = 1U;
+    g_lf_config.curve_arc_enable = true;
+    g_lf_config.curve_arc_dir_sign = 1;
+    g_lf_config.curve_arc_speed = 115;
+    g_lf_config.curve_arc_delta = 50;
+    g_lf_config.curve_arc_confirm_ticks = 1U;
+    g_lf_config.max_motor_delta = 70;
+    g_lf_config.line_detect_min_peak = 300U;
+    g_lf_config.sensor_filter_alpha = 1.0f;
+
+    set_left_side_wide_curve_arc_line();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    LF_DebugMonitor_GetLastMotorCommand(&left, &right);
+    diff = (left > right) ? (int16_t)(left - right) : (int16_t)(right - left);
+    failures += expect_true(ctx->curve_arc_side == -1, "left side-wide lamps enter curve arc");
+    failures += expect_true(ctx->edge_realign_side == 0, "side-wide curve is not stolen by edge realign");
+    failures += expect_true(diff > 0 && diff <= g_lf_config.max_motor_delta,
+                            "side-wide curve applies bounded motor delta");
+    g_lf_config.curve_arc_enable = false;
     LF_PlatformStub_ClearLineSensorRaw();
     return failures;
 }
@@ -1103,6 +1201,8 @@ int main(void)
     failures += test_wide_center_deadband_softens_motor_output();
     failures += test_start_straight_guard_limits_wide_black_turn();
     failures += test_edge_realign_uses_small_motor_delta();
+    failures += test_curve_arc_uses_independent_small_delta();
+    failures += test_side_wide_lamps_enter_curve_arc_before_edge_realign();
     failures += test_straight_noise_keeps_base_speed();
     failures += test_arrow_like_wide_frame_does_not_start_lead_without_entry();
     failures += test_biased_wide_noise_does_not_start_lead_event();
