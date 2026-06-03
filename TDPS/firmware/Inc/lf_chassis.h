@@ -8,6 +8,7 @@ void LF_Chassis_Init(void);
 
 /* 下发左右轮命令（-1000~1000）。 */
 void LF_Chassis_SetCommand(int16_t left_cmd, int16_t right_cmd);
+void LF_Chassis_SetCommandWithDeltaLimit(int16_t left_cmd, int16_t right_cmd, int16_t max_delta);
 
 /* 紧急停车。 */
 void LF_Chassis_Stop(void);

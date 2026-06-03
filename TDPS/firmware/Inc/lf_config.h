@@ -163,6 +163,10 @@ typedef struct {
     int8_t curve_arc_dir_sign;
     int16_t curve_arc_speed;
     int16_t curve_arc_delta;
+    int16_t curve_arc_max_motor_delta;
+    int16_t curve_arc_probe_speed;
+    int16_t curve_arc_probe_delta;
+    int16_t curve_arc_probe_max_motor_delta;
     uint8_t curve_arc_confirm_ticks;
     uint8_t curve_arc_release_ticks;
     float derivative_filter_alpha;
