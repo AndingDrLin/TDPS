@@ -397,13 +397,25 @@ static void set_wide_biased_straight_noise(void)
     LF_PlatformStub_SetLineSensorRaw(raw);
 }
 
+static void set_start_box_offset_line(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {900U, 900U, 900U, 2800U, 3300U, 3300U, 3300U, 2800U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
 static void set_left_only_line(void)
 {
     const uint16_t raw[LF_SENSOR_COUNT] = {3300U, 3300U, 2500U, 900U, 900U, 900U, 900U, 900U};
     LF_PlatformStub_SetLineSensorRaw(raw);
 }
 
-static int init_app_to_running(void)
+static void set_left_edge_three_lamps(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {3300U, 3300U, 3300U, 900U, 900U, 900U, 900U, 900U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
+static int init_app_to_running_with_start_guard(bool start_guard_enable)
 {
     LF_Platform_BoardInit();
     LF_DebugMonitor_Init();
@@ -417,12 +429,18 @@ static int init_app_to_running(void)
     g_lf_config.sensor_fast_calibration = true;
     g_lf_config.obstacle_avoid_enable = true;
     g_lf_config.fork_enable = true;
+    g_lf_config.start_straight_guard_enable = start_guard_enable;
     (void)Wireless_Hooks_Init();
     LF_App_Init();
     run_app_for(g_lf_config.auto_start_delay_ms + g_lf_config.calibration_duration_ms + 20U);
     set_center_line();
     run_app_step_after(10U);
     return expect_true(LF_App_GetContext()->state == LF_APP_STATE_RUNNING, "app reaches RUNNING");
+}
+
+static int init_app_to_running(void)
+{
+    return init_app_to_running_with_start_guard(false);
 }
 
 static int test_app_degraded_calibration_runs_limited(void)
@@ -615,6 +633,93 @@ static int test_wide_center_deadband_softens_motor_output(void)
     ctx = LF_App_GetContext();
     failures += expect_true(ctx->last_frame.line_detected, "wide biased center frame remains detected");
     failures += expect_true(ctx->last_frame.active_count >= 3U, "wide biased center frame keeps wide-line coverage");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_start_straight_guard_limits_wide_black_turn(void)
+{
+    const LF_AppContext *ctx;
+    int16_t left;
+    int16_t right;
+    int16_t diff;
+    int16_t avg;
+    int failures = 0;
+
+    if (init_app_to_running_with_start_guard(true)) {
+        return 1;
+    }
+
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.lead_compensation_enable = false;
+    g_lf_config.line_stability_enable = true;
+    g_lf_config.stable_direction_enable = true;
+    g_lf_config.sensor_filter_alpha = 1.0f;
+    g_lf_config.base_speed = 200;
+    g_lf_config.min_speed = 60;
+    g_lf_config.kp = 0.18f;
+    g_lf_config.kd = 0.0f;
+    g_lf_config.max_correction = 300;
+    g_lf_config.max_output_delta_per_tick = 300;
+    g_lf_config.start_straight_guard_enable = true;
+    g_lf_config.start_straight_guard_ms = 1200U;
+    g_lf_config.start_straight_guard_speed = 120;
+    g_lf_config.start_straight_guard_max_correction = 15;
+    g_lf_config.start_straight_guard_active_count = 4U;
+    g_lf_config.start_straight_guard_release_ticks = 4U;
+    g_lf_config.start_straight_guard_release_active_count = 3U;
+    g_lf_config.start_straight_guard_release_error = 220;
+
+    set_start_box_offset_line();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    LF_DebugMonitor_GetLastMotorCommand(&left, &right);
+    diff = (left > right) ? (int16_t)(left - right) : (int16_t)(right - left);
+    avg = (int16_t)((left + right) / 2);
+
+    failures += expect_true(ctx->last_frame.line_detected, "start box wide line remains detected");
+    failures += expect_true(ctx->last_frame.active_count >= 4U, "start box frame has wide active coverage");
+    failures += expect_true(diff <= 4,
+                            "start guard drives straight on wide black");
+    failures += expect_true(avg <= g_lf_config.start_straight_guard_speed + 5,
+                            "start guard keeps slow forward speed");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_edge_realign_uses_small_motor_delta(void)
+{
+    const LF_AppContext *ctx;
+    int16_t left;
+    int16_t right;
+    int16_t diff;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.lead_compensation_enable = false;
+    g_lf_config.edge_realign_enable = true;
+    g_lf_config.edge_realign_dir_sign = 1;
+    g_lf_config.edge_realign_speed = 135;
+    g_lf_config.edge_realign_delta = 35;
+    g_lf_config.edge_realign_confirm_ticks = 1U;
+    g_lf_config.max_motor_delta = 70;
+    g_lf_config.sensor_filter_alpha = 1.0f;
+
+    set_left_edge_three_lamps();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    LF_DebugMonitor_GetLastMotorCommand(&left, &right);
+    diff = (left > right) ? (int16_t)(left - right) : (int16_t)(right - left);
+
+    failures += expect_true(ctx->edge_realign_side == -1, "left edge lamps enter edge realign");
+    failures += expect_true(diff <= g_lf_config.max_motor_delta, "edge realign obeys global small turn limit");
+    failures += expect_true(diff > 0, "edge realign applies a small correction");
     LF_PlatformStub_ClearLineSensorRaw();
     return failures;
 }
@@ -996,6 +1101,8 @@ int main(void)
     failures += test_single_edge_hint_noise_does_not_slow_to_curve_speed();
     failures += test_offset_line_still_turns_with_deadband();
     failures += test_wide_center_deadband_softens_motor_output();
+    failures += test_start_straight_guard_limits_wide_black_turn();
+    failures += test_edge_realign_uses_small_motor_delta();
     failures += test_straight_noise_keeps_base_speed();
     failures += test_arrow_like_wide_frame_does_not_start_lead_without_entry();
     failures += test_biased_wide_noise_does_not_start_lead_event();

@@ -1,7 +1,11 @@
 #include "lf_future_hooks.h"
 
-#if defined(__GNUC__)
+#if defined(__MINGW32__) || defined(__MINGW64__)
+#define LF_WEAK
+#elif defined(__GNUC__) || defined(__clang__) || defined(__ARMCC_VERSION)
 #define LF_WEAK __attribute__((weak))
+#elif defined(__CC_ARM)
+#define LF_WEAK __weak
 #else
 #define LF_WEAK
 #endif

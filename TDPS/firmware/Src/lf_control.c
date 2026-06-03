@@ -191,6 +191,9 @@ int16_t LF_Control_UpdatePD(float error, float dt_s, int16_t speed, LF_PIDState 
 
 void LF_Control_ComputeMotorCmd(int16_t base_speed, int16_t correction, int16_t *out_left, int16_t *out_right)
 {
+    int8_t steering_sign = (g_lf_config.steering_dir_sign < 0) ? -1 : +1;
+    correction = (int16_t)((int16_t)steering_sign * correction);
+
     int32_t left = (int32_t)base_speed + correction;
     int32_t right = (int32_t)base_speed - correction;
 

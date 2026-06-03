@@ -41,6 +41,7 @@ bool Wireless_Hooks_IsReady(void)
     return s_wireless_ready;
 }
 
+#if !defined(__MINGW32__) && !defined(__MINGW64__)
 void LF_Hook_OnCalibrationComplete(bool success)
 {
     if (!s_wireless_ready || !success || s_race_started) {
@@ -59,3 +60,4 @@ void LF_Hook_OnReservedCheckpoint(uint32_t checkpoint_id)
 
     WL_App_NotifyCheckpoint(checkpoint_id);
 }
+#endif

@@ -34,6 +34,12 @@ typedef enum {
 } LF_LeadPhase;
 
 typedef enum {
+    LF_START_STRAIGHT_GUARD_OFF = 0,
+    LF_START_STRAIGHT_GUARD_ACTIVE,
+    LF_START_STRAIGHT_GUARD_RELEASED,
+} LF_StartStraightGuardPhase;
+
+typedef enum {
     LF_APP_REASON_NONE = 0,
     LF_APP_REASON_WAIT_START,
     LF_APP_REASON_CALIBRATION_STARTED,
@@ -111,6 +117,11 @@ typedef struct {
     uint8_t lead_entry_memory_count;
     int8_t lead_entry_dir;
     uint8_t straight_noise_count;
+    uint8_t start_straight_guard_phase;
+    uint8_t start_straight_release_count;
+    uint32_t run_start_ms;
+    uint8_t edge_realign_count;
+    int8_t edge_realign_side;
     int32_t last_trusted_position;
     int8_t trusted_line_dir;
     bool trusted_line_valid;

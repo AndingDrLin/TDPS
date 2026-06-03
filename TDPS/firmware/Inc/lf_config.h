@@ -37,6 +37,14 @@ typedef struct {
     /* 无按钮启动：上电安全等待后，检测到有效线持续一段时间再进入标定。 */
     uint32_t start_min_boot_delay_ms;
     uint32_t start_line_hold_ms;
+    bool start_straight_guard_enable;
+    uint32_t start_straight_guard_ms;
+    int16_t start_straight_guard_speed;
+    int16_t start_straight_guard_max_correction;
+    uint8_t start_straight_guard_active_count;
+    uint8_t start_straight_guard_release_ticks;
+    uint8_t start_straight_guard_release_active_count;
+    int16_t start_straight_guard_release_error;
 
     /* 光照标定持续时间（ms）。 */
     uint32_t calibration_duration_ms;
@@ -98,6 +106,7 @@ typedef struct {
 
     /* 曲率前馈增益（简化控制用）。 */
     float kff;
+    int8_t steering_dir_sign;
 
     /* PID 输出限幅，避免急剧打角。 */
     int16_t max_correction;
@@ -145,6 +154,11 @@ typedef struct {
 
     int16_t line_hold_speed;
     int16_t line_hold_turn_speed;
+    bool edge_realign_enable;
+    int8_t edge_realign_dir_sign;
+    int16_t edge_realign_speed;
+    int16_t edge_realign_delta;
+    uint8_t edge_realign_confirm_ticks;
     float derivative_filter_alpha;
     float integral_limit;
     /*
@@ -163,6 +177,7 @@ typedef struct {
 
     /* 电机命令绝对值上限。 */
     int16_t max_motor_cmd;
+    int16_t max_motor_delta;
 
     /* 电机最小起转补偿（非零命令时生效）。 */
     int16_t motor_deadband;

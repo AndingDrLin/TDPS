@@ -10,6 +10,14 @@ LF_Config g_lf_config = {
     .auto_start_delay_ms = 1200U,
     .start_min_boot_delay_ms = 2000U,
     .start_line_hold_ms = 2000U,
+    .start_straight_guard_enable = true,
+    .start_straight_guard_ms = 1200U,
+    .start_straight_guard_speed = 120,
+    .start_straight_guard_max_correction = 15,
+    .start_straight_guard_active_count = 4U,
+    .start_straight_guard_release_ticks = 5U,
+    .start_straight_guard_release_active_count = 3U,
+    .start_straight_guard_release_error = 220,
 
     /* 标定参数：影响上电后传感器 min/max 覆盖质量。 */
     .calibration_duration_ms = 3000U,

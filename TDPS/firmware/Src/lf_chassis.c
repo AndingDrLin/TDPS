@@ -20,6 +20,38 @@ static int16_t apply_deadband(int16_t cmd)
     return cmd;
 }
 
+static void limit_motor_delta(int16_t *left_cmd, int16_t *right_cmd)
+{
+    int16_t limit = g_lf_config.max_motor_delta;
+    int32_t left;
+    int32_t right;
+    int32_t delta;
+    int32_t avg;
+
+    if (left_cmd == 0 || right_cmd == 0 || limit <= 0) {
+        return;
+    }
+
+    left = *left_cmd;
+    right = *right_cmd;
+    delta = left - right;
+    if (delta <= limit && delta >= -limit) {
+        return;
+    }
+
+    avg = (left + right) / 2;
+    if (delta > 0) {
+        left = avg + (limit / 2);
+        right = avg - (limit / 2);
+    } else {
+        left = avg - (limit / 2);
+        right = avg + (limit / 2);
+    }
+
+    *left_cmd = TDPS_ClampI16(left, (int16_t)(-g_lf_config.max_motor_cmd), g_lf_config.max_motor_cmd);
+    *right_cmd = TDPS_ClampI16(right, (int16_t)(-g_lf_config.max_motor_cmd), g_lf_config.max_motor_cmd);
+}
+
 void LF_Chassis_Init(void)
 {
     LF_Platform_SetMotorCommand(0, 0);
@@ -32,6 +64,7 @@ void LF_Chassis_SetCommand(int16_t left_cmd, int16_t right_cmd)
 
     left = apply_deadband(left);
     right = apply_deadband(right);
+    limit_motor_delta(&left, &right);
 
     LF_Platform_SetMotorCommand(-left, -right);
 }

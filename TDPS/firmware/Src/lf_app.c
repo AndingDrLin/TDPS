@@ -159,6 +159,8 @@ static int16_t limit_degraded_speed(int16_t speed)
     return limit_speed_abs(speed, g_lf_config.sensor_degraded_max_speed);
 }
 
+static int32_t abs_i32(int32_t value);
+
 static int32_t abs_i32(int32_t value)
 {
     return (value < 0) ? -value : value;
@@ -169,6 +171,61 @@ static void bump_counter(uint8_t *counter)
     if (counter != NULL && *counter < UINT8_MAX) {
         *counter += 1U;
     }
+}
+
+static void start_straight_guard_begin(uint32_t now_ms)
+{
+    s_app.run_start_ms = now_ms;
+    s_app.start_straight_release_count = 0U;
+    s_app.start_straight_guard_phase = g_lf_config.start_straight_guard_enable ?
+        (uint8_t)LF_START_STRAIGHT_GUARD_ACTIVE :
+        (uint8_t)LF_START_STRAIGHT_GUARD_OFF;
+}
+
+static bool start_straight_guard_tick(uint32_t now_ms, const LF_SensorFrame *frame)
+{
+    uint8_t release_ticks = g_lf_config.start_straight_guard_release_ticks;
+    uint8_t release_active = g_lf_config.start_straight_guard_release_active_count;
+    int16_t release_error = g_lf_config.start_straight_guard_release_error;
+
+    if (!g_lf_config.start_straight_guard_enable ||
+        s_app.start_straight_guard_phase != (uint8_t)LF_START_STRAIGHT_GUARD_ACTIVE ||
+        frame == NULL || !frame->line_detected) {
+        return false;
+    }
+
+    if (g_lf_config.start_straight_guard_ms > 0U &&
+        (uint32_t)(now_ms - s_app.run_start_ms) >= g_lf_config.start_straight_guard_ms) {
+        s_app.start_straight_guard_phase = (uint8_t)LF_START_STRAIGHT_GUARD_RELEASED;
+        s_app.start_straight_release_count = 0U;
+        LF_Control_ResetPid(&s_app.pid);
+        return false;
+    }
+
+    if (release_ticks == 0U) {
+        release_ticks = 1U;
+    }
+    if (release_active == 0U) {
+        release_active = 1U;
+    }
+    if (release_error < 0) {
+        release_error = (int16_t)(-release_error);
+    }
+
+    if (frame->active_count <= release_active &&
+        abs_i32(frame->position) <= release_error) {
+        bump_counter(&s_app.start_straight_release_count);
+        if (s_app.start_straight_release_count >= release_ticks) {
+            s_app.start_straight_guard_phase = (uint8_t)LF_START_STRAIGHT_GUARD_RELEASED;
+            s_app.start_straight_release_count = 0U;
+            LF_Control_ResetPid(&s_app.pid);
+            return false;
+        }
+    } else {
+        s_app.start_straight_release_count = 0U;
+    }
+
+    return true;
 }
 
 static bool frame_is_interference(const LF_SensorFrame *frame)
@@ -187,6 +244,60 @@ static bool frame_is_interference(const LF_SensorFrame *frame)
     }
     position_jump = abs_i32(frame->position - s_app.last_trusted_position);
     return position_jump >= g_lf_config.interference_position_jump_threshold;
+}
+
+static bool sensor_lane_active(const LF_SensorFrame *frame, uint8_t index)
+{
+    return frame != NULL && index < LF_SENSOR_COUNT &&
+           frame->filtered_u16[index] >= g_lf_config.line_detect_min_peak;
+}
+
+static uint8_t count_active_range(const LF_SensorFrame *frame, uint8_t first, uint8_t last)
+{
+    uint8_t count = 0U;
+    uint8_t i;
+
+    if (frame == NULL || first >= LF_SENSOR_COUNT) {
+        return 0U;
+    }
+    if (last >= LF_SENSOR_COUNT) {
+        last = (uint8_t)(LF_SENSOR_COUNT - 1U);
+    }
+
+    for (i = first; i <= last; ++i) {
+        if (sensor_lane_active(frame, i)) {
+            count++;
+        }
+    }
+    return count;
+}
+
+static bool middle_lane_is_good(const LF_SensorFrame *frame)
+{
+    uint8_t middle_count = count_active_range(frame, 1U, 6U);
+    return middle_count == 4U || middle_count == 5U;
+}
+
+static int8_t detect_edge_realign_side(const LF_SensorFrame *frame)
+{
+    uint8_t left_edge_count;
+    uint8_t right_edge_count;
+
+    if (!g_lf_config.edge_realign_enable || frame == NULL || !frame->line_detected ||
+        middle_lane_is_good(frame)) {
+        return 0;
+    }
+
+    left_edge_count = count_active_range(frame, 0U, 2U);
+    right_edge_count = count_active_range(frame, 5U, 7U);
+
+    if (left_edge_count >= 3U && right_edge_count <= 1U) {
+        return -1;
+    }
+    if (right_edge_count >= 3U && left_edge_count <= 1U) {
+        return +1;
+    }
+    return 0;
 }
 
 static bool frame_is_straight_noise(const LF_SensorFrame *frame)
@@ -867,6 +978,7 @@ typedef enum {
     LF_RUN_ACTION_FORK,
     LF_RUN_ACTION_OBSTACLE,
     LF_RUN_ACTION_LEAD_COMPENSATION,
+    LF_RUN_ACTION_EDGE_REALIGN,
     LF_RUN_ACTION_PID_CONTROL,
 } LF_RunAction;
 
@@ -874,6 +986,7 @@ typedef struct {
     LF_RunAction action;
     bool fork_candidate;
     bool interference;
+    bool start_guard_active;
 } LF_RunDecision;
 
 static void handle_line_lost(uint32_t now_ms)
@@ -901,6 +1014,23 @@ static void handle_line_lost(uint32_t now_ms)
     LF_Hook_OnLineLost();
 }
 
+static void process_edge_realign(void)
+{
+    int16_t speed = limit_degraded_speed(g_lf_config.edge_realign_speed);
+    int16_t delta = limit_degraded_speed(g_lf_config.edge_realign_delta);
+    int8_t sign = (g_lf_config.edge_realign_dir_sign < 0) ? -1 : +1;
+    int8_t steering_sign = (g_lf_config.steering_dir_sign < 0) ? -1 : +1;
+    int16_t correction;
+
+    reset_lead_phase();
+    LF_Control_ResetPid(&s_app.pid);
+
+    correction = (int16_t)((int16_t)s_app.edge_realign_side * (int16_t)sign *
+                           (int16_t)steering_sign * delta);
+    LF_Chassis_SetCommand((int16_t)(speed + correction), (int16_t)(speed - correction));
+    s_app.current_target_speed = speed;
+}
+
 /*
  * 每控制周期调用一次，按优先级选择唯一动作。
  * 返回前已完成本周期所有窗口计数器更新。
@@ -910,6 +1040,7 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
     LF_RunDecision d;
     d.fork_candidate = false;
     d.interference = frame_is_interference(&s_app.last_frame);
+    d.start_guard_active = false;
 
     /* 优先级 0：丢线（不可降级，立即接管） */
     if (!s_app.last_frame.line_detected) {
@@ -919,9 +1050,10 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
 
     s_app.line_lost_count = 0U;
     update_running_window(&s_app.last_frame, d.interference);
+    d.start_guard_active = start_straight_guard_tick(now_ms, &s_app.last_frame);
 
     /* 优先级 1：岔路（需连续确认 fork_detect_confirm_ticks 帧） */
-    if (!d.interference && g_lf_config.fork_enable &&
+    if (!d.start_guard_active && !d.interference && g_lf_config.fork_enable &&
         !fork_cooldown_active(now_ms) &&
         frame_looks_like_fork(&s_app.last_frame)) {
         d.fork_candidate = true;
@@ -944,12 +1076,35 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
     }
 
     /* 优先级 3：领先补偿——传感器 22cm 前置导致的位置超前响应 */
-    if (s_app.lead_phase != (uint8_t)LF_LEAD_PHASE_IDLE) {
+    {
+        int8_t edge_side = detect_edge_realign_side(&s_app.last_frame);
+        uint8_t confirm_ticks = g_lf_config.edge_realign_confirm_ticks;
+        if (confirm_ticks == 0U) {
+            confirm_ticks = 1U;
+        }
+        if (edge_side != 0) {
+            if (s_app.edge_realign_side == edge_side) {
+                bump_counter(&s_app.edge_realign_count);
+            } else {
+                s_app.edge_realign_side = edge_side;
+                s_app.edge_realign_count = 1U;
+            }
+            if (s_app.edge_realign_count >= confirm_ticks) {
+                d.action = LF_RUN_ACTION_EDGE_REALIGN;
+                return d;
+            }
+        } else {
+            s_app.edge_realign_count = 0U;
+            s_app.edge_realign_side = 0;
+        }
+    }
+
+    if (!d.start_guard_active && s_app.lead_phase != (uint8_t)LF_LEAD_PHASE_IDLE) {
         d.action = LF_RUN_ACTION_LEAD_COMPENSATION;
         return d;
     }
 
-    if (frame_is_lead_event(&s_app.last_frame)) {
+    if (!d.start_guard_active && frame_is_lead_event(&s_app.last_frame)) {
         bump_counter(&s_app.lead_event_count);
         if (s_app.lead_event_count >= g_lf_config.lead_event_confirm_ticks) {
             start_lead_advance();
@@ -959,7 +1114,9 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
     } else {
         s_app.lead_event_count = 0U;
     }
-    update_lead_entry_memory(&s_app.last_frame, d.interference);
+    if (!d.start_guard_active) {
+        update_lead_entry_memory(&s_app.last_frame, d.interference);
+    }
 
     /* 优先级 4：正常 PID 控制 */
     d.action = LF_RUN_ACTION_PID_CONTROL;
@@ -997,6 +1154,10 @@ static void process_running(uint32_t now_ms, float dt_s)
         process_lead_phase();
         return;
 
+    case LF_RUN_ACTION_EDGE_REALIGN:
+        process_edge_realign();
+        return;
+
     case LF_RUN_ACTION_PID_CONTROL:
 #if TDPS_SIMPLE_CONTROL
         /* 简化 6 参数 PD+kff：连续速度函数，无死区/软区/积分/Kp 缩放 */
@@ -1028,6 +1189,16 @@ static void process_running(uint32_t now_ms, float dt_s)
             /* PD + kff 前馈：kff*derivative*speed 在 UpdatePD 内部计算 */
             correction = LF_Control_UpdatePD(error, dt_s, base_speed, &s_app.pid);
         }
+        if (decision.start_guard_active) {
+            base_speed = limit_degraded_speed(g_lf_config.start_straight_guard_speed);
+            if (s_app.last_frame.active_count >= g_lf_config.start_straight_guard_active_count) {
+                correction = 0;
+                LF_Control_ResetPid(&s_app.pid);
+            } else {
+                correction = limit_speed_abs(correction, g_lf_config.start_straight_guard_max_correction);
+            }
+            s_app.current_target_speed = base_speed;
+        }
         LF_Control_ComputeMotorCmd(base_speed, correction, &left_cmd, &right_cmd);
         left_cmd = limit_degraded_speed(left_cmd);
         right_cmd = limit_degraded_speed(right_cmd);
@@ -1047,6 +1218,16 @@ static void process_running(uint32_t now_ms, float dt_s)
             g_lf_config.kp = saved_kp * ratio;
             correction = LF_Control_UpdatePid(error, dt_s, &s_app.pid);
             g_lf_config.kp = saved_kp;
+        }
+        if (decision.start_guard_active) {
+            base_speed = limit_degraded_speed(g_lf_config.start_straight_guard_speed);
+            if (s_app.last_frame.active_count >= g_lf_config.start_straight_guard_active_count) {
+                correction = 0;
+                LF_Control_ResetPid(&s_app.pid);
+            } else {
+                correction = limit_speed_abs(correction, g_lf_config.start_straight_guard_max_correction);
+            }
+            s_app.current_target_speed = base_speed;
         }
         LF_Control_ComputeMotorCmd(base_speed, correction, &left_cmd, &right_cmd);
         left_cmd = limit_degraded_speed(left_cmd);
@@ -1361,6 +1542,11 @@ void LF_App_Init(void)
     s_app.lead_entry_memory_count = 0U;
     s_app.lead_entry_dir = 0;
     s_app.straight_noise_count = 0U;
+    s_app.start_straight_guard_phase = (uint8_t)LF_START_STRAIGHT_GUARD_OFF;
+    s_app.start_straight_release_count = 0U;
+    s_app.run_start_ms = 0U;
+    s_app.edge_realign_count = 0U;
+    s_app.edge_realign_side = 0;
     s_app.last_trusted_position = 0;
     s_app.trusted_line_dir = +1;
     s_app.trusted_line_valid = false;
@@ -1419,6 +1605,7 @@ void LF_App_RunStep(void)
                 }
 
                 LF_Control_ResetPid(&s_app.pid);
+                start_straight_guard_begin(now_ms);
                 LF_RunLog_SetCalQuality(s_app.calibration_degraded ? 1U : 2U);
                 set_reason(s_app.calibration_degraded ?
                            LF_APP_REASON_CALIBRATION_DEGRADED :
