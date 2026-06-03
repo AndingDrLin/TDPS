@@ -1089,22 +1089,21 @@ static void process_edge_realign(void)
 static void process_curve_arc(void)
 {
     int16_t speed = limit_degraded_speed(g_lf_config.curve_arc_speed);
-    int16_t delta = limit_degraded_speed(g_lf_config.curve_arc_delta);
-    int16_t motor_delta_limit = g_lf_config.curve_arc_max_motor_delta;
+    float error;
     int16_t correction;
     int16_t left_cmd;
     int16_t right_cmd;
 
     reset_lead_phase();
-    /* 不重置 PID：出弯时从冻结状态恢复，避免 D=0 导致修正不足 */
 
-    correction = (int16_t)((int16_t)s_app.curve_arc_side * delta);
+    error = (float)s_app.last_frame.position;
+    error = shape_control_error(error);
+    correction = LF_Control_UpdatePD(error, 0.01f, speed, &s_app.pid);
+
     LF_Control_ComputeMotorCmd(speed, correction, &left_cmd, &right_cmd);
-    if (motor_delta_limit <= 0) {
-        motor_delta_limit = delta;
-    }
-    LF_Chassis_LimitMotorDelta(&left_cmd, &right_cmd, motor_delta_limit);
-    LF_Platform_SetMotorCommand(-left_cmd, -right_cmd);
+    left_cmd = limit_degraded_speed(left_cmd);
+    right_cmd = limit_degraded_speed(right_cmd);
+    LF_Chassis_SetCommand(left_cmd, right_cmd);
     s_app.current_target_speed = speed;
 }
 
@@ -1181,6 +1180,10 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
         bool lead_active = (s_app.lead_phase != (uint8_t)LF_LEAD_PHASE_IDLE) ||
                            frame_is_lead_event(&s_app.last_frame);
         bool curve_allowed = (!lead_active && (!d.start_guard_active || strong_curve_side != 0));
+        /* 进入 curve_arc 时临时提高 max_motor_delta，退出时恢复。 */
+        static int16_t saved_max_motor_delta = 0;
+        static bool curve_arc_limit_saved = false;
+
         if (curve_allowed) {
             int8_t curve_side = detect_curve_arc_side(&s_app.last_frame);
             uint8_t confirm_ticks = g_lf_config.curve_arc_confirm_ticks;
@@ -1214,6 +1217,11 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
             }
 
             if (s_app.curve_arc_side != 0 && s_app.curve_arc_count >= confirm_ticks) {
+                if (!curve_arc_limit_saved) {
+                    saved_max_motor_delta = g_lf_config.max_motor_delta;
+                    g_lf_config.max_motor_delta = g_lf_config.curve_arc_max_motor_delta;
+                    curve_arc_limit_saved = true;
+                }
                 d.action = LF_RUN_ACTION_CURVE_ARC;
                 return d;
             }
@@ -1221,6 +1229,11 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
             s_app.curve_arc_count = 0U;
             s_app.curve_arc_release_count = 0U;
             s_app.curve_arc_side = 0;
+        }
+
+        if (curve_arc_limit_saved && s_app.curve_arc_side == 0) {
+            g_lf_config.max_motor_delta = saved_max_motor_delta;
+            curve_arc_limit_saved = false;
         }
     }
 
