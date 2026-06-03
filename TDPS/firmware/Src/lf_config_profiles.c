@@ -115,7 +115,13 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.curve_arc_max_motor_delta = 150;   // 匹配更大的 delta
     g_lf_config.curve_arc_confirm_ticks  = 2U;     // 2帧确认，过滤单帧噪声
     g_lf_config.curve_arc_release_ticks  = 4U;
-		
+
+    g_lf_config.reorient_enable           = true;   // 急弯停车+原地旋转对准
+    g_lf_config.reorient_spin_speed       = 150;    // 原地旋转速度
+    g_lf_config.reorient_confirm_ticks    = 3U;     // 中间传感器对准确认帧数
+    g_lf_config.reorient_timeout_ms       = 3000U;  // 超时停车
+    g_lf_config.reorient_position_threshold = 800;  // 位置偏差阈值：超过此值触发原地旋转
+
     g_lf_config.radar_enable         = false;
     g_lf_config.obstacle_avoid_enable = false;
     g_lf_config.fork_enable          = false;

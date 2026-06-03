@@ -47,6 +47,11 @@ static void update_led_for_state(void)
     case LF_APP_STATE_FORK_REACQUIRE:
         LF_LedBlink_SetPattern(LF_LED_RAPID_PULSE);
         break;
+    case LF_APP_STATE_REORIENT_STOP:
+    case LF_APP_STATE_REORIENT_SPIN:
+    case LF_APP_STATE_REORIENT_CONFIRM:
+        LF_LedBlink_SetPattern(LF_LED_HEARTBEAT);
+        break;
     default:
         break;
     }
@@ -1034,6 +1039,7 @@ typedef enum {
     LF_RUN_ACTION_LEAD_COMPENSATION,
     LF_RUN_ACTION_EDGE_REALIGN,
     LF_RUN_ACTION_CURVE_ARC,
+    LF_RUN_ACTION_REORIENT,
     LF_RUN_ACTION_PID_CONTROL,
 } LF_RunAction;
 
@@ -1183,6 +1189,14 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
         bool lead_active = (s_app.lead_phase != (uint8_t)LF_LEAD_PHASE_IDLE) ||
                            frame_is_lead_event(&s_app.last_frame);
         bool curve_allowed = (!lead_active && (!d.start_guard_active || strong_curve_side != 0));
+
+        /* 急弯原地旋转对准：side_wide 检测到急弯 + 位置偏差超过阈值 */
+        if (g_lf_config.reorient_enable && strong_curve_side != 0 &&
+            abs_i32(s_app.last_frame.position) >= g_lf_config.reorient_position_threshold) {
+            s_app.reorient_spin_dir = strong_curve_side;
+            d.action = LF_RUN_ACTION_REORIENT;
+            return d;
+        }
         /* 进入 curve_arc 时临时提高 max_motor_delta，退出时恢复。 */
         static int16_t saved_max_motor_delta = 0;
         static bool curve_arc_limit_saved = false;
@@ -1264,6 +1278,109 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
     return d;
 }
 
+/*
+ * 原地旋转对准：检测到急弯/直角弯时，停车→原地旋转→中间4路传感器对准线→恢复巡线。
+ *
+ * REORIENT_STOP: 停车，记录旋转方向和起始时间。
+ * REORIENT_SPIN: 两轮反向旋转，持续检测中间传感器是否看到线。
+ * REORIENT_CONFIRM: 中间传感器对准确认，连续 N 帧稳定后恢复 RUNNING。
+ */
+static void start_reorient(uint32_t now_ms)
+{
+    reset_lead_phase();
+    LF_Control_ResetPid(&s_app.pid);
+    s_app.curve_arc_count = 0U;
+    s_app.curve_arc_release_count = 0U;
+    s_app.curve_arc_side = 0;
+    s_app.reorient_start_ms = now_ms;
+    s_app.reorient_confirm_count = 0U;
+    set_reason(LF_APP_REASON_REORIENT_STARTED);
+    set_state(LF_APP_STATE_REORIENT_STOP);
+    LF_Chassis_Stop();
+    LF_Platform_DebugPrint("Reorient: stop\n");
+}
+
+static bool middle_sensors_aligned(const LF_SensorFrame *frame)
+{
+    /* 中间 4 路传感器 (2~5) 至少 3 个活跃，说明线在传感器阵列中央 */
+    return count_active_range(frame, 2U, 5U) >= 3U;
+}
+
+static void process_reorient_stop(uint32_t now_ms)
+{
+    LF_Chassis_Stop();
+    /* 停车稳定 1 个控制周期后进入旋转 */
+    set_state(LF_APP_STATE_REORIENT_SPIN);
+    LF_Platform_DebugPrint("Reorient: spinning\n");
+}
+
+static void process_reorient_spin(uint32_t now_ms)
+{
+    int16_t spin = g_lf_config.reorient_spin_speed;
+    int16_t left_cmd;
+    int16_t right_cmd;
+
+    /* 超时保护 */
+    if ((uint32_t)(now_ms - s_app.reorient_start_ms) >= g_lf_config.reorient_timeout_ms) {
+        LF_Chassis_Stop();
+        set_reason(LF_APP_REASON_REORIENT_TIMEOUT);
+        set_state(LF_APP_STATE_STOPPED);
+        LF_Platform_DebugPrint("Reorient: timeout\n");
+        return;
+    }
+
+    /* 中间传感器看到线 → 进入确认 */
+    if (middle_sensors_aligned(&s_app.last_frame)) {
+        LF_Chassis_Stop();
+        s_app.reorient_confirm_count = 1U;
+        set_state(LF_APP_STATE_REORIENT_CONFIRM);
+        LF_Platform_DebugPrint("Reorient: confirming\n");
+        return;
+    }
+
+    /* 原地旋转：reorient_spin_dir > 0 → 右转(左轮正, 右轮负)
+     *            reorient_spin_dir < 0 → 左转(左轮负, 右轮正) */
+    if (s_app.reorient_spin_dir > 0) {
+        left_cmd = spin;
+        right_cmd = (int16_t)(-spin);
+    } else {
+        left_cmd = (int16_t)(-spin);
+        right_cmd = spin;
+    }
+    LF_Chassis_SetCommand(left_cmd, right_cmd);
+}
+
+static void process_reorient_confirm(uint32_t now_ms)
+{
+    /* 超时保护 */
+    if ((uint32_t)(now_ms - s_app.reorient_start_ms) >= g_lf_config.reorient_timeout_ms) {
+        LF_Chassis_Stop();
+        set_reason(LF_APP_REASON_REORIENT_TIMEOUT);
+        set_state(LF_APP_STATE_STOPPED);
+        LF_Platform_DebugPrint("Reorient: timeout in confirm\n");
+        return;
+    }
+
+    if (middle_sensors_aligned(&s_app.last_frame)) {
+        s_app.reorient_confirm_count += 1U;
+        if (s_app.reorient_confirm_count >= g_lf_config.reorient_confirm_ticks) {
+            /* 对准成功：重置 PID，恢复 RUNNING */
+            LF_Control_ResetPid(&s_app.pid);
+            s_app.current_target_speed = g_lf_config.min_speed;
+            set_reason(LF_APP_REASON_REORIENT_ALIGNED);
+            set_state(LF_APP_STATE_RUNNING);
+            LF_Platform_DebugPrint("Reorient: aligned, resume\n");
+            return;
+        }
+    } else {
+        /* 中间传感器丢失线 → 回到旋转继续找 */
+        s_app.reorient_confirm_count = 0U;
+        set_state(LF_APP_STATE_REORIENT_SPIN);
+        LF_Platform_DebugPrint("Reorient: lost, back to spin\n");
+    }
+    LF_Chassis_Stop();
+}
+
 static void process_running(uint32_t now_ms, float dt_s)
 {
     int16_t correction;
@@ -1301,6 +1418,10 @@ static void process_running(uint32_t now_ms, float dt_s)
 
     case LF_RUN_ACTION_CURVE_ARC:
         process_curve_arc();
+        return;
+
+    case LF_RUN_ACTION_REORIENT:
+        start_reorient(now_ms);
         return;
 
     case LF_RUN_ACTION_PID_CONTROL:
@@ -1807,6 +1928,18 @@ void LF_App_RunStep(void)
 
         case LF_APP_STATE_FORK_REACQUIRE:
             process_fork_reacquire(now_ms);
+            break;
+
+        case LF_APP_STATE_REORIENT_STOP:
+            process_reorient_stop(now_ms);
+            break;
+
+        case LF_APP_STATE_REORIENT_SPIN:
+            process_reorient_spin(now_ms);
+            break;
+
+        case LF_APP_STATE_REORIENT_CONFIRM:
+            process_reorient_confirm(now_ms);
             break;
 
         case LF_APP_STATE_STOPPED:

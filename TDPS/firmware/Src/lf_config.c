@@ -98,6 +98,14 @@ LF_Config g_lf_config = {
     .straight_noise_max_position_delta = 120,
     .line_hold_speed = 150,
     .line_hold_turn_speed = 210,
+
+    /* 原地旋转对准 */
+    .reorient_enable = false,
+    .reorient_spin_speed = 180,
+    .reorient_confirm_ticks = 4U,
+    .reorient_timeout_ms = 3000U,
+    .reorient_position_threshold = 900,
+
     .derivative_filter_alpha = 0.0f,  /* D 项一阶低通滤波：UpdatePid 和 UpdatePD 共用，实车建议 0.35 */
     /* 积分保护链：硬限幅 → 分离衰减 → 输出变化率限幅 → 反饱和回退 */
     .integral_limit = 0.0f,

@@ -23,6 +23,9 @@ typedef enum {
     LF_APP_STATE_FORK_COMMIT_LEFT,
     LF_APP_STATE_FORK_COMMIT_RIGHT,
     LF_APP_STATE_FORK_REACQUIRE,
+    LF_APP_STATE_REORIENT_STOP,
+    LF_APP_STATE_REORIENT_SPIN,
+    LF_APP_STATE_REORIENT_CONFIRM,
     LF_APP_STATE_STOPPED,
     LF_APP_STATE_FAULT
 } LF_AppState;
@@ -63,6 +66,9 @@ typedef enum {
     LF_APP_REASON_FORK_FALLBACK_RIGHT,
     LF_APP_REASON_FORK_COMPLETED,
     LF_APP_REASON_FORK_FAILED,
+    LF_APP_REASON_REORIENT_STARTED,
+    LF_APP_REASON_REORIENT_ALIGNED,
+    LF_APP_REASON_REORIENT_TIMEOUT,
     LF_APP_REASON_FAULT_FALLBACK,
 } LF_AppReason;
 
@@ -125,6 +131,9 @@ typedef struct {
     uint8_t curve_arc_count;
     uint8_t curve_arc_release_count;
     int8_t curve_arc_side;
+    uint32_t reorient_start_ms;
+    int8_t reorient_spin_dir;
+    uint8_t reorient_confirm_count;
     int32_t last_trusted_position;
     int8_t trusted_line_dir;
     bool trusted_line_valid;

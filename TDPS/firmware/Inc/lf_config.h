@@ -165,6 +165,14 @@ typedef struct {
     int16_t curve_arc_max_motor_delta;
     uint8_t curve_arc_confirm_ticks;
     uint8_t curve_arc_release_ticks;
+
+    /* 原地旋转对准：检测到急弯/直角弯时停车→原地转→对准中间传感器→恢复巡线。 */
+    bool reorient_enable;
+    int16_t reorient_spin_speed;
+    uint8_t reorient_confirm_ticks;
+    uint16_t reorient_timeout_ms;
+    int16_t reorient_position_threshold;
+
     float derivative_filter_alpha;
     float integral_limit;
     /*
