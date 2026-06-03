@@ -27,7 +27,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.sensor_weights[6] = -1250;
     g_lf_config.sensor_weights[7] = -1750;
 	
-    g_lf_config.kp  = 0.25f;    // 倒三轮：传感器距轮轴 ~4cm，P 项比正三轮 (0.22) 低
+    g_lf_config.kp  = 0.15f;    // 倒三轮：传感器距轮轴 ~4cm，P 项比正三轮 (0.22) 低
     g_lf_config.ki  = 0.0f;     // 积分：不开
     g_lf_config.kd  = 0.60f;    // 倒三轮：短前探降低高频振荡，kd=0.6 转向最平滑
 		
@@ -43,7 +43,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.integral_separation_threshold = 0.0f;
     g_lf_config.integral_soft_zone            = 0.0f;
 
-    g_lf_config.base_speed          = 160;   // 倒三轮：低速定位直线稳定问题
+    g_lf_config.base_speed          = 200;   // 倒三轮：低速定位直线稳定问题
     g_lf_config.min_speed           = 60;    // 弯道最低速度
     g_lf_config.kff                 = 0.0f;  // 倒三轮：传感器距轮轴仅 ~4cm，无有效预瞄距离，关前馈
 
@@ -51,16 +51,6 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.adaptive_error_threshold  = 100;    // ★ 位置超阈值立即触发 sharp 降速（第一优先级）
     g_lf_config.adaptive_confidence_threshold = 0.40f;  // 默认值
     g_lf_config.sharp_turn_speed          = 60;    // ★ 最慢爬行速度，尖角极限转向
-
-    g_lf_config.kp = 0.08f;
-    g_lf_config.kd = 0.25f;
-    g_lf_config.base_speed = 110;
-    g_lf_config.adaptive_slow_speed = 80;
-    g_lf_config.sharp_turn_speed = 75;
-    g_lf_config.max_correction = 90;
-    g_lf_config.max_output_delta_per_tick = 12;
-    g_lf_config.max_motor_delta = 70;
-    g_lf_config.steering_dir_sign = -1;
 
     g_lf_config.straight_boost_enable          = false;
     g_lf_config.curve_prepare_enable           = false; // 连续速度函数替代
@@ -83,7 +73,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.lead_turn_delta     = 115;    // 前探转向差速量
     g_lf_config.lead_entry_memory_ticks = 40U; // 入口方向记忆时长
 		
-    g_lf_config.line_stability_enable               = true;
+    g_lf_config.line_stability_enable               = false;
     g_lf_config.stable_direction_enable             = true;
     g_lf_config.interference_active_count_threshold  = 5U;
     g_lf_config.interference_position_jump_threshold = 200;
