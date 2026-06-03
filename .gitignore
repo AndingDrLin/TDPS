@@ -29,6 +29,8 @@ TDPS/firmware/build/
 TDPS/simulator/artifacts/**
 !TDPS/simulator/artifacts/
 !TDPS/simulator/artifacts/README.md
+
+# Root-level pipeline artifacts (project-specific artifacts use rules above)
 artifacts/**
 !artifacts/
 !artifacts/README.md
@@ -74,6 +76,9 @@ EventRecorderStub.scvd
 # Generated report outputs
 TDPS/reports/mid_reports/outputs/
 TDPS/reports/notebook/outputs/
+TDPS/reports/final_report/artifacts/
+TDPS/reports/final_report/src/bare_jrnl_new_sample4.tex
+TDPS/reports/final_report/src/New_IEEEtran_how-to.tex
 mid_reports/outputs/
 notebook/outputs/
 
