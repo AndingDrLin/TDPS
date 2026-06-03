@@ -9,7 +9,7 @@
 | DMG48270C043_04WN 屏幕数据手册 | `TDPS/docs_reference/DMG48270C043_04WN_数据手册.pdf` |
 | EWM22A LoRa 用户手册 | `TDPS/docs_reference/EWM22A-xxxBWL22S_UserManual_CN_V1.0.pdf` |
 | HLK-LD2410S 用户手册 | `TDPS/docs_reference/HLK-LD2410S-用户手册_V1.04  .pdf` |
-| PCB / 原理图导出 | `TDPS/docs_reference/PCB_*.pdf`、`TDPS/docs_reference/SCH_*.pdf` |
+| PCB 工程文件 | `TDPS/docs_reference/ProPrj_TDPS PCB_2026-06-03.epro2`（EasyEDA Pro） |
 | STM32F407VET6 开发板资料 | `TDPS/docs_reference/STM32F407VET6开发板/` |
 | Wheeltec L150 小车底盘资料 | `TDPS/docs_reference/Wheeltec L150小车底盘/` |
 | 8 路巡线红外传感器资料 | `TDPS/docs_reference/八路巡线红外传感器/` |
