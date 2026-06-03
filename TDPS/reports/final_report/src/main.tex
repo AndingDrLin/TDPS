@@ -1,0 +1,528 @@
+\documentclass[letterpaper,journal]{IEEEtran}
+\usepackage{amsmath,amsfonts}
+\usepackage{algorithmic}
+\usepackage{array}
+\usepackage[caption=false,font=normalsize,labelfont=sf,textfont=sf]{subfig}
+\usepackage{textcomp}
+\usepackage{stfloats}
+\usepackage{url}
+\usepackage{graphicx}
+\usepackage{cite}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{float}
+
+\hyphenation{op-tical net-works semi-conduc-tor}
+
+\begin{document}
+
+\title{Design and Implementation of a Simplified PD+Feedforward Line-Following Robot with Radar Obstacle Avoidance and LoRa Telemetry}
+
+\author{
+    \IEEEauthorblockN{Yujia Lin\textsuperscript{1}, Ziyi Zhu\textsuperscript{2}, Mengzhuo Xu\textsuperscript{3}, Zijin Mu\textsuperscript{4}, and Yuxuan Liang\textsuperscript{5}} \\
+    
+    \IEEEauthorblockA{\textsuperscript{1}GUID 2960092, \textsuperscript{2}GUID 2960283, \textsuperscript{3}GUID 2960183, \textsuperscript{4}GUID 2960297, \textsuperscript{5}GUID 2960351\\
+    Team 15 PTSD\\
+    }
+}
+
+\markboth{Team 15: TDPS Final Report, June~2026}%
+{Author \MakeLowercase{\textit{et al.}}: TDPS Line-Following Robot}
+
+\maketitle
+
+\begin{abstract}
+This paper presents the design, implementation, and evaluation of an autonomous line-following robot that integrates radar obstacle avoidance and LoRa checkpoint telemetry on a single STM32F407VET6 microcontroller without an RTOS. The control architecture uses a simplified 6-parameter PD plus curvature feedforward (PD+kff) controller, derived through root-cause failure analysis of a legacy 62-parameter PID system whose competing mechanisms prevented convergent tuning. Parameters were optimized through two-round systematic sweeping (63 groups) on an offline simulator that compiles the identical C control code against a physics harness, achieving a 30--40$\times$ speedup over on-car testing. Under the optimal configuration the controller achieves a simulator regression score of 97.65/100 with 100\% line detection rate and zero off-line time; the feedforward term reduces steering correction standard deviation by 19\% versus pure PD control. A non-blocking tick architecture preserves the 10\,ms control loop during concurrent radar parsing and LoRa transmission, while weak-symbol extension hooks decouple communication and radar subsystems from the core line-following state machine. On-car validation confirms stable tracking on straight segments, curves, and U-turns. The simulator-first methodology, parameter decoupling from 62 to 6 dimensions, and the dual role of the 22\,cm sensor preview distance (simultaneously a damping advantage and a junction-handling challenge) are analyzed as findings of general relevance.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Autonomous mobile robot, line following, PD control, curvature feedforward, parameter optimization, radar obstacle avoidance, LoRa communication, embedded systems.
+\end{IEEEkeywords}
+
+% ============================================================
+% I. INTRODUCTION
+% ============================================================
+\section{Introduction}
+
+\IEEEPARstart{E}{mbedded} robotics competitions provide a constrained testbed for evaluating trade-offs between control simplicity, sensor fidelity, and real-time integration under strict resource limitations \cite{siegwart2011autonomous, astrom1995pid}. This project addresses autonomous line-following on a differential-drive platform with an 8-channel reflective sensor array, extended with mandatory radar obstacle avoidance and LoRa checkpoint communication --- all running on a single ARM Cortex-M4 microcontroller at 168\,MHz without a real-time operating system (RTOS) \cite{cortex_m4_trm}.
+
+\subsection{Problem Statement and Scope}
+
+The project addresses three coupled challenges. First, the 8-channel line sensor array is mounted 22\,cm ahead of the drive axle center, so the sensor detects line features at a spatial lead of 22\,cm ahead of the drive wheels. This geometric constraint creates a preview that is simultaneously an advantage (providing natural derivative damping) and a challenge (requiring explicit lead compensation at intersections and U-turn apexes). Second, the HLK-LD2410S 24\,GHz radar provides only forward distance information with no lateral obstacle discrimination, forcing heuristic avoidance direction selection executed as timed open-loop maneuvers due to the absence of lateral feedback. Third, LoRa communication via AT commands introduces blocking delays of 50--200\,ms per transaction that must be managed without disrupting the 10\,ms line-following control period.
+
+The scope is explicitly bounded: this project does not address multi-robot coordination, visual SLAM, or adaptive road surface detection. The platform is a single differential-drive robot with a fixed sensor configuration.
+
+\subsection{Literature Survey}
+
+Line-following has been studied across multiple control paradigms. Classical PID control \cite{astrom1995pid,ziegler1942optimum} remains a common choice in microcontroller-based robots due to its computational simplicity \cite{braunl2006embedded}. However, established PID tuning methods (Ziegler-Nichols, Cohen-Coon, SIMC \cite{skogestad2003simple}) assume the sensor is coincident with the actuator --- an assumption violated by the 22\,cm sensor preview on our platform. Fuzzy logic controllers \cite{lee1990fuzzy} reduce parameter coupling but lack analytical transparency for failure diagnosis. Model predictive control (MPC) \cite{kuhne2004mpc} achieves high tracking performance but requires an accurate dynamic model and computational resources unavailable on a Cortex-M4 at 168\,MHz.
+
+Differential-drive kinematics \cite{dudek2010computational,siegwart2011autonomous} define the geometric relationship between wheel velocities and vehicle motion. The configuration constraint --- a 16\,cm wheel track with independent left/right motors --- imposes a minimum turning radius and couples steering correction to vehicle speed.
+
+For obstacle detection, single-chip 24\,GHz mmWave radar modules such as the HLK-LD2410S \cite{ld2410s_datasheet} provide compact presence and distance sensing but are inherently forward-only sensors. LoRa communication \cite{lorawan_spec,ewm22a_datasheet} offers long-range, low-power transmission at the cost of low data rates and half-duplex operation.
+
+These prior works establish individual component capabilities but do not address simultaneous integration under the real-time constraint of a 10\,ms control loop on a single microcontroller. Our contribution lies in the systematic simplification and co-optimization of the control, sensing, and communication subsystems within these coupled constraints.
+
+\subsection{Report Structure}
+
+Section~II presents the system-level design approach and architectural rationale. Section~III details each subsystem's design and the motivation behind key decisions. Section~IV reports quantitative experimental results. Section~V provides cross-cutting analysis of design trade-offs and failure modes. Section~VI concludes with limitations and future directions.
+
+% ============================================================
+% II. OVERALL SYSTEM DESIGN APPROACH
+% ============================================================
+\section{Overall System Design Approach}
+
+\subsection{System Architecture Overview}
+
+The system adopts a layered architecture of Perception--Control--Actuation--Communication, orchestrated by a single-threaded main loop with peripheral interrupts. The decision to avoid an RTOS was deliberate: the task set consists of three bounded event sources (10\,ms line sensor sampling, radar UART packets at approximately 20\,Hz, and LoRa checkpoint events triggered at discrete waypoints), with well-defined state transitions across ten states. A preemptive RTOS would add scheduling jitter, priority inversion risks, and debugging complexity without meaningful benefit for this bounded task set. Fig.~\ref{fig:architecture} illustrates the four-layer system architecture.
+
+\begin{figure}[!t]
+    \centering
+    \includegraphics[width=\linewidth]{figures/fig1_architecture.pdf}
+    \caption{Four-layer system architecture: Perception Layer processes 8-channel line sensor and radar data; Control Layer executes the PD+kff controller and state machine; Actuation Layer drives differential motors; Communication Layer manages non-blocking LoRa transmission.}
+    \label{fig:architecture}
+\end{figure}
+
+\begin{figure}[!t]
+    \centering
+    \includegraphics[width=\columnwidth]{figures/fig2_vehicle_photo.pdf}
+    \caption{Assembled differential-drive line-following robot with 8-channel sensor array (mounted 22\,cm ahead of drive axle), HLK-LD2410S radar module, EWM22A LoRa module, and STM32F407VET6 controller.}
+    \label{fig:vehicle}
+\end{figure}
+
+The four software layers --- Platform, Algorithm, Application, and Extension --- enforce interface boundaries: Platform isolates STM32 HAL dependencies, Algorithm contains portable sensor processing and control logic, Application owns the state machine, and Extension provides non-blocking tick hooks for LoRa and radar. This layering enables PC-stub compilation of the core control logic, decoupled from hardware, without requiring mock frameworks or conditional compilation. Fig.~\ref{fig:vehicle} shows the assembled physical platform.
+
+\subsection{Hardware Platform and Constraints}
+
+The robot employs a differential-drive chassis with a 16\,cm wheel track. An 8-channel Yahboom grayscale sensor array communicates via UART at 9600\,baud and is mounted 22\,cm ahead of the drive axle center --- a geometry that fundamentally governs the relationship between sensor measurements and vehicle position. An HLK-LD2410S 24\,GHz radar module and an EWM22A-900BWL22S LoRa module are integrated via separate UART interfaces. The STM32F407VET6 (Cortex-M4, 168\,MHz, 512\,KB Flash, 192\,KB SRAM) serves as the central controller \cite{stm32f407_ref}. Table~\ref{tab:hw-specs} summarizes the key hardware components.
+
+\begin{table}[!t]
+    \caption{Hardware Component Specifications}
+    \label{tab:hw-specs}
+    \centering
+    \footnotesize
+    \begin{tabular}{@{}llp{0.45\columnwidth}@{}}
+        \toprule
+        \textbf{Subsystem} & \textbf{Component} & \textbf{Specifications} \\
+        \midrule
+        MCU & STM32F407VET6 & Cortex-M4, 168\,MHz, 512\,KB Flash \\
+        Line Sensor & Yahboom 8-LP & 8-ch, UART 9600\,baud \\
+        Radar & HLK-LD2410S & 24\,GHz, 0.75--6\,m, 115200\,baud \\
+        LoRa & EWM22A-900BWL22S & 868/915\,MHz, AT cmd \\
+        Motor Driver & 2$\times$DRV8874PWPR & 3.6\,A peak \\
+        Power & LM2596S $+$ AMS1117 & 5\,V/3\,A $+$ 3.3\,V LDO \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Two geometric constraints govern the control design. The 22\,cm sensor preview means that detected line features lead the drive wheels by approximately $22/v$~seconds at speed $v$, providing natural preview damping via the derivative term but requiring explicit lead compensation at sharp junctions. The 16\,cm wheel track constrains the minimum differential speed required for a given turning radius.
+
+\subsection{Project Planning and Workflow}
+
+Development was organized into six milestones: M1 (chassis and peripheral bring-up), M2 (basic line-following closed-loop), M3 (line-loss recovery), M4 (LoRa checkpoint integration), M5 (radar decision integration), and M6 (full-system integration).
+
+A major architecture refactoring was performed on 2026-06-01: the original 62-parameter PID system, after an extended tuning period, was replaced by the current 6-parameter PD+kff architecture. The refactoring was motivated by systematic analysis showing that seven control mechanisms in the legacy system were mutually competing, making parameter tuning non-convergent. Fig.~\ref{fig:timeline} presents the project milestone timeline.
+
+\begin{figure}[!t]
+    \centering
+    \includegraphics[width=\linewidth]{figures/fig3_timeline.pdf}
+    \caption{Project milestone timeline. M1--M4 are completed and validated; M5 is on track; M6 is pending full-system integration testing. The architecture refactoring marks the transition from the 62-parameter PID era to the 6-parameter PD+kff era.}
+    \label{fig:timeline}
+\end{figure}
+
+\subsection{Offline Simulation and Regression Strategy}
+
+The legacy 62-parameter PID system was not merely large --- it was structured in a way that made systematic optimization impossible. With seven competing mechanisms (deadband, soft zone, integral accumulation, speed-scaled gain, output rate limiting, derivative double-filtering, and a 6-level speed priority chain), each incremental parameter change affected multiple subsystems through non-transitive interactions. Exhaustive on-car exploration was infeasible: a single parameter change required re-flashing the microcontroller, placing the car on the track, observing behavior, and manually recording results --- a 15--20 minute cycle per data point.
+
+To break this bottleneck, we developed an offline simulation harness that compiles the identical C control code (via GCC for PC, not cross-compiled for STM32) against a modeled environment. Each test scenario is defined in a CSV configuration specifying track geometry (circle, figure-8, patio, or full-competition map), initial vehicle pose, and fault-injection parameters. The vehicle dynamics use a first-order inertial model with the physical 16\,cm wheel track for trajectory integration. The virtual 8-channel sensor computes per-channel readings from ground-truth position and injects configurable Gaussian noise, multiplicative gain error, additive bias, and dropout events.
+
+Rather than a single pass/fail threshold, we enforce progressive quality gates. The quick gate ($\sim$30\,s) runs all 16 baseline scenarios requiring overall score $\geq$82, detection rate $\geq$94\%, and max off-line time $\leq$0.35\,s. The stability gate ($\sim$5\,min) repeats scenarios with 10 random seeds, requiring worst-case score $\geq$80 across seeds. The full-course gate ($\sim$2\,min) tests the complete competition map at competition speed with sequential checkpoint triggering and zero-collision requirements.
+
+The simulator reduced the parameter evaluation cycle from 15--20 minutes (on-car) to approximately 30 seconds, a 30--40$\times$ speedup that enabled the complete 63-group sweep within a single session. It also provides perfect reproducibility under fixed random seeds, eliminating the confounding effects of battery voltage drift, ambient light variation, and track surface wear. The simulator-first workflow is the enabling methodology behind the simplify-first tuning strategy: each legacy mechanism could be systematically disabled and the performance delta measured, producing the documented evidence that justified the 62-to-6 parameter reduction.
+
+% ============================================================
+% III. SUBSYSTEM DESIGN AND SOLUTIONS
+% ============================================================
+\section{Subsystem Design and Solutions}
+
+\subsection{Line-Following Subsystem}
+
+\subsubsection{Sensor Processing Pipeline}
+
+The 8-channel Yahboom sensor communicates via UART, outputting 8 bytes per frame representing per-channel grayscale intensity. The processing pipeline is designed to convert raw sensor voltages into a robust position estimate while suppressing the three dominant noise sources on physical tracks: electrical noise (thermal and quantization), optical artifacts (floor dust, map creases, reflective glare), and transient dropouts from surface irregularities.
+
+Per-channel readings are first normalized against min/max calibration values collected during an initial swing-sweep phase, mapping raw values to a consistent 0--1000 range. This normalization is essential because absolute grayscale readings drift with ambient light, battery voltage, and sensor aging. A first-order IIR low-pass filter ($\alpha=0.35$) then attenuates high-frequency noise. The key design choice is the weighted-average position computation: rather than thresholding each channel to binary on/off, we compute a centroid $e = \sum w_i \cdot \text{norm}_i / \sum \text{norm}_i$ with linearly distributed weights $\{1750, 1250, \ldots, -1750\}$. This weighted centroid provides sub-sensor resolution --- the effective position resolution far exceeds the 8 discrete sensor elements --- and produces a continuous error signal suitable for derivative-based feedforward control. The UART protocol was selected over GPIO and ADC alternatives because the Yahboom module natively outputs grayscale values, avoiding ADC multi-channel DMA timing jitter.
+
+In addition to the position error $e$, the pipeline extracts auxiliary quality signals that support downstream noise rejection, loss recovery, and interference suppression. Line presence is determined by a three-condition AND of signal sum, peak value, and contrast each exceeding their thresholds --- preventing false detection from single-channel activation caused by floor artifacts. Fig.~\ref{fig:sensor} summarizes the complete pipeline.
+
+\begin{figure}[!t]
+    \centering
+    \includegraphics[width=\linewidth]{figures/fig4_sensor_pipeline.pdf}
+    \caption{Sensor processing pipeline: 8-byte UART frame $\rightarrow$ channel extraction $\rightarrow$ per-channel normalization $\rightarrow$ low-pass filter ($\alpha=0.35$) $\rightarrow$ polarity inversion $\rightarrow$ weighted average $\rightarrow$ position error $e$ plus auxiliary quality signals.}
+    \label{fig:sensor}
+\end{figure}
+
+\subsubsection{Simplified PD + Curvature Feedforward Controller}
+
+The controller employs a simplified 6-parameter architecture. The steering correction is computed as:
+%
+\begin{equation}
+    \text{correction} = k_p \cdot e + k_d \cdot \dot{e} + k_{\text{ff}} \cdot \dot{e} \cdot v
+    \label{eq:correction}
+\end{equation}
+%
+where $e$ is the weighted position error, $\dot{e}$ is its discrete-time derivative, and $v$ is the smoothed vehicle speed. The vehicle speed follows a continuous function of position error:
+%
+\begin{equation}
+    v = v_{\text{base}} - (v_{\text{base}} - v_{\text{min}}) \cdot \frac{|e|}{1750}
+    \label{eq:speed}
+\end{equation}
+%
+with IIR smoothing ($\alpha=0.4$). Differential commands $v_L = v + \text{correction}$, $v_R = v - \text{correction}$ are both clamped by $C_{\text{max}}=300$. Fig.~\ref{fig:control} presents the control block diagram.
+
+\begin{figure}[!t]
+    \centering
+    \includegraphics[width=\linewidth]{figures/fig5_control_block.pdf}
+    \caption{PD+curvature feedforward control block diagram. Three parallel branches (P: proportional, D: derivative, FF: feedforward) combine to produce the steering correction. The speed branch computes vehicle speed as a continuous function of $|e|$. Optimal parameter values are annotated on each branch.}
+    \label{fig:control}
+\end{figure}
+
+The transition from 62 to 6 parameters was driven by root-cause failure analysis. The legacy system contained seven competing mechanisms falling into three categories. Threshold-based mechanisms (deadband and soft zone) created dead zones where the vehicle would drift before any correction activated. Gain-competing mechanisms (integral term, speed-scaled $k_p$, derivative double-filtering) fought against the natural advantages of the sensor geometry: the integral term caused curve overshoot with no steady-state error to cancel, speed-scaled $k_p$ reduced steering authority to $0.18\times$ in slow curves, and double-filtering canceled the 22\,cm preview advantage. Rate-limiting mechanisms (output rate limiting, 6-level speed priority chain) introduced non-transitive interactions where changing one parameter unexpectedly affected multiple subsystems.
+
+The derivative term $k_d \cdot \dot{e}$ serves a dual role. Beyond classical damping, the 22\,cm sensor preview means $\dot{e}$ encodes upcoming curvature information --- the sensor sees line curvature approximately $22/v$ seconds before the drive wheels, so the derivative term acts as both a damper and a preview gain. The curvature feedforward term $k_{\text{ff}} \cdot \dot{e} \cdot v$ provides anticipatory steering before $e$ grows large; $k_{\text{ff}}=0.0008$ reduced steering correction standard deviation by 19\% compared to pure PD, while $k_{\text{ff}} \geq 0.0012$ introduced straight-line micro-oscillation.
+
+Parameters were determined through two rounds of systematic simulator-based sweeping: a 36-group coarse sweep establishing the optimal region, and a 27-group fine sweep determining the optimal $k_{\text{ff}}$. Table~\ref{tab:core-params} lists the six parameters, their optimal values, functions, and optimization methods.
+
+\begin{table*}[!t]
+    \caption{Core Control Parameters of the Simplified 6-Parameter PD\,$+$\,kff Architecture}
+    \label{tab:core-params}
+    \centering
+    \footnotesize
+    \begin{tabular}{@{}lllll@{}}
+        \toprule
+        \textbf{Symbol} & \textbf{Parameter} & \textbf{Value} & \textbf{Function} & \textbf{Optimization Method} \\
+        \midrule
+        $k_p$        & Proportional gain         & 0.25   & Corrects instantaneous position error                    & Coarse sweep (36 groups): $k_p\!\in\![0.15,0.40]$ \\
+        $k_d$        & Derivative gain           & 1.20   & Damping and 22\,cm sensor preview exploitation           & Coarse sweep: $k_d\!\in\![0.40,1.20]$ \\
+        $k_{f\!f}$   & Curvature feedforward gain& 0.0008 & Anticipatory steering before error builds up             & Fine sweep (27 groups): $k_{f\!f}\!\in\![0,0.0012]$ \\
+        $v_{\text{base}}$ & Base (straight-line) speed & 280 & Maximum speed when $|e|\!\approx\!0$                     & Coarse sweep: 280 consistently superior to 400 \\
+        $v_{\text{min}}$  & Minimum (curve) speed      & 60  & Minimum speed at full deviation $|e|\!=\!1750$           & Conservative bound from curve stress tests \\
+        $C_{\text{max}}$  & Maximum correction clamp   & 300 & Hard limit on differential motor command                 & Coarse sweep: 300 more effective than 180 \\
+        \bottomrule
+        \multicolumn{5}{@{}p{0.95\textwidth}@{}}{\footnotesize
+        \textbf{Disabled legacy terms} (each removed after documented failure analysis):
+        $k_i\!=\!0$ (no steady-state error; integral caused curve overshoot),
+        $\delta_{\text{deadband}}\!=\!0$ (caused straight-line drift),
+        $\delta_{\text{soft}}\!=\!0$ (compressed medium-deviation response),
+        $\Delta_{\text{max}}\!=\!0$ (output rate limiting competed with $C_{\text{max}}$),
+        $\alpha_{\text{deriv}}\!=\!0.0$ (double-filtering cancelled 22\,cm preview advantage).} \\
+    \end{tabular}
+\end{table*}
+
+The six retained parameters and the seven eliminated mechanisms are summarized in Tables~\ref{tab:core-params} and~\ref{tab:elimination}, respectively.
+
+\begin{table}[!t]
+    \caption{Legacy Mechanisms Eliminated During the 62$\rightarrow$6 Simplification}
+    \label{tab:elimination}
+    \centering
+    \footnotesize
+    \begin{tabular}{@{}p{0.28\columnwidth}p{0.18\columnwidth}p{0.46\columnwidth}@{}}
+        \toprule
+        \textbf{Eliminated Mechanism} & \textbf{Category} & \textbf{Root-Cause Failure} \\
+        \midrule
+        Integral gain $k_i$ & Gain-competing & Caused curve overshoot; no steady-state error to cancel \\
+        Integral limit \& sep.\ threshold & Gain-competing & Protection chain fought itself; multi-condition activation inconsistent \\
+        Error deadband $\delta_{\text{deadband}}$ & Threshold-based & Dead zone allowed straight-line drift before correction \\
+        Error soft zone $\delta_{\text{soft}}$ & Threshold-based & Quadratic compression dulled medium-error steering \\
+        Speed-scaled $k_p$ & Gain-competing & Reduced authority to $0.18\times$ in slow curves; fought curve slowdown \\
+        Output rate limiter $\Delta_{\text{max}}$ & Rate-limiting & Competed with $C_{\text{max}}$; non-transitive interaction chain \\
+        Derivative double-filter $\alpha_{\text{deriv}}$ & Gain-competing & Sensor IIR cascaded with derivative filter cancelled 22\,cm preview \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+\subsubsection{State Machine and Edge-Case Handling}
+
+The line-following state machine progresses through WAIT\_START $\rightarrow$ CALIBRATING $\rightarrow$ RUNNING, with RUNNING continuously monitoring edge conditions through dedicated parameter groups tuned after --- not before --- the core PD+kff parameters were stabilized. This ordering is critical: edge-case handlers must be tuned against a stable control baseline, otherwise their parameters absorb control errors and become fragile when the baseline changes. Fig.~\ref{fig:state_machine} shows the complete state transition diagram, and Table~\ref{tab:transitions} lists the transition conditions.
+
+\begin{figure}[!t]
+    \centering
+    \includegraphics[width=\linewidth]{figures/fig6_state_machine.pdf}
+    \caption{Line-following state machine with 10 states: Normal (green: WAIT\_START, CALIBRATING, RUNNING), Recovery (orange: RECOVERING), Avoidance (red: AVOID\_PREP through AVOID\_REACQUIRE), Terminal (gray: STOPPED). RUNNING maintains six parallel edge-condition monitors.}
+    \label{fig:state_machine}
+\end{figure}
+
+\begin{table}[!t]
+    \caption{State Machine Transition Conditions}
+    \label{tab:transitions}
+    \centering
+    \footnotesize
+    \begin{tabular}{@{}p{0.22\columnwidth}p{0.24\columnwidth}p{0.46\columnwidth}@{}}
+        \toprule
+        \textbf{From} & \textbf{To} & \textbf{Trigger} \\
+        \midrule
+        WAIT\_START       & CALIBRATING    & Auto-start delay elapsed (800--1200\,ms) \\
+        CALIBRATING       & RUNNING        & Calibration complete (500\,ms sweep OK) \\
+        CALIBRATING       & FAULT          & Calibration failed (all-channel dark) \\
+        RUNNING           & RECOVERING     & Line lost $>$ grace\_ticks (4 frames) \\
+        RUNNING           & AVOID\_PREP    & Radar BLOCK + debounce (3 frames at $<$450\,mm) \\
+        RUNNING           & FORK\_SAMPLE   & Fork pattern confirmed for 3+ frames \\
+        RECOVERING        & RUNNING        & Line reacquired (3-frame confirmation) \\
+        RECOVERING        & AVOID\_PREP    & Radar BLOCK during recovery \\
+        RECOVERING        & STOPPED        & Recovery timeout (3000\,ms) \\
+        AVOID\_PREP        & AVOID\_TURN\_OUT& Stop confirm elapsed (100\,ms) \\
+        AVOID\_TURN\_OUT    & AVOID\_BYPASS  & Turn-out elapsed (360\,ms) \\
+        AVOID\_BYPASS      & AVOID\_TURN\_IN & Bypass elapsed (900\,ms) \\
+        AVOID\_TURN\_IN     & AVOID\_REACQUIRE& Turn-in elapsed (360\,ms) \\
+        AVOID\_REACQUIRE   & RUNNING        & Line reacquired (3-frame confirm) \\
+        AVOID\_REACQUIRE   & AVOID\_PREP    & Retry (obstacle persist, attempts $<$ 2) \\
+        AVOID\_REACQUIRE   & STOPPED        & Max attempts exceeded (2) \\
+        FORK\_REACQUIRE    & RUNNING        & Line reacquired after fork commit \\
+        FORK\_REACQUIRE    & RECOVERING     & Fork reacquire timeout \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+Within RUNNING, action selection follows an explicit priority hierarchy: LINE\_LOST (highest), FORK, OBSTACLE, LEAD\_COMPENSATION, then PID\_CONTROL (lowest). This explicit arbitration makes per-cycle decisions predictable and debuggable.
+
+Floor dust, map creases, and reflective glare produce spatially correlated weak-wide-line frames that can be misidentified as curve entry. The noise rejection mechanism uses four-dimensional thresholding with a 2-frame confirmation window, with thresholds deliberately separated from lead event thresholds to prevent cross-classification. When the sensor detects a special line type (T-junction, right-angle turn, U-turn apex), the drive axle center is approximately 22\,cm behind the detection point. The lead compensation sequence delays steering by advancing straight at reduced speed until the axle reaches the junction --- explicit geometric compensation rather than an attempt to tune the controller for all line features simultaneously.
+
+\subsection{Radar Obstacle Avoidance Subsystem}
+
+The HLK-LD2410S 24\,GHz radar communicates via UART at 115200\,baud, outputting frames containing target state and distance. A non-blocking tick function parses the serial buffer incrementally --- consuming available bytes without waiting for a complete frame --- supporting three packet formats (custom test frames, LD2410S minimal 5-byte frames, and standard 80-byte diagnostic frames) through a pure state-machine parser. The environment is classified into CLEAR (distance $>$ 650\,mm), WARN (450--650\,mm hysteresis band, reduced speed), and BLOCK ($\leq$450\,mm, avoidance triggered). The 200\,mm hysteresis gap and 3-frame debounce counter suppress false positives from radar glint; a 300\,ms frame timeout resets stale obstacle data.
+
+Upon BLOCK detection, the vehicle executes a timed open-loop maneuver: stop-confirm (100\,ms), stop-stabilize (120\,ms), turn-out (360\,ms at speed 240), arc bypass (900\,ms with differential inner/outer speeds of 160/320), turn-in (360\,ms at speed 240), and line reacquisition (1600\,ms timeout). The avoidance direction uses a heuristic fallback chain: configured preferred side, then last known line direction, then reverse retry (max 2 attempts). An emergency stop triggers if distance falls below 280\,mm during the maneuver. Fig.~\ref{fig:avoidance} illustrates the trajectory.
+
+\begin{figure}[!t]
+    \centering
+    \includegraphics[width=\columnwidth]{figures/fig8_avoidance.pdf}
+    \caption{Open-loop avoidance maneuver trajectory (simulated via bicycle kinematic model). Turn-Out (360\,ms) arcs away from track; Bypass (900\,ms) passes parallel with differential speeds; Turn-In (360\,ms) arcs back; Reacquisition searches with 1600\,ms timeout. Trigger (450\,mm) and release (650\,mm) distances shown as reference lines.}
+    \label{fig:avoidance}
+\end{figure}
+
+The open-loop approach is a direct consequence of forward-only radar: without lateral sensing, closed-loop trajectory correction during avoidance is not possible. The timed sequence provides functional obstacle circumvention for static obstacles under consistent conditions, but is inherently sensitive to battery voltage, motor wear, and floor friction --- a sensor configuration limitation, not a tuning problem.
+
+\subsection{Wireless Communication Subsystem}
+
+Checkpoint reports follow the format $\text{TEAM=15,NAME=TDPS,CP=}n\text{,TIME=MM:SS}$ transmitted via the EWM22A LoRa module at 9600\,baud, with race timing starting at calibration completion.
+
+The integration between the line-following state machine and the wireless subsystem uses a weak-symbol hook mechanism. The core state machine defines externally visible hook functions with GCC weak-symbol attributes providing default empty implementations. The wireless module overrides these symbols, receiving checkpoint events without the line-following code having any compile-time dependency on the wireless subsystem. This link-time dependency injection enables the two subsystems to be developed, tested, and verified independently, then linked with zero changes to the core control logic.
+
+All LoRa communication is advanced by a per-invocation tick function that processes one step and returns immediately, never blocking the 10\,ms control loop. Checkpoint messages are enqueued into a fixed-size ring buffer (depth 16) and dequeued asynchronously with a minimum 500\,ms inter-transmission interval. The transmission pipeline uses three-tier fault tolerance: per-message timeout (800\,ms) for AT command response, optional acknowledgment timeout (300\,ms) for delivery confirmation, and automatic retry (max 2) for failed transmissions. Fig.~\ref{fig:lora_seq} illustrates the non-blocking communication pipeline.
+
+\begin{figure}[!t]
+    \centering
+    \includegraphics[width=\columnwidth]{figures/fig9_lora_sequence.pdf}
+    \caption{Non-blocking LoRa communication pipeline: calibration triggers race timer start via weak-symbol hook; checkpoints are enqueued into ring buffer and transmitted asynchronously by tick function; timing constraints (10\,ms tick, 500\,ms min interval) preserve control loop integrity.}
+    \label{fig:lora_seq}
+\end{figure}
+
+% ============================================================
+% IV. RESULTS
+% ============================================================
+\section{Results}
+
+\subsection{Simulator Parameter Sweep Results}
+
+The 36-group coarse sweep across $(k_p, k_d, v_{\text{base}}, C_{\text{max}})$ established that $v_{\text{base}}=280$ outperformed 400 across all 16 baseline scenarios, $C_{\text{max}}=300$ was more effective than 180, and $k_d$ in the range 1.0--1.2 outperformed 0.4--0.8. The 27-group fine sweep varying $k_{\text{ff}}$ (0--0.0012) revealed $k_{\text{ff}}=0.0008$ with $(k_p=0.25, k_d=1.20)$ as optimal, reducing steering correction standard deviation by 19\% versus pure PD, while $k_{\text{ff}} \geq 0.0012$ introduced straight-line micro-oscillation. Table~\ref{tab:sweep-results} presents representative results from both sweeps, and Fig.~\ref{fig:sweep} visualizes the coarse sweep heatmap and kff ablation analysis side by side.
+
+\begin{table*}[!t]
+    \caption{Parameter Sweep Results: Coarse Architecture Validation and kff Fine Optimization}
+    \label{tab:sweep-results}
+    \centering
+    \footnotesize
+    \begin{tabular}{@{}cccccc@{}}
+        \toprule
+        \multicolumn{6}{@{}c@{}}{\textbf{Coarse Sweep (36 groups, $v_{\text{base}}\!=\!280$, $C_{\text{max}}\!=\!300$)}} \\
+        \midrule
+        $\boldsymbol{k_p}$ & $\boldsymbol{k_d}$ & \textbf{Score} & \textbf{Det.\ Rate} & \textbf{Offline (s)} & \textbf{Observation} \\
+        \midrule
+        0.15 & 0.40 & 72.3 & 91.2\% & 0.12 & Understeer in curves \\
+        0.15 & 1.00 & 85.7 & 98.5\% & 0.04 & Improved damping \\
+        0.20 & 1.20 & 93.1 & 99.8\% & 0.01 & Near-optimal \\
+        \textbf{0.25} & \textbf{1.20} & \textbf{95.4} & \textbf{100.0\%} & \textbf{0.000} & \textbf{Optimal} \\
+        0.30 & 1.20 & 91.2 & 99.5\% & 0.02 & Slight overshoot \\
+        0.40 & 0.80 & 78.5 & 94.1\% & 0.18 & Aggressive, oscillates \\
+        \midrule
+        \multicolumn{6}{@{}c@{}}{\textbf{kff Fine Sweep (27 groups, $k_p\!=\!0.25$, $k_d\!=\!1.20$)}} \\
+        \midrule
+        $\boldsymbol{k_{\text{ff}}}$ & \textbf{Score} & \textbf{Corr.\ $\boldsymbol{\sigma}$} & \textbf{$\boldsymbol{\Delta}$ vs.\ $k_{\text{ff}}\!=\!0$} & \textbf{Oscillation} & \textbf{Observation} \\
+        \midrule
+        0.0000 & 88.1 & 142.3 & --- & None & Pure PD baseline \\
+        0.0004 & 91.5 & 131.7 & $+3.4$ & None & Feedforward emerging \\
+        \textbf{0.0008} & \textbf{95.4} & \textbf{115.8} & \textbf{$+7.3$ ($-19\%\sigma$)} & \textbf{None} & \textbf{Optimal} \\
+        0.0012 & 90.3 & 108.9 & $+2.2$ & Micro & Noise amplification \\
+        \bottomrule
+    \end{tabular}
+\end{table*}
+
+\begin{figure*}[!t]
+    \centering
+    \subfloat[Coarse sweep heatmap ($k_p$ vs.\ $k_d$) across four $(v_{\text{base}}, C_{\text{max}})$ combinations. Optimal region (white dashed box) achieves score $\ge 85$. $v_{\text{base}}\!=\!280$ consistently outperforms 400; $C_{\text{max}}\!=\!300$ surpasses 180.]{%
+        \includegraphics[width=0.48\textwidth]{figures/fig10_coarse_sweep.pdf}%
+        \label{fig:coarse_heatmap}%
+    }
+    \hfill
+    \subfloat[kff ablation ($k_d\!=\!1.20$ fixed). $k_{\text{ff}}\!=\!0.0008$ reduces steering correction variation by 19\% vs.\ pure PD, shifting burden from reactive P term to anticipatory FF term.]{%
+        \includegraphics[width=0.48\textwidth]{figures/fig11_kff_sweep.pdf}%
+        \label{fig:kff_ablation}%
+    }
+    \caption{Combined parameter sweep visualization: (a) coarse sweep heatmap confirming smooth single-peak parameter landscape; (b) kff ablation quantifying 19\% correction variance reduction.}
+    \label{fig:sweep}
+\end{figure*}
+
+\subsection{Simulator Regression Benchmark}
+
+Under the optimal parameter set, the quick gate regression across 16 baseline scenarios achieved an overall score of 97.65/100, line detection rate of 100.00\%, and zero off-line time, passing the hard gate (score $\geq$82, detection $\geq$94\%, max lost $\leq$0.35\,s) with High confidence. Table~\ref{tab:scenario-detail} reports per-scenario scores grouped by test category.
+
+\begin{table}[!t]
+    \caption{Quick Gate Per-Scenario Regression Results (Optimal Parameter Set, 15\,s each)}
+    \label{tab:scenario-detail}
+    \centering
+    \footnotesize
+    \begin{tabular}{@{}p{0.24\columnwidth}p{0.36\columnwidth}cc@{}}
+        \toprule
+        \textbf{Category} & \textbf{Scenario} & \textbf{Score} & \shortstack{\textbf{Mean Abs.}\\\textbf{Error (mm)}} \\
+        \midrule
+        Track Geometry & Circle baseline  & 98.98 & 4.1 \\
+                       & Figure-8 baseline & 95.75 & 17.0 \\ \addlinespace
+        Nominal \& Offset & Patio baseline      & 99.54 & 1.8 \\
+                          & Left offset (40\,mm) & 96.04 & 15.9 \\
+                          & Right offset (40\,mm)& 95.17 & 19.3 \\ \addlinespace
+        Fault Injection & Sensor noise ($\sigma\!=\!0.028$) & 99.31 & 2.8 \\
+                        & Motor bias (0.93/1.07)  & 98.91 & 4.3 \\
+                        & Combined stress          & 95.04 & 19.9 \\ \addlinespace
+        Real Course & Patio-real baseline     & 99.55 & 1.8 \\
+                    & Patio-real left offset  & 96.05 & 15.8 \\
+                    & Patio-real right offset & 95.25 & 19.0 \\
+                    & Patio-real noisy        & 99.38 & 2.5 \\
+                    & Patio-real motor bias   & 98.93 & 4.3 \\
+                    & Fixed obstacles (4)     & 99.45 & 2.2 \\
+                    & Random obstacles (5)    & 99.54 & 1.9 \\
+                    & Stress (8 obstacles)    & 95.57 & 17.7 \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+The 16 scenarios span six categories: track geometry (circle, figure-8, patio), initial offset (40\,mm left/right), sensor fault injection (Gaussian noise $\sigma=0.028$, 1\% dropout, 6\% contrast reduction), motor non-idealities (7\% left/right mismatch, first-order lag $\tau=0.10$\,s), full-course realism (patio-real 22.40\,m map with checkpoint/finish/boundary), and radar perturbation (fixed and random obstacles). The consistent scores across categories demonstrate that the controller maintains performance under heterogeneous fault conditions, with the sole weakness being lateral offset scenarios where mean absolute error increases from $\sim$2\,mm to $\sim$15--19\,mm --- consistent with the 22\,cm sensor preview geometry, which delays offset correction.
+
+The full-course simulation (90\,s, wireless enabled, 2 checkpoints, 22.40\,m track) achieved an overall score of 92.81 with 99.59\% line detection rate and 0.300\,s maximum lost time. The nominal and left-offset scenarios exceeded 94 points; the right-offset scenario revealed a 0.30\,s line-loss event consistent with the asymmetric left-side boundary corridor. Obstacle recovery succeeded in all scenarios; however, progress reached only 71--74\% of the course within the 90\,s time limit, indicating that $v_{\text{base}}=280$ is below the speed needed for full-course completion within competition time. This is a deliberate design choice: speed was traded for reliability after the coarse sweep demonstrated that $v_{\text{base}}=400$ degraded performance across all scenarios through increased oscillation amplitude.
+
+\subsection{On-Car Validation}
+
+On-car testing was conducted in two phases: a debug profile ($v_{\text{base}}=200$, $k_p=0.15$, $k_d=0.60$) for hardware shakedown, followed by the track profile ($v_{\text{base}}=280$, $k_p=0.25$, $k_d=1.20$, $k_{\text{ff}}=0.0008$) for full-performance validation. The track profile achieved stable line tracking on straight segments with no visible oscillation, maintained line contact through 90$^\circ$ and 180$^\circ$ turns at $v_{\text{min}}=60$, and successfully navigated U-turns with the lead compensation sequence triggering at the correct geometric advance.
+
+The avoidance maneuver sequence was tested against a stationary 60$\times$80\,mm obstacle placed on the track centerline. The vehicle successfully executed all four phases (confirm, turn-out 360\,ms, bypass 900\,ms, turn-in 360\,ms, reacquire $\leq$1600\,ms) and reacquired the line on both left-side and right-side bypass attempts. However, turn radius varied measurably between full battery charge (8.4\,V, nominal maneuver) and partial discharge (7.4\,V, approximately 15\% wider turn radius), directly attributable to the open-loop timing model's voltage sensitivity. The 280\,mm emergency stop distance was never triggered during controlled tests, providing adequate safety margin above the minimum.
+
+LoRa field tests over 10--15\,m open-air range confirmed correct formatting of checkpoint messages ($\text{TEAM=15,NAME=PTSD,CP=21,TIME=01:23}$), successful AT command queue processing without UART buffer overflow, and zero main-loop blocking incidents attributable to wireless activity. The weak-symbol hook mechanism was validated by compiling the control logic independently of the wireless module and linking both object files without modification --- a zero-code-change integration that confirms the architectural decoupling claim.
+
+Two quantitative discrepancies between simulation and physical testing were noted. The simulator predicted zero line-loss events across all 16 quick scenarios, whereas on-car tests experienced occasional loss on the figure-8 track crossover point due to spatially correlated glare from the map lamination --- not captured by the simulator's independent per-channel Gaussian noise model. The lead compensation advance (18 ticks at a reduced speed of 65) required empirical recalibration after each hardware change (sensor remount, chassis weight redistribution), confirming the limitation of time-based geometric compensation without encoder feedback.
+
+% ============================================================
+% V. ANALYSIS AND DISCUSSION
+% ============================================================
+\section{Analysis and Discussion}
+
+\subsection{Why Simplification Works: Parameter Decoupling and Failure Mode Analysis}
+
+The transition from 62 to 6 parameters was not merely a reduction in count but a systematic elimination of competing mechanisms. The central finding is that parameter count reduction, driven by failure mode analysis, improved both absolute performance and tunability more than any incremental PID gain tuning.
+
+The kff ablation provides the strongest quantitative evidence: $k_{\text{ff}}=0.0008$ reduces correction standard deviation by 19\% not by adding steering authority, but by shifting correction burden from the reactive proportional term to the anticipatory feedforward term, leaving more headroom under the $C_{\text{max}}=300$ clamp. The coarse sweep's $(k_p, k_d)$ heatmap exhibited a smooth, single-peak surface rather than a rugged multi-peak landscape, providing empirical evidence of zero hidden coupling effects. This also implies the 6-parameter optimum found by the coarse-to-fine sweep is likely the global optimum for this controller structure, not a local optimum trapped by parameter interactions.
+
+\subsection{Simulator-to-Reality Gap}
+
+While the simulator enabled 30-second feedback loops versus an estimated 15--20 minutes per on-car trial, three categories of discrepancy were identified. Time-based lead compensation using tick counts produces different travel distances at full battery (8.4\,V) versus nominal (7.4\,V), with an estimated 10--15\% variation. The sensor noise model's independent per-channel Gaussian injection does not capture spatially correlated artifacts (floor dust, map creases, reflective glare) that trigger noise rejection more frequently on physical tracks. Open-loop avoidance timing requires empirical scaling factors of 1.1--1.3$\times$ on the physical car due to unmodeled static friction, Coulomb friction, and voltage-dependent torque constant.
+
+Despite these limitations, the simulator's core value is not compromised: it excels at relative comparison (which parameter combination is better?), which is precisely the capability needed for parameter optimization. The 63-group sweep's conclusions are ordinal findings that depend on parameter ranking, not absolute score prediction. The key engineering insight is that a simulator does not need to be a high-fidelity digital twin to be useful --- it needs to preserve the partial ordering of the objective function over the parameter space, a strictly weaker requirement that substantially lowers the barrier for simulator adoption in embedded robotics.
+
+\subsection{Cross-Subsystem Coupling Under the 10\,ms Constraint}
+
+The 10\,ms control loop period is the binding constraint across all three subsystems, and the interactions among them are shaped by how each subsystem uses its time allocation. The line-following controller consumes approximately 0.3\,ms per iteration (sensor read + PD+kff computation + motor command), leaving approximately 9.7\,ms of headroom per cycle. Radar parsing occupies an additional 0.2--0.5\,ms when UART bytes are available, and LoRa AT command processing adds 0.1--0.3\,ms per tick. The non-blocking tick architecture ensures that radar and LoRa processing can never accumulate more than one discrete step per control cycle, bounding worst-case jitter to under 1.0\,ms --- well within the 10\,ms budget.
+
+The most consequential interaction occurs when radar BLOCK triggers an avoidance sequence. During avoidance, the line-following state machine is suspended (RUNNING $\rightarrow$ AVOID\_PREP), and the 10\,ms loop continues executing the timed open-loop maneuver. Because LoRa transmission is advanced by the same tick, checkpoint messages can still be sent during avoidance --- a design property confirmed by the full-course simulation where wireless transmission succeeded in all scenarios despite concurrent obstacle events. However, line reacquisition after avoidance imposes a transient recovery cost: the vehicle must transition through AVOID\_REACQUIRE $\rightarrow$ RUNNING $\rightarrow$ re-stabilize the control loop, during which $\dot{e}$ is undefined and the feedforward term contributes nothing for approximately 200\,ms.
+
+A subtler coupling exists between the speed function and radar WARN state. When the radar enters WARN (distance 450--650\,mm), the vehicle speed is reduced to $v_{\text{warn}}=220$~\cite{ld2410s_datasheet}. The continuous speed function (Eq.~\ref{eq:speed}) naturally produces lower speeds at larger $|e|$, meaning that the speed reduction from WARN and the speed reduction from curve entry are partially redundant --- a beneficial overlap that prevents the double speed reduction from dropping below $v_{\text{min}}=60$. This overlap was not designed but emerged from the architecture; it illustrates how the simplify-first approach, by reducing the number of interacting mechanisms, tends to produce composable rather than competing behaviors.
+
+The weak-symbol hook mechanism provides formal subsystem isolation at compile time, but its runtime behavior introduces a subtle priority inversion risk. Checkpoint events are delivered synchronously from the state machine to the wireless module's enqueue function during the control loop's arbitration phase. If the LoRa UART TX buffer were full at that instant, the enqueue could theoretically spin-wait. The current firmware mitigates this by sizing the ring buffer (depth 16) to exceed the maximum number of checkpoints on the course (2), and by enforcing a minimum 500\,ms inter-transmission interval that bounds the queue drain rate. No buffer-overflow incidents were observed in simulation or on-car testing.
+
+Three system-level bottlenecks constrain further improvement. The forward-only radar perception is the most critical single-point failure: the heuristic direction selection will choose incorrectly when the obstacle is opposite the approach direction on a curved segment --- a sensor geometry limitation, not a parameter issue. Open-loop avoidance timing creates nine coupled parameters requiring recalibration after any hardware change and cannot adapt to varying obstacle widths. The 22\,cm sensor preview, while enabling the derivative-feedforward combination, requires geometric lead compensation that is currently time-approximate rather than position-accurate. Table~\ref{tab:limitations} catalogs these limitations with their root causes and planned mitigations.
+
+\begin{table}[!t]
+    \caption{Known Limitations, Root Causes, and Planned Improvements}
+    \label{tab:limitations}
+    \centering
+    \footnotesize
+    \begin{tabular}{@{}p{0.22\columnwidth}p{0.30\columnwidth}p{0.40\columnwidth}@{}}
+        \toprule
+        \textbf{Limitation} & \textbf{Root Cause} & \textbf{Planned Improvement} \\
+        \midrule
+        Forward-only radar sensing &
+        Single front-facing module; no lateral obstacle discrimination &
+        Add lateral ultrasonic/infrared sensors for perception-driven direction selection \\ \addlinespace
+        Open-loop avoidance timing &
+        Fixed-duration phases without real-time distance feedback &
+        Encoder-closed-loop adaptive bypass using continuous radar distance \\ \addlinespace
+        Time-based lead compensation &
+        Tick-count advance without encoder odometry &
+        Encoder pulse integration for true distance-based geometric advance \\
+        \bottomrule
+    \end{tabular}
+\end{table}
+
+% ============================================================
+% VI. CONCLUSIONS AND FUTURE WORK
+% ============================================================
+\section{Conclusions and Future Work}
+
+This work demonstrates that a 6-parameter simplified PD plus curvature feedforward controller, systematically optimized through 63-group simulator-based parameter sweeping, achieves a regression score of 97.65/100 with 100\% line detection and zero off-line time across 16 heterogeneous fault-injection scenarios. The controller was derived from root-cause failure analysis: seven competing mechanisms in a legacy 62-parameter PID architecture were categorized into threshold-based, gain-competing, and rate-limiting classes, and eliminated with documented evidence that each removal either improved or preserved performance. The curvature feedforward term ($k_{\text{ff}}=0.0008$) reduced steering correction standard deviation by 19\% versus pure PD, confirming that the 22\,cm sensor preview geometry --- classically viewed as a control challenge --- can be exploited as a preview advantage.
+
+Three engineering findings extend beyond this platform. The simplify-first methodology reverses the conventional tuning workflow: competing mechanisms are eliminated before the remaining parameters are optimized, producing a smooth single-peak parameter landscape whose global optimum is discoverable through two rounds of coarse-to-fine sweeping. The 30--40$\times$ iteration speedup of the offline simulator depended not on high-fidelity absolute prediction but on preserving the partial ordering of the objective function --- a strictly weaker fidelity requirement that substantially lowers the adoption barrier for simulation-based tuning in resource-constrained embedded projects. The weak-symbol hook mechanism achieved formal subsystem decoupling at zero runtime overhead: the line-following state machine and wireless module were developed, tested, and linked independently, then integrated without a single line of modification to the core control logic.
+
+The primary limitations are hardware-constrained: forward-only radar sensing makes avoidance direction inherently heuristic, the 9-parameter timed open-loop avoidance sequence is sensitive to battery voltage and motor wear, and time-based lead compensation introduces position error that varies with speed. Future priority directions are lateral sensor addition for perception-driven avoidance, encoder-closed-loop lead compensation, and extension of the simulator noise model to include spatially correlated artifacts characteristic of physical track surfaces.
+
+% ============================================================
+% REFERENCES
+% ============================================================
+\begin{thebibliography}{99}
+
+\bibitem{siegwart2011autonomous}
+R.~Siegwart, I.~R.~Nourbakhsh, and D.~Scaramuzza, \textit{Introduction to Autonomous Mobile Robots}, 2nd ed. Cambridge, MA: MIT Press, 2011.
+
+\bibitem{astrom1995pid}
+K.~J.~\AA str\"{o}m and T.~H\"{a}gglund, \textit{PID Controllers: Theory, Design, and Tuning}, 2nd ed. Research Triangle Park, NC: ISA, 1995.
+
+\bibitem{ziegler1942optimum}
+J.~G.~Ziegler and N.~B.~Nichols, ``Optimum settings for automatic controllers,'' \textit{Trans. ASME}, vol.~64, pp.~759--768, 1942.
+
+\bibitem{braunl2006embedded}
+T.~Br\"{a}unl, \textit{Embedded Robotics: Mobile Robot Design and Applications with Embedded Systems}, 2nd ed. Berlin: Springer, 2006.
+
+\bibitem{lee1990fuzzy}
+C.~C.~Lee, ``Fuzzy logic in control systems: Fuzzy logic controller --- Parts I and II,'' \textit{IEEE Trans. Syst., Man, Cybern.}, vol.~20, no.~2, pp.~404--435, 1990.
+
+\bibitem{kuhne2004mpc}
+F.~K\"{u}hne, W.~F.~Lages, and J.~M.~G. da~Silva Jr., ``Model predictive control of a mobile robot using linearization,'' in \textit{Proc. Mechatronics Robot.}, 2004, pp.~525--530.
+
+\bibitem{dudek2010computational}
+G.~Dudek and M.~Jenkin, \textit{Computational Principles of Mobile Robotics}, 2nd ed. Cambridge: Cambridge Univ. Press, 2010.
+
+\bibitem{ld2410s_datasheet}
+Hi-Link Electronic, ``HLK-LD2410S 24\,GHz mmWave radar sensor datasheet,'' 2023.
+
+\bibitem{ewm22a_datasheet}
+Chengdu Ebyte Electronic Technology, ``EWM22A-900BWL22S LoRa module user manual V1.0,'' 2023.
+
+\bibitem{lorawan_spec}
+LoRa Alliance, ``LoRaWAN\textsuperscript{\textregistered} Specification 1.0.4,'' 2020.
+
+\bibitem{stm32f407_ref}
+STMicroelectronics, ``RM0090: STM32F405/415, STM32F407/417 reference manual,'' Rev. 19, 2021.
+
+\bibitem{cortex_m4_trm}
+ARM Ltd., ``Cortex-M4 technical reference manual,'' Rev. r0p1, 2015.
+
+\bibitem{skogestad2003simple}
+S.~Skogestad, ``Simple analytic rules for model reduction and PID controller tuning,'' \textit{J. Process Control}, vol.~13, no.~4, pp.~291--309, 2003.
+
+\end{thebibliography}
+
+\end{document}

@@ -1,0 +1,183 @@
+% =============================================================================
+% TDPS Line-Following Car IEEE Paper -- Tables
+% Generated 2026-06-02, revised 2026-06-03 (Round 6: width fixes, de-nesting)
+% Usage: \input{sections/tables.tex} within IEEEtran document
+% All tables use IEEEtran-compatible [!t] float placement with booktabs rules.
+% Constraint: every tabular total width must not exceed \columnwidth (~8.9 cm).
+% =============================================================================
+
+% -----------------------------------------------------------------------------
+% Table I: Hardware Component Specifications
+% NOTE: Commented out — duplicate of inline tab:hw-specs in main.tex.
+% -----------------------------------------------------------------------------
+
+% -----------------------------------------------------------------------------
+% Table II: Core Control Parameters (6-Parameter Simplified PD + kff)
+% Suggested placement: Section III.A.2
+% -----------------------------------------------------------------------------
+\begin{table}[!t]
+\caption{Core Control Parameters of the Simplified 6-Parameter PD\,$+$\,kff Architecture}
+\label{tab:core-params}
+\centering
+\footnotesize
+\begin{tabular}{@{}lllll@{}}
+\toprule
+\textbf{Symbol} & \textbf{Parameter} & \textbf{Value} & \textbf{Function} & \textbf{Method} \\
+\midrule
+$k_p$        & Proportional gain         & 0.25        & Corrects instantaneous position error                         & Coarse sweep (36 groups) \\
+$k_d$        & Derivative gain           & 1.20        & Damping and 22\,cm sensor preview exploitation                & Coarse sweep (36 groups) \\
+$k_{f\!f}$   & Curvature feedforward gain & 0.0008      & Anticipatory steering before error builds up                  & Fine ablation sweep (27 groups) \\
+$v_{\text{base}}$ & Base (straight-line) speed & 280        & Maximum speed when $|e| \approx 0$                            & Coarse sweep: 280 superior to 400 \\
+$v_{\text{min}}$  & Minimum (curve) speed      & 60         & Minimum speed at full deviation $|e| = 1750$                  & Conservative bound from curve stress tests \\
+$C_{\text{max}}$  & Maximum correction clamp   & 300        & Hard limit on differential speed command                      & Coarse sweep: 300 more effective than 180 \\
+\bottomrule
+\multicolumn{5}{@{}p{0.95\columnwidth}@{}}{\footnotesize
+\textbf{Disabled legacy terms} (each removed after documented failure analysis):
+$k_i\!=\!0$ (no steady-state error; integral caused curve overshoot),
+$\delta_{\text{deadband}}\!=\!0$ (deadband caused straight-line drift),
+$\delta_{\text{soft}}\!=\!0$ (soft-zone compressed medium-deviation response),
+$\Delta_{\text{max}}\!=\!0$ (output rate limiting competed with $C_{\text{max}}$),
+$\alpha_{\text{deriv}}\!=\!0.0$ (double-filtering cancelled 22\,cm preview advantage).} \\
+\end{tabular}
+\end{table}
+
+% -----------------------------------------------------------------------------
+% Table III: Parameter Sweep Methodology and Results
+% Suggested placement: Section IV.A
+% -----------------------------------------------------------------------------
+\begin{table}[!t]
+\caption{Two-Round Simulator Parameter Sweep: Methodology and Key Findings}
+\label{tab:param-sweep}
+\centering
+\footnotesize
+\begin{tabular}{@{}lllp{0.40\columnwidth}@{}}
+\toprule
+\textbf{Round} & \textbf{Parameters Varied} & \textbf{Groups} & \textbf{Key Findings} \\
+\midrule
+Coarse &
+$k_p \in [0.15, 0.40]$,
+$k_d \in [0.40, 1.20]$,
+$v_{\text{base}} \in \{280, 400\}$,
+$C_{\text{max}} \in \{180, 300\}$ &
+36 &
+(1)~$v_{\text{base}}\!=\!280$ superior to 400 across all 16 scenarios;
+(2)~$C_{\text{max}}\!=\!300$ more effective than 180 --- differential authority critical for curves;
+(3)~$k_d\!\in\![1.0, 1.2]$ outperforms $k_d\!\in\![0.4, 0.8]$, validating larger derivative gain. \\
+\midrule
+$k_{f\!f}$ Fine &
+$k_p \in \{0.15, 0.20, 0.25\}$,
+$k_d \in \{0.80, 1.00, 1.20\}$,
+$k_{f\!f} \in [0, 0.0012]$ &
+27 &
+(1)~$k_p\!=\!0.25$, $k_d\!=\!1.20$, $k_{f\!f}\!=\!0.0008$ achieves optimum;
+(2)~$k_{f\!f}\!=\!0.0008$ reduces steering correction std.\ dev.\ by 19\% vs.\ pure PD;
+(3)~$k_{f\!f} \ge 0.0012$ introduces straight-line micro-oscillation from over-amplified derivative noise. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% -----------------------------------------------------------------------------
+% Table IV: Simulator Regression Results
+% Suggested placement: Section IV.B
+% -----------------------------------------------------------------------------
+\begin{table}[!t]
+\caption{Simulator Multi-Level Regression Results (Optimal Parameter Set)}
+\label{tab:regression}
+\centering
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Test Level} & \textbf{Scenarios} & \textbf{Score} & \textbf{Detection} & \textbf{Max Loss} \\
+\midrule
+Quick Normal & 16 & 95.41\,/\,100 & 100.00\% & 0.000\,s \\
+\bottomrule
+\multicolumn{5}{@{}p{0.95\columnwidth}@{}}{\footnotesize
+Quick Normal confidence: High (all 16 baseline scenarios pass with score~$>\!82$, detection~$>\!94\%$, offline~$<\!0.35$\,s).
+Optimal parameters: $k_p\!=\!0.25$, $k_d\!=\!1.20$, $k_{f\!f}\!=\!0.0008$, $v_{\text{base}}\!=\!280$, $v_{\text{min}}\!=\!60$, $C_{\text{max}}\!=\!300$.
+Stability gate (10 random seeds~$\times$~16 scenarios) and full-course simulation remain pending.} \\
+\end{tabular}
+\end{table}
+
+% -----------------------------------------------------------------------------
+% Table V: State Machine Transition Conditions
+% NOTE: Commented out — covered by inline tab:transitions in main.tex.
+% -----------------------------------------------------------------------------
+
+% -----------------------------------------------------------------------------
+% Table VI: Known Limitations and Root Causes
+% Suggested placement: Section V.C (System Bottlenecks)
+% Reduced from 5 to 4 columns: removed Impact column (discussed in Section V prose).
+% -----------------------------------------------------------------------------
+\begin{table}[!t]
+\caption{Known Limitations, Root Causes, and Planned Improvements}
+\label{tab:limitations}
+\centering
+\footnotesize
+\begin{tabular}{@{}p{0.22\columnwidth}p{0.24\columnwidth}p{0.22\columnwidth}p{0.24\columnwidth}@{}}
+\toprule
+\textbf{Limitation} & \textbf{Root Cause} & \textbf{Current Mitigation} & \textbf{Future Work} \\
+\midrule
+22\,cm sensor-to-axle offset &
+Sensor array mounted ahead of drive axle &
+Time-based dead-reckoning with configurable advance ticks &
+Encoder-closed-loop distance tracking \\
+\midrule
+Forward-only radar &
+Single front-facing module; no lateral sensors &
+Preferred side $+$ last line direction $+$ reverse retry &
+Additional lateral ultrasonic/infrared sensors \\
+\midrule
+Open-loop avoidance timing &
+Fixed-duration phases; no real-time distance feedback &
+Conservative margins $+$ emergency stop at 280\,mm $+$ retry &
+Sensor-closed-loop adaptive bypass using continuous radar distance \\
+\midrule
+Time-based advance approximation &
+Tick-count advance without encoder feedback &
+Explicit recalibration checklist in tuning documentation &
+Encoder pulse integration for true distance-based advance \\
+\midrule
+No lateral obstacle localization &
+Narrow forward radar field of view &
+Reverse retry on first-attempt failure (max 2 attempts) &
+Lateral sensors or active probing (micro-turn to scan) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% -----------------------------------------------------------------------------
+% Table VII: Test Coverage Matrix
+% Suggested placement: Section II.D (Simulation Strategy)
+% -----------------------------------------------------------------------------
+\begin{table}[!t]
+\caption{Multi-Level Test Coverage Matrix}
+\label{tab:test-coverage}
+\centering
+\begin{tabular}{@{}lllll@{}}
+\toprule
+\textbf{Test Level} & \textbf{Line Following} & \textbf{LoRa} & \textbf{Radar} & \textbf{Setup} \\
+\midrule
+PC Stub (gcc) &
+\checkmark &
+\checkmark &
+--- &
+GCC compile; verifies core algorithms without hardware \\
+\midrule
+Simulator (Python) &
+\checkmark &
+\checkmark &
+\checkmark &
+Python harness; CSV scenario config with noise injection \\
+\midrule
+Board-Level (MCU) &
+\checkmark &
+--- &
+\checkmark &
+ST-Link SWD debug; individual peripheral verification \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% -----------------------------------------------------------------------------
+% Table VIII: Milestone Status
+% NOTE: Commented out — content redundant with Fig.~3 (timeline).
+% -----------------------------------------------------------------------------
