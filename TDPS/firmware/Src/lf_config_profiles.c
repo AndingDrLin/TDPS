@@ -18,23 +18,23 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.line_detect_min_contrast       = 80U;
     g_lf_config.sensor_edge_noise_reject_enable    = true;
     g_lf_config.sensor_edge_noise_neighbor_threshold = 220U;
-    g_lf_config.sensor_weights[0] =  1750;
-    g_lf_config.sensor_weights[1] =  1250;
-    g_lf_config.sensor_weights[2] =   750;
+    g_lf_config.sensor_weights[0] =  1950;
+    g_lf_config.sensor_weights[1] =  1450;
+    g_lf_config.sensor_weights[2] =   950;
     g_lf_config.sensor_weights[3] =   250;
     g_lf_config.sensor_weights[4] =  -250;
     g_lf_config.sensor_weights[5] =  -750;
-    g_lf_config.sensor_weights[6] = -1250;
-    g_lf_config.sensor_weights[7] = -1750;
+    g_lf_config.sensor_weights[6] = -1450;
+    g_lf_config.sensor_weights[7] = -1950;
 	
-    g_lf_config.kp  = 0.10f;    // 倒三轮：传感器距轮轴 ~4cm，P 项比正三轮 (0.22) 低
+    g_lf_config.kp  = 0.15f;    // 倒三轮：传感器距轮轴 ~4cm，P 项比正三轮 (0.22) 低
     g_lf_config.ki  = 0.0f;     // 积分：不开
-    g_lf_config.kd  = 0.40f;    // 倒三轮：短前探降低高频振荡，kd=0.6 转向最平滑
+    g_lf_config.kd  = 0.60f;    // 倒三轮：短前探降低高频振荡，kd=0.6 转向最平滑
 		
     g_lf_config.control_error_deadband  = 80;    // 简化控制：不屏蔽小偏差
     g_lf_config.control_error_soft_zone = 150;   // 简化控制：不做软区衰减
 		
-    g_lf_config.max_correction            = 220;  // 调试限幅，避免一次跳变急转
+    g_lf_config.max_correction            = 200;  // 调试限幅，避免一次跳变急转
     g_lf_config.max_output_delta_per_tick = 20;   // 降低单拍修正跳变
     g_lf_config.max_motor_cmd             = 900;  // 恢复满功率，死区由 motor_deadband 处理
     g_lf_config.motor_deadband            = 120;
@@ -110,7 +110,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.edge_realign_delta       = 35;
     g_lf_config.edge_realign_confirm_ticks = 2U;
     g_lf_config.curve_arc_enable         = true;
-    g_lf_config.curve_arc_speed          = 80;     // 弯道中低速，留更多修正余量
+    g_lf_config.curve_arc_speed          = 180;     // 弯道中低速，留更多修正余量
     g_lf_config.curve_arc_delta          = 140;    // 加大差速，减小转弯半径
     g_lf_config.curve_arc_max_motor_delta = 150;   // 匹配更大的 delta
     g_lf_config.curve_arc_confirm_ticks  = 2U;     // 2帧确认，过滤单帧噪声
