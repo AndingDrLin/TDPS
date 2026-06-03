@@ -89,7 +89,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.auto_start_delay_ms      = 0U;
     g_lf_config.start_min_boot_delay_ms  = 2000U;
     g_lf_config.start_line_hold_ms       = 500U;
-    g_lf_config.start_straight_guard_enable = true;
+    g_lf_config.start_straight_guard_enable = false;
     g_lf_config.start_straight_guard_ms = 1500U;
     g_lf_config.start_straight_guard_speed = 120;
     g_lf_config.start_straight_guard_max_correction = 15;
@@ -103,12 +103,12 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.recover_backtrack_speed  = 80;
     g_lf_config.line_hold_speed          = 120;
     g_lf_config.line_hold_turn_speed     = 45;
-    g_lf_config.edge_realign_enable      = true;
+    g_lf_config.edge_realign_enable      = false;
     g_lf_config.edge_realign_dir_sign    = 1;
     g_lf_config.edge_realign_speed       = 135;
     g_lf_config.edge_realign_delta       = 35;
     g_lf_config.edge_realign_confirm_ticks = 2U;
-    g_lf_config.curve_arc_enable         = true;
+    g_lf_config.curve_arc_enable         = false;
     g_lf_config.curve_arc_dir_sign       = 1;
     g_lf_config.curve_arc_speed          = 115;
     g_lf_config.curve_arc_delta          = 50;
