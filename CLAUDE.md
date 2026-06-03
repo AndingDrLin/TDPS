@@ -18,6 +18,12 @@ The main project lives under `TDPS/`; the repository root is a workspace wrapper
 - `TDPS/docs_reference/`: local index for hardware/vendor references; large PDFs, archives, tools, images, and PCB exports are intentionally not committed.
 - `TDPS/reports/`: report and experiment-record scripts.
 
+## Naming conventions
+
+- Directories and new management files use `snake_case`.
+- Vendor reference files keep their original names to avoid path breakage.
+- Generated outputs go to `firmware/build/`, `simulator/artifacts/`, `reports/*/outputs/`; default is not committed.
+
 ## Common commands
 
 Run these from the repository root unless noted otherwise.
@@ -63,6 +69,8 @@ cmake -S TDPS/firmware -B TDPS/firmware/build \
   -DTDPS_NO_CAR_MODE=ON -DTDPS_DEBUG_MONITOR=ON
 ```
 
+CMake options: `TDPS_TARGET_MCU` (ON for STM32 HAL cross-build, OFF for PC stubs), `TDPS_BUILD_TESTS` (build test_lf/test_wl), `TDPS_NO_CAR_MODE` (bench debug), `TDPS_DEBUG_MONITOR` (periodic debug output).
+
 ### Simulator regression commands
 
 ```bash
@@ -72,6 +80,8 @@ bash TDPS/simulator/scripts/run_radar_autotest.sh
 bash TDPS/simulator/scripts/run_wireless_autotest.sh
 bash TDPS/simulator/scripts/run_system_autotest.sh
 ```
+
+Quick gate criteria: `overallScore >= 82`, `avgLineDetectionRate >= 0.94`, `maxLongestLostSec <= 0.35`, no scenario `score < 70`.
 
 Full-course stress run:
 
@@ -91,16 +101,35 @@ The firmware follows a `main loop + peripheral interrupts + state machines` mode
 
 Firmware layers:
 
-- Platform layer: `lf_platform_*`, `wl_platform_*`, UART callbacks, and board/HAL adapters isolate STM32 peripherals from portable logic.
+- Platform layer: `lf_platform_*`, `wl_platform_*`, UART callbacks, and board/HAL adapters isolate STM32 peripherals from portable logic. Two implementations: STM32F4 HAL (real hardware) and stubs (PC testing).
 - Algorithm layer: `lf_sensor`, `lf_control`, and `lf_chassis` process 8-channel line input, run PID, and produce differential drive commands.
-- Application layer: `lf_app` owns the line-following state machine: `WAIT_START -> CALIBRATING -> RUNNING -> RECOVERING / AVOID_* -> STOPPED`.
+- Application layer: `lf_app` owns the line-following state machine: `WAIT_START -> CALIBRATING -> RUNNING -> RECOVERING / AVOID_* / FORK_* -> STOPPED / FAULT`.
 - Extension layer: `wireless_hooks`, `lf_future_hooks`, `wl_app`, `wl_lora`, and `lf_radar` integrate LoRa checkpoints and radar obstacle states through non-blocking ticks.
 
-Key constraints from the design docs:
+### Current control architecture
+
+6-parameter simplified PD + curvature feedforward (kff), toggled by `TDPS_SIMPLE_CONTROL=1` in `lf_app.c:1`:
+
+- Core formula: `correction = kp*error + kd*derivative + kff*derivative*speed`
+- Speed function: `speed = base_speed - (base_speed - min_speed) * |error| / 1750` (IIR smoothing alpha=0.4)
+- Parameters: `kp=0.25`, `kd=1.20`, `kff=0.0008`, `base_speed=280`, `min_speed=60`, `max_correction=300`
+- Disabled features: dead zone, soft zone, integral, speed scaling, rate limiting, double filtering, straight_boost, curve_prepare
+- To revert to old 62-parameter architecture: set `TDPS_SIMPLE_CONTROL=0`
+
+### Geometric constraints
+
+Sensor array center to drive axle midpoint ~22 cm, left-right wheel track ~16 cm. When handling junctions, U-turn apexes, right-angle turns, and circular turn entries, use the drive axle midpoint as the steering reference. When the front sensor first sees a special line pattern, do not immediately execute a definitive turn.
+
+Priority tuning order: `lead_advance_*` (let drive axle reach the special position), then `lead_turn_delta` and `lead_turn_hold_ticks`. For ground dirt, map wrinkles, and reflections on straights, adjust `straight_noise_*` first, not PID or `base_speed`.
+
+### Project state
+
+The firmware startup path currently uses `LF_Config_ApplyDebugProfile()` by default. Use the low-speed conservative debug profile unless the user explicitly asks to switch. The debug profile disables fork detection; only the competition/track profile enables it.
+
+## Key constraints from the design docs
 
 - Do not block the line-following control loop. LoRa sending and radar parsing are advanced via non-blocking tick functions.
 - Tuning parameters should usually be centralized in `TDPS/firmware/Src/lf_config.c` and profile overrides in `TDPS/firmware/Src/lf_config_profiles.c` rather than scattered through algorithms.
-- The current real-car startup path calls `LF_Config_ApplyTrackProfile()`, not the low-speed debug profile. Track profile enables straight boost, curve preparation slowdown, line-stability filtering, stable direction recovery, and fork detection by default.
 - `LF_App_NotifyCheckpoint(checkpoint_id)` is the integration entry for checkpoint events.
 - LoRa reports use `TEAM=<id>,NAME=<name>,CP=<checkpoint>,TIME=<MM:SS>\n`; current defaults are `TEAM=15`, `NAME=TDPS`.
 - Radar currently provides forward distance/state (`CLEAR/WARN/BLOCK`). It does not provide true left/right obstacle localization; current avoidance direction comes from config, last line direction, and reverse retry.
