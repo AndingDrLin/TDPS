@@ -1068,6 +1068,16 @@ static void handle_line_lost(uint32_t now_ms)
         return;
     }
 
+    /* 丢线前刚检测到急弯且位置偏差大 → 原地旋转对准（替代 recovery） */
+    if (g_lf_config.reorient_enable &&
+        s_app.last_strong_curve_side != 0 &&
+        abs_i32(s_app.last_curve_position) >= g_lf_config.reorient_position_threshold) {
+        s_app.reorient_spin_dir = s_app.last_strong_curve_side;
+        s_app.last_strong_curve_side = 0;
+        start_reorient(now_ms);
+        return;
+    }
+
     s_app.recover_start_ms = now_ms;
     enter_recovery_phase(LF_RECOVER_BACKTRACK, s_app.recover_start_ms);
     set_reason(LF_APP_REASON_LINE_LOST);
@@ -1136,6 +1146,21 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
     s_app.line_lost_count = 0U;
     update_running_window(&s_app.last_frame, d.interference);
     d.start_guard_active = start_straight_guard_tick(now_ms, &s_app.last_frame);
+
+    /* 保存急弯检测结果，供丢线时判断是否原地旋转对准。
+     * side_wide 需要 5+ 传感器活跃（严格），curve_arc 只需 2+ 差异（宽松）。
+     * 两者都记录：side_wide 用于在线时触发，curve_arc 用于丢线时的紧急判断。 */
+    {
+        int8_t sw = detect_side_wide_curve_arc_side(&s_app.last_frame);
+        int8_t cs = detect_curve_arc_side(&s_app.last_frame);
+        if (sw != 0) {
+            s_app.last_strong_curve_side = sw;
+            s_app.last_curve_position = s_app.last_frame.position;
+        } else if (cs != 0 && abs_i32(s_app.last_frame.position) >= 1000) {
+            s_app.last_strong_curve_side = cs;
+            s_app.last_curve_position = s_app.last_frame.position;
+        }
+    }
 
     /* 优先级 1：岔路（需连续确认 fork_detect_confirm_ticks 帧） */
     if (!d.start_guard_active && !d.interference && g_lf_config.fork_enable &&
@@ -1816,6 +1841,8 @@ void LF_App_Init(void)
     s_app.curve_arc_count = 0U;
     s_app.curve_arc_release_count = 0U;
     s_app.curve_arc_side = 0;
+    s_app.last_strong_curve_side = 0;
+    s_app.last_curve_position = 0;
     s_app.last_trusted_position = 0;
     s_app.trusted_line_dir = +1;
     s_app.trusted_line_valid = false;

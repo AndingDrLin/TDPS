@@ -134,6 +134,8 @@ typedef struct {
     uint32_t reorient_start_ms;
     int8_t reorient_spin_dir;
     uint8_t reorient_confirm_count;
+    int8_t last_strong_curve_side;
+    int32_t last_curve_position;
     int32_t last_trusted_position;
     int8_t trusted_line_dir;
     bool trusted_line_valid;
