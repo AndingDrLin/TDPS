@@ -1033,7 +1033,6 @@ typedef enum {
     LF_RUN_ACTION_OBSTACLE,
     LF_RUN_ACTION_LEAD_COMPENSATION,
     LF_RUN_ACTION_EDGE_REALIGN,
-    LF_RUN_ACTION_CURVE_ARC_PROBE,
     LF_RUN_ACTION_CURVE_ARC,
     LF_RUN_ACTION_PID_CONTROL,
 } LF_RunAction;
@@ -1092,49 +1091,20 @@ static void process_curve_arc(void)
     int16_t speed = limit_degraded_speed(g_lf_config.curve_arc_speed);
     int16_t delta = limit_degraded_speed(g_lf_config.curve_arc_delta);
     int16_t motor_delta_limit = g_lf_config.curve_arc_max_motor_delta;
-    int8_t sign = (g_lf_config.curve_arc_dir_sign < 0) ? -1 : +1;
     int16_t correction;
     int16_t left_cmd;
     int16_t right_cmd;
 
     reset_lead_phase();
-    LF_Control_ResetPid(&s_app.pid);
+    /* 不重置 PID：出弯时从冻结状态恢复，避免 D=0 导致修正不足 */
 
-    correction = (int16_t)((int16_t)s_app.curve_arc_side * (int16_t)sign * delta);
+    correction = (int16_t)((int16_t)s_app.curve_arc_side * delta);
     LF_Control_ComputeMotorCmd(speed, correction, &left_cmd, &right_cmd);
     if (motor_delta_limit <= 0) {
         motor_delta_limit = delta;
     }
-    LF_Chassis_SetCommandWithDeltaLimit(left_cmd, right_cmd, motor_delta_limit);
-    s_app.current_target_speed = speed;
-}
-
-static void process_curve_arc_probe(void)
-{
-    int16_t speed = limit_degraded_speed(g_lf_config.curve_arc_probe_speed);
-    int16_t delta = limit_degraded_speed(g_lf_config.curve_arc_probe_delta);
-    int16_t motor_delta_limit = g_lf_config.curve_arc_probe_max_motor_delta;
-    int8_t sign = (g_lf_config.curve_arc_dir_sign < 0) ? -1 : +1;
-    int16_t correction;
-    int16_t left_cmd;
-    int16_t right_cmd;
-
-    reset_lead_phase();
-    LF_Control_ResetPid(&s_app.pid);
-
-    if (speed <= 0) {
-        speed = limit_degraded_speed(g_lf_config.curve_arc_speed);
-    }
-    if (delta <= 0) {
-        delta = limit_degraded_speed((int16_t)(g_lf_config.curve_arc_delta / 3));
-    }
-    if (motor_delta_limit <= 0) {
-        motor_delta_limit = delta;
-    }
-
-    correction = (int16_t)((int16_t)s_app.curve_arc_side * (int16_t)sign * delta);
-    LF_Control_ComputeMotorCmd(speed, correction, &left_cmd, &right_cmd);
-    LF_Chassis_SetCommandWithDeltaLimit(left_cmd, right_cmd, motor_delta_limit);
+    LF_Chassis_LimitMotorDelta(&left_cmd, &right_cmd, motor_delta_limit);
+    LF_Platform_SetMotorCommand(-left_cmd, -right_cmd);
     s_app.current_target_speed = speed;
 }
 
@@ -1247,10 +1217,6 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
                 d.action = LF_RUN_ACTION_CURVE_ARC;
                 return d;
             }
-            if (s_app.curve_arc_side != 0) {
-                d.action = LF_RUN_ACTION_CURVE_ARC_PROBE;
-                return d;
-            }
         } else {
             s_app.curve_arc_count = 0U;
             s_app.curve_arc_release_count = 0U;
@@ -1315,10 +1281,6 @@ static void process_running(uint32_t now_ms, float dt_s)
 
     case LF_RUN_ACTION_EDGE_REALIGN:
         process_edge_realign();
-        return;
-
-    case LF_RUN_ACTION_CURVE_ARC_PROBE:
-        process_curve_arc_probe();
         return;
 
     case LF_RUN_ACTION_CURVE_ARC:

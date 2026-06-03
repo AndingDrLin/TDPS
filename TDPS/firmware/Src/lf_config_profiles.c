@@ -46,6 +46,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.base_speed          = 200;   // 倒三轮：低速定位直线稳定问题
     g_lf_config.min_speed           = 60;    // 弯道最低速度
     g_lf_config.kff                 = 0.0f;  // 倒三轮：传感器距轮轴仅 ~4cm，无有效预瞄距离，关前馈
+    g_lf_config.steering_dir_sign   = -1;    // 倒三轮：电机方向翻转，删除此行会导致车反转
 
 		g_lf_config.adaptive_slow_speed       = 60;    // 低置信度/低对比度时的速度
     g_lf_config.adaptive_error_threshold  = 100;    // ★ 位置超阈值立即触发 sharp 降速（第一优先级）
@@ -108,22 +109,11 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.edge_realign_speed       = 135;
     g_lf_config.edge_realign_delta       = 35;
     g_lf_config.edge_realign_confirm_ticks = 2U;
-<<<<<<< HEAD
     g_lf_config.curve_arc_enable         = true;
-    g_lf_config.curve_arc_dir_sign       = -1;
-    g_lf_config.curve_arc_speed          = 105;
-    g_lf_config.curve_arc_delta          = 110;
-    g_lf_config.curve_arc_max_motor_delta = 130;
-    g_lf_config.curve_arc_probe_speed    = 110;
-    g_lf_config.curve_arc_probe_delta    = 35;
-    g_lf_config.curve_arc_probe_max_motor_delta = 50;
-=======
-    g_lf_config.curve_arc_enable         = false;
-    g_lf_config.curve_arc_dir_sign       = 1;
-    g_lf_config.curve_arc_speed          = 115;
-    g_lf_config.curve_arc_delta          = 50;
->>>>>>> 156584836d355f792387af9ead6070c2289c7a28
-    g_lf_config.curve_arc_confirm_ticks  = 3U;
+    g_lf_config.curve_arc_speed          = 80;     // 弯道中低速，留更多修正余量
+    g_lf_config.curve_arc_delta          = 140;    // 加大差速，减小转弯半径
+    g_lf_config.curve_arc_max_motor_delta = 150;   // 匹配更大的 delta
+    g_lf_config.curve_arc_confirm_ticks  = 2U;     // 2帧确认，过滤单帧噪声
     g_lf_config.curve_arc_release_ticks  = 4U;
 		
     g_lf_config.radar_enable         = false;

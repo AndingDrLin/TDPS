@@ -754,7 +754,6 @@ static int test_curve_arc_uses_independent_small_delta(void)
     g_lf_config.edge_realign_enable = true;
     g_lf_config.edge_realign_confirm_ticks = 1U;
     g_lf_config.curve_arc_enable = true;
-    g_lf_config.curve_arc_dir_sign = 1;
     g_lf_config.curve_arc_speed = 115;
     g_lf_config.curve_arc_delta = 50;
     g_lf_config.curve_arc_confirm_ticks = 1U;
@@ -800,7 +799,6 @@ static int test_side_wide_lamps_enter_curve_arc_before_edge_realign(void)
     g_lf_config.edge_realign_enable = true;
     g_lf_config.edge_realign_confirm_ticks = 1U;
     g_lf_config.curve_arc_enable = true;
-    g_lf_config.curve_arc_dir_sign = 1;
     g_lf_config.curve_arc_speed = 115;
     g_lf_config.curve_arc_delta = 110;
     g_lf_config.curve_arc_max_motor_delta = 130;
@@ -823,13 +821,10 @@ static int test_side_wide_lamps_enter_curve_arc_before_edge_realign(void)
     return failures;
 }
 
-static int test_curve_arc_probes_before_confirmed_turn(void)
+static int test_curve_arc_preserves_pid_state(void)
 {
     const LF_AppContext *ctx;
-    int16_t left;
-    int16_t right;
-    int16_t diff;
-    int16_t probe_delta_sign;
+    float saved_prev_error;
     int failures = 0;
 
     if (init_app_to_running()) {
@@ -839,52 +834,34 @@ static int test_curve_arc_probes_before_confirmed_turn(void)
     g_lf_config.fork_enable = false;
     g_lf_config.obstacle_avoid_enable = false;
     g_lf_config.lead_compensation_enable = false;
-    g_lf_config.edge_realign_enable = true;
-    g_lf_config.edge_realign_confirm_ticks = 1U;
     g_lf_config.curve_arc_enable = true;
-    g_lf_config.curve_arc_dir_sign = 1;
-    g_lf_config.curve_arc_speed = 105;
-    g_lf_config.curve_arc_delta = 110;
-    g_lf_config.curve_arc_max_motor_delta = 130;
-    g_lf_config.curve_arc_probe_speed = 110;
-    g_lf_config.curve_arc_probe_delta = 35;
-    g_lf_config.curve_arc_probe_max_motor_delta = 50;
-    g_lf_config.curve_arc_confirm_ticks = 3U;
-    g_lf_config.max_motor_delta = 70;
-    g_lf_config.steering_dir_sign = -1;
-    g_lf_config.line_detect_min_peak = 300U;
+    g_lf_config.curve_arc_speed = 80;
+    g_lf_config.curve_arc_delta = 140;
+    g_lf_config.curve_arc_max_motor_delta = 150;
+    g_lf_config.curve_arc_confirm_ticks = 2U;
+    g_lf_config.curve_arc_release_ticks = 4U;
     g_lf_config.sensor_filter_alpha = 1.0f;
 
+    /* 建立 PID 状态 */
+    set_center_line();
+    run_app_for(20U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->pid.initialized == 1U, "PID initialized after straight");
+    saved_prev_error = ctx->pid.prev_error;
+
+    /* 进入弯道 */
     set_left_side_wide_curve_arc_line();
-    run_app_step_after(10U);
+    run_app_for(5U);
     ctx = LF_App_GetContext();
-    LF_DebugMonitor_GetLastMotorCommand(&left, &right);
-    diff = (left > right) ? (int16_t)(left - right) : (int16_t)(right - left);
-    failures += expect_true(ctx->curve_arc_side == -1 && ctx->curve_arc_count == 1U,
-                            "first side-wide curve frame only records curve candidate");
-    failures += expect_true(diff > 0 && diff <= g_lf_config.curve_arc_probe_max_motor_delta,
-                            "first side-wide curve frame uses small probe turn");
-    probe_delta_sign = (int16_t)(left - right);
-
-    run_app_step_after(10U);
-    ctx = LF_App_GetContext();
-    LF_DebugMonitor_GetLastMotorCommand(&left, &right);
-    diff = (left > right) ? (int16_t)(left - right) : (int16_t)(right - left);
-    failures += expect_true(ctx->curve_arc_count == 2U, "second matching curve frame remains candidate");
-    failures += expect_true(diff > 0 && diff <= g_lf_config.curve_arc_probe_max_motor_delta,
-                            "second matching curve frame still uses small probe turn");
-
-    run_app_step_after(10U);
-    ctx = LF_App_GetContext();
-    LF_DebugMonitor_GetLastMotorCommand(&left, &right);
-    diff = (left > right) ? (int16_t)(left - right) : (int16_t)(right - left);
-    failures += expect_true(ctx->curve_arc_count >= g_lf_config.curve_arc_confirm_ticks,
-                            "third matching curve frame confirms curve arc");
-    failures += expect_true(diff > g_lf_config.max_motor_delta && diff <= g_lf_config.curve_arc_max_motor_delta,
-                            "confirmed curve arc turns harder than straight delta limit");
-    failures += expect_true(((int16_t)(left - right) > 0 && probe_delta_sign > 0) ||
-                            ((int16_t)(left - right) < 0 && probe_delta_sign < 0),
-                            "confirmed curve arc keeps same steering polarity as probe");
+    failures += expect_true(ctx->curve_arc_side != 0, "entered curve arc");
+    failures += expect_true(ctx->pid.initialized == 1U,
+                            "PID still initialized during curve arc (not reset)");
+    {
+        float diff_err = ctx->pid.prev_error - saved_prev_error;
+        if (diff_err < 0.0f) diff_err = -diff_err;
+        failures += expect_true(diff_err < 0.5f,
+                                "PID prev_error preserved during curve arc");
+    }
 
     g_lf_config.curve_arc_enable = false;
     LF_PlatformStub_ClearLineSensorRaw();
@@ -1272,7 +1249,7 @@ int main(void)
     failures += test_edge_realign_uses_small_motor_delta();
     failures += test_curve_arc_uses_independent_small_delta();
     failures += test_side_wide_lamps_enter_curve_arc_before_edge_realign();
-    failures += test_curve_arc_probes_before_confirmed_turn();
+    failures += test_curve_arc_preserves_pid_state();
     failures += test_straight_noise_keeps_base_speed();
     failures += test_arrow_like_wide_frame_does_not_start_lead_without_entry();
     failures += test_biased_wide_noise_does_not_start_lead_event();

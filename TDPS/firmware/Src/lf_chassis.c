@@ -20,7 +20,7 @@ static int16_t apply_deadband(int16_t cmd)
     return cmd;
 }
 
-static void limit_motor_delta(int16_t *left_cmd, int16_t *right_cmd, int16_t limit)
+void LF_Chassis_LimitMotorDelta(int16_t *left_cmd, int16_t *right_cmd, int16_t limit)
 {
     int32_t left;
     int32_t right;
@@ -63,19 +63,7 @@ void LF_Chassis_SetCommand(int16_t left_cmd, int16_t right_cmd)
 
     left = apply_deadband(left);
     right = apply_deadband(right);
-    limit_motor_delta(&left, &right, g_lf_config.max_motor_delta);
-
-    LF_Platform_SetMotorCommand(-left, -right);
-}
-
-void LF_Chassis_SetCommandWithDeltaLimit(int16_t left_cmd, int16_t right_cmd, int16_t max_delta)
-{
-    int16_t left = TDPS_ClampI16(left_cmd, (int16_t)(-g_lf_config.max_motor_cmd), g_lf_config.max_motor_cmd);
-    int16_t right = TDPS_ClampI16(right_cmd, (int16_t)(-g_lf_config.max_motor_cmd), g_lf_config.max_motor_cmd);
-
-    left = apply_deadband(left);
-    right = apply_deadband(right);
-    limit_motor_delta(&left, &right, max_delta);
+    LF_Chassis_LimitMotorDelta(&left, &right, g_lf_config.max_motor_delta);
 
     LF_Platform_SetMotorCommand(-left, -right);
 }
