@@ -27,23 +27,23 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.sensor_weights[6] = -1450;
     g_lf_config.sensor_weights[7] = -1950;
 	
-    g_lf_config.kp  = 0.15f;    // 倒三轮：传感器距轮轴 ~4cm，P 项比正三轮 (0.22) 低
-    g_lf_config.ki  = 0.0f;     // 积分：不开
+    g_lf_config.kp  = 0.25f;    // 提高P增益：S弯跟踪需要更强的比例响应
+    g_lf_config.ki  = 0.05f;    // 小积分：消除弯道跟踪的稳态误差（P-only在曲线上是鞍点不稳定）
     g_lf_config.kd  = 0.60f;    // 倒三轮：短前探降低高频振荡，kd=0.6 转向最平滑
 		
     g_lf_config.control_error_deadband  = 80;    // 简化控制：不屏蔽小偏差
     g_lf_config.control_error_soft_zone = 150;   // 简化控制：不做软区衰减
 		
-    g_lf_config.max_correction            = 200;  // 调试限幅，避免一次跳变急转
+    g_lf_config.max_correction            = 300;  // 提高差速上限，增强急弯转向能力
     g_lf_config.max_output_delta_per_tick = 20;   // 降低单拍修正跳变
     g_lf_config.max_motor_cmd             = 900;  // 恢复满功率，死区由 motor_deadband 处理
     g_lf_config.motor_deadband            = 120;
     g_lf_config.derivative_filter_alpha   = 0.35f; // D 项一阶低通，抑制 dt=0.01 下的噪声放大
-    g_lf_config.integral_limit                = 0.0f;  // 无积分——巡线无静差
-    g_lf_config.integral_separation_threshold = 0.0f;
-    g_lf_config.integral_soft_zone            = 0.0f;
+    g_lf_config.integral_limit                = 500.0f;  // 积分上限：允许小积分消除弯道稳态误差
+    g_lf_config.integral_separation_threshold = 400.0f;  // 积分分离：error>400 时积分衰减，防止弯道入口积分累积
+    g_lf_config.integral_soft_zone            = 100.0f;  // 过渡区：400~500 线性降速积分
 
-    g_lf_config.base_speed          = 200;   // 倒三轮：低速定位直线稳定问题
+    g_lf_config.base_speed          = 150;   // 降速：给急弯控制器更多响应时间
     g_lf_config.min_speed           = 60;    // 弯道最低速度
     g_lf_config.kff                 = 0.0f;  // 倒三轮：传感器距轮轴仅 ~4cm，无有效预瞄距离，关前馈
     g_lf_config.steering_dir_sign   = -1;    // 倒三轮：电机方向翻转，删除此行会导致车反转

@@ -1097,15 +1097,11 @@ static void process_curve_arc(void)
     reset_lead_phase();
 
     error = (float)s_app.last_frame.position;
-    /* 弯中不用死区/软区：偏差一点点就立刻修正，保持中间通道巡线 */
-    correction = LF_Control_UpdatePD(error, 0.01f, speed, &s_app.pid);
-
-    /* steering_dir_sign=-1 导致弯中修正方向与直线PID相反，取反修正。 */
-    correction = (int16_t)(-correction);
-    /* 只允许右转修正：线偏右时追线，线偏左时不左转。 */
-    if (correction > 0) {
-        correction = 0;
-    }
+    /* 弯中用完整 PID（含积分项）：纯 P 在恒定曲率路径上是鞍点平衡，
+     * D 项衰减后车会持续偏离弯道。小积分消除弯道跟踪的稳态误差。
+     * 死区设 1（近零）保持弯中灵敏响应。积分保护链（分离/反饱和）防止过冲。 */
+    correction = LF_Control_UpdatePid(error, 0.01f, &s_app.pid);
+    /* PID 内部已按 steering_dir_sign 约定输出，直接传给 ComputeMotorCmd。 */
 
     LF_Control_ComputeMotorCmd(speed, correction, &left_cmd, &right_cmd);
     left_cmd = limit_degraded_speed(left_cmd);
