@@ -6,9 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Always respond in Chinese (中文). 每次回答开头都要说我已经查看了CLAUDE.md
 
-## Repository layout
+## Source of truth
 
-The main project lives under `TDPS/`; the repository root is a workspace wrapper.
+The repository root is a workspace wrapper. The main project lives under `TDPS/`, and commands below assume the current working directory is the outer repository root: `/Users/linyujia/Project/TDPS`.
+
+This root-level `CLAUDE.md` is the source of truth for Claude Code guidance. If `TDPS/CLAUDE.md` or older docs conflict with this file, follow this file and verify against current code before changing behavior. Do not create another Claude guidance file.
+
+If Claude Code is launched from the inner `TDPS/` directory, remove the leading `TDPS/` path component from commands in this file.
+
+## Repository layout
 
 - `TDPS/firmware/`: STM32F407VET6 firmware. Core logic is written so it can build both for STM32 HAL and for PC stub tests.
 - `TDPS/simulator/`: offline simulation and regression harness for line following, radar, wireless, and integrated scenarios.
@@ -22,31 +28,15 @@ The main project lives under `TDPS/`; the repository root is a workspace wrapper
 
 - Directories and new management files use `snake_case`.
 - Vendor reference files keep their original names to avoid path breakage.
-- Generated outputs go to `firmware/build/`, `simulator/artifacts/`, `reports/*/outputs/`; default is not committed.
+- Generated outputs go to `TDPS/firmware/build/`, `TDPS/simulator/artifacts/`, and `TDPS/reports/*/outputs/`; default is not committed.
 
 ## Common commands
 
 Run these from the repository root unless noted otherwise.
 
-### Firmware PC stub tests with gcc
-
-```bash
-mkdir -p TDPS/firmware/build/gcc
-
-gcc -ITDPS/firmware/Inc -ITDPS/firmware/common -ITDPS/firmware/platform \
-    TDPS/firmware/Src/{lf_app,lf_control,lf_sensor,lf_radar,lf_chassis,lf_config,lf_config_profiles,lf_line_features,lf_speed_math,lf_platform_stub,lf_debug_monitor,lf_future_hooks,lf_led_blink,lf_run_log,wireless_hooks,wl_app,wl_lora,wl_protocol,wl_config,wl_platform_stub}.c \
-    TDPS/firmware/test/test_lf_stub.c -o TDPS/firmware/build/gcc/lf_test -lm
-./TDPS/firmware/build/gcc/lf_test
-
-gcc -ITDPS/firmware/Inc -ITDPS/firmware/common -ITDPS/firmware/platform \
-    TDPS/firmware/Src/{wl_app,wl_lora,wl_protocol,wl_config,wl_platform_stub}.c \
-    TDPS/firmware/test/test_wl_stub.c -o TDPS/firmware/build/gcc/wl_test
-./TDPS/firmware/build/gcc/wl_test
-```
-
 ### Firmware CMake tests
 
-CMake is optional in this repo; when installed, use:
+CMake is optional in this repo; when installed, prefer it over manual gcc commands because `TDPS/firmware/CMakeLists.txt` tracks current source files.
 
 ```bash
 cmake -S TDPS/firmware -B TDPS/firmware/build -DTDPS_TARGET_MCU=OFF -DTDPS_BUILD_TESTS=ON
@@ -69,7 +59,25 @@ cmake -S TDPS/firmware -B TDPS/firmware/build \
   -DTDPS_NO_CAR_MODE=ON -DTDPS_DEBUG_MONITOR=ON
 ```
 
-CMake options: `TDPS_TARGET_MCU` (ON for STM32 HAL cross-build, OFF for PC stubs), `TDPS_BUILD_TESTS` (build test_lf/test_wl), `TDPS_NO_CAR_MODE` (bench debug), `TDPS_DEBUG_MONITOR` (periodic debug output).
+CMake options: `TDPS_TARGET_MCU` (ON for STM32 HAL cross-build, OFF for PC stubs), `TDPS_BUILD_TESTS` (build `test_lf`/`test_wl`), `TDPS_NO_CAR_MODE` (bench debug), `TDPS_DEBUG_MONITOR` (periodic debug output). In PC stub mode CMake also builds `wl_pc_serial_test`.
+
+### Firmware PC stub tests with gcc
+
+Use this as a quick smoke path when CMake is unavailable. If source files change, check `TDPS/firmware/CMakeLists.txt` before trusting this manual list.
+
+```bash
+mkdir -p TDPS/firmware/build/gcc
+
+gcc -ITDPS/firmware/Inc -ITDPS/firmware/common -ITDPS/firmware/platform \
+    TDPS/firmware/Src/{lf_app,lf_chassis,lf_config,lf_config_profiles,lf_control,lf_debug_monitor,lf_dgus_screen,lf_future_hooks,lf_radar,lf_sensor,lf_watch_debug,wireless_hooks,wl_app,wl_config,wl_lora,wl_protocol,lf_platform_stub,wl_platform_stub}.c \
+    TDPS/firmware/test/test_lf_stub.c -o TDPS/firmware/build/gcc/lf_test -lm
+./TDPS/firmware/build/gcc/lf_test
+
+gcc -ITDPS/firmware/Inc -ITDPS/firmware/common -ITDPS/firmware/platform \
+    TDPS/firmware/Src/{wl_app,wl_lora,wl_protocol,wl_config,wl_platform_stub}.c \
+    TDPS/firmware/test/test_wl_stub.c -o TDPS/firmware/build/gcc/wl_test
+./TDPS/firmware/build/gcc/wl_test
+```
 
 ### Simulator regression commands
 
@@ -81,7 +89,7 @@ bash TDPS/simulator/scripts/run_wireless_autotest.sh
 bash TDPS/simulator/scripts/run_system_autotest.sh
 ```
 
-Quick gate criteria: `overallScore >= 82`, `avgLineDetectionRate >= 0.94`, `maxLongestLostSec <= 0.35`, no scenario `score < 70`.
+Quick gate criteria: `overallScore >= 82`, `avgLineDetectionRate >= 0.94`, `maxLongestLostSec <= 0.35`, no runtime error, and no scenario `score < 70`.
 
 Full-course stress run:
 
@@ -93,95 +101,169 @@ bash TDPS/simulator/scripts/line_follow_cli.sh full-course \
   20260319 stress
 ```
 
+Build the line-follow simulator runner directly:
+
+```bash
+bash TDPS/simulator/scripts/build_line_follow_runner.sh
+```
+
+Run parameter sweeps:
+
+```bash
+python TDPS/simulator/scripts/run_line_follow_param_sweep.py --mode coarse
+python TDPS/simulator/scripts/run_line_follow_param_sweep.py --mode refine
+python TDPS/simulator/scripts/run_line_follow_param_sweep.py --mode validate
+```
+
+Sweep overrides are simulator-only unless explicitly written back to firmware config: `TDPS_SIM_KP`, `TDPS_SIM_KD`, `TDPS_SIM_KFF`, `TDPS_SIM_BASE_SPEED`, `TDPS_SIM_MIN_SPEED`, `TDPS_SIM_MAX_CORRECTION`.
+
 Some older testing docs still mention `TDPS-Simulator/`; current code is under `TDPS/simulator/`. If a script still assumes the old path, read `TDPS/agent_docs/03_agent_working_notes.md` and inspect the script before changing paths.
 
-## Architecture notes
+### Wireless PC serial test
+
+```bash
+bash TDPS/simulator/scripts/run_wireless_pc_serial.sh
+```
+
+### Report scripts
+
+```bash
+python TDPS/reports/mid_reports/scripts/build_all.py
+python TDPS/reports/notebook/scripts/build_all.py
+```
+
+For the final report, run LaTeX from `TDPS/reports/final_report/src`:
+
+```bash
+pdflatex main.tex
+pdflatex main.tex
+```
+
+## Firmware architecture
 
 The firmware follows a `main loop + peripheral interrupts + state machines` model, with no RTOS. Core control logic must remain testable through PC stubs and simulator harnesses.
 
 Firmware layers:
 
-- Platform layer: `lf_platform_*`, `wl_platform_*`, UART callbacks, and board/HAL adapters isolate STM32 peripherals from portable logic. Two implementations: STM32F4 HAL (real hardware) and stubs (PC testing).
-- Algorithm layer: `lf_sensor`, `lf_control`, and `lf_chassis` process 8-channel line input, run PID, and produce differential drive commands.
-- Application layer: `lf_app` owns the line-following state machine: `WAIT_START -> CALIBRATING -> RUNNING -> RECOVERING / AVOID_* / FORK_* -> STOPPED / FAULT`.
-- Extension layer: `wireless_hooks`, `lf_future_hooks`, `wl_app`, `wl_lora`, and `lf_radar` integrate LoRa checkpoints and radar obstacle states through non-blocking ticks.
+- Platform layer: `lf_platform_*`, `wl_platform_*`, UART callbacks, and board/HAL adapters isolate STM32 peripherals from portable logic. Two implementations exist: STM32F4 HAL for real hardware and stubs for PC testing.
+- Algorithm layer: `lf_sensor`, `lf_control`, `lf_chassis`, `lf_radar`, and related helpers process 8-channel line input, radar frames, and differential drive commands.
+- Application layer: `lf_app` owns the line-following state machine: `WAIT_START -> CALIBRATING -> RUNNING -> RECOVERING / AVOID_* / FORK_* / REORIENT_* -> STOPPED / FAULT`.
+- Extension layer: `wireless_hooks`, `lf_future_hooks`, `wl_app`, `wl_lora`, debug monitor, run log, and LEDs integrate LoRa checkpoints, diagnostics, and radar obstacle states through non-blocking ticks.
 
-### Current control architecture
+Important entry points and integration rules:
 
-6-parameter simplified PD + curvature feedforward (kff), toggled by `TDPS_SIMPLE_CONTROL=1` in `lf_app.c:1`:
+- `LF_App_RunStep()` advances the line-following state machine.
+- `Wireless_Hooks_Tick()` and `WL_LoRa_Tick()` advance LoRa work asynchronously.
+- `LF_DebugMonitor_Tick()` emits periodic diagnostics when enabled.
+- `LF_App_NotifyCheckpoint(checkpoint_id)` is the integration entry for checkpoint events.
+- Do not block the line-following control loop. LoRa sending, radar parsing, debug output, and UI updates must advance through non-blocking tick functions.
+- Do not do heavy work or blocking I/O in UART callbacks or interrupt paths.
+
+Tuning parameters should usually be centralized in `TDPS/firmware/Src/lf_config.c` and profile overrides in `TDPS/firmware/Src/lf_config_profiles.c` rather than scattered through algorithms.
+
+## Current control architecture
+
+The default control path is a 6-parameter simplified PD + curvature feedforward (`kff`), toggled by `TDPS_SIMPLE_CONTROL=1` in `TDPS/firmware/Src/lf_app.c`:
 
 - Core formula: `correction = kp*error + kd*derivative + kff*derivative*speed`
-- Speed function: `speed = base_speed - (base_speed - min_speed) * |error| / 1750` (IIR smoothing alpha=0.4)
-- Parameters: `kp=0.25`, `kd=1.20`, `kff=0.0008`, `base_speed=280`, `min_speed=60`, `max_correction=300`
-- Disabled features: dead zone, soft zone, integral, speed scaling, rate limiting, double filtering, straight_boost, curve_prepare
-- To revert to old 62-parameter architecture: set `TDPS_SIMPLE_CONTROL=0`
+- Speed function: `speed = base_speed - (base_speed - min_speed) * |error| / 1750` with IIR smoothing alpha around 0.4
+- Current core parameters from simulator scans: `kp=0.25`, `kd=1.20`, `kff=0.0008`, `base_speed=280`, `min_speed=60`, `max_correction=300`
+- Disabled in simplified mode: dead zone, soft zone, integral, speed scaling, rate limiting, double filtering, straight boost, and curve prepare
+- To revert to the old 62-parameter architecture, set `TDPS_SIMPLE_CONTROL=0`
 
-### Segment-based control (新增 2026-06-04)
+### Segment-based control
 
-分段控制系统，通过 `segment_control_enable`（debug profile 默认 true）启用：
+Segment control is enabled through `segment_control_enable` in the config profile. `LF_SegmentType` is defined in `TDPS/firmware/Inc/lf_config.h`.
 
-**路段类型** (`LF_SegmentType` 枚举，定义在 `lf_config.h`)：
-- `LF_SEGMENT_STRAIGHT` — 直道：2-3通道活跃，|pos|小且稳定
-- `LF_SEGMENT_GENTLE_CURVE` — 缓弯：position逐渐偏移，一侧活跃递增
-- `LF_SEGMENT_TIGHT_CURVE` — 急弯/连续弯：position大幅偏移，active>=4
-- `LF_SEGMENT_WIDE_LINE` — 宽线/路口/直角弯入口：大面积亮(active>=6, sum>=3500)
-- `LF_SEGMENT_FORK` — 岔路口：复用 `frame_looks_like_fork()` 条件
-- `LF_SEGMENT_LOST` — 丢线中
+Segment types:
 
-**路段检测** (`detect_segment_type()` in `lf_app.c`)：基于传感器特征+时序历史，滞回机制（3帧确认+8帧保持防抖动）。
+- `LF_SEGMENT_STRAIGHT`: straight line; usually 2-3 active channels and small stable position.
+- `LF_SEGMENT_GENTLE_CURVE`: gentle curve; position gradually offsets and one side becomes more active.
+- `LF_SEGMENT_TIGHT_CURVE`: tight/continuous curve; large position offset or active channel count around 4+.
+- `LF_SEGMENT_WIDE_LINE`: wide line/intersection/right-angle entry; large bright area.
+- `LF_SEGMENT_FORK`: fork; reuses `frame_looks_like_fork()` conditions.
+- `LF_SEGMENT_LOST`: lost line.
 
-**分段参数**：每种路段独立 kp/kd/kff/base_speed/min_speed/max_correction（6段×6参数=36个新参数，前缀 `seg_*`）。切换时 IIR 平滑过渡（alpha=0.5）。
+`detect_segment_type()` in `TDPS/firmware/Src/lf_app.c` uses sensor features plus temporal history, with confirmation and hold frames for hysteresis. Segment parameters use `seg_*` fields for per-segment `kp/kd/kff/base_speed/min_speed/max_correction`, with IIR smoothing during transitions.
 
-**连续弯增强**：维护最近20帧方向切换环形缓冲。连续弯中：grace_ticks 扩展(+4帧)、降速(80)转向、grace 用尽后1帧急转向（correction×1.3）。
+Continuous curve handling tracks recent direction switches. Right-angle handling includes `LF_APP_STATE_REORIENT_APPROACH`, `REORIENT_SPIN`, confirm logic, and optional backtrack retry through `reorient_backtrack_enable` and `reorient_max_retries`.
 
-**直角转弯增强**：
-- `detect_right_angle_turn_side()` 放宽检测：active_count≥4（原≥5），新增次级条件（一侧≥1暗+另一侧≤1暗）
-- 新增 `LF_APP_STATE_REORIENT_APPROACH`：低速前进靠近弯点后再旋转
-- 旋转超时后倒车重试（`reorient_backtrack_enable`，最多 `reorient_max_retries` 次，每次反转方向）
-- 调试输出增加 `seg=<类型> seg_sw=<方向切换计数> retry=<重试次数>`
+## Geometry-sensitive logic
 
-**关键配置开关**：
-- `segment_control_enable` — 分段控制总开关（debug profile: true, competition profile: inherited from debug）
-- `seg_curve_direction_switch_min` — 连续弯方向切换阈值（默认2）
-- `reorient_backtrack_enable` — 直角弯旋转超时后倒车重试（默认true）
-- `reorient_max_retries` — 直角弯重试最大次数（默认2）
+Existing project docs have contained conflicting sensor-to-drive-axis distances, including approximately 4 cm and 22 cm. `TDPS/agent_docs/02_current_progress.md` currently records the geometry as aligned to the real car at about 22 cm sensor front distance and 16 cm wheel track, while an older root guidance snapshot described about 4 cm.
 
-### Geometric constraints
+Before changing geometry-dependent logic such as `lead_advance_*`, `lead_compensation`, right-angle turns, U-turn apex handling, circular entries, or reorient timing, verify the latest hardware record, CAD/mechanical measurement, or board test notes. After verification, update affected docs and configs consistently instead of preserving both values.
 
-当前车型为**倒三轮**（两前驱主动轮 + 后万向轮），传感器阵列中心到前驱动轮轴线中点约 **4 cm**，左右驱动轮中心距约 16 cm。传感器前置距离极短（4 cm vs 正三轮 22 cm），导致：
-- 入弯检测窗口极短（传感器看到特殊线型时，驱动轮轴几乎同时到达）
-- `lead_compensation` 前探补偿意义不大（已关闭）
-- 急弯/直角转弯必须依赖"停车+原地旋转对准"策略（`reorient_*` 参数）
-- PID 参数 kp/kd 需比正三轮低（短前探 = 高频振荡风险更大）
+For intersections, U-turn apexes, right-angle turns, and circular entries, reason about the midpoint of the left/right drive-wheel axis as the actual turning reference point.
 
-当处理路口、U 型顶点、直角转弯和圆形入口时，以驱动轮轴线中点作为转向参考点。
+## Project state and profiles
 
-### Project state
+The firmware startup path currently uses `LF_Config_ApplyDebugProfile()` by default. Use the low-speed conservative debug profile unless the user explicitly asks to switch to competition/track behavior. The debug profile disables fork detection; only the competition/track profile enables it.
 
-The firmware startup path currently uses `LF_Config_ApplyDebugProfile()` by default. Use the low-speed conservative debug profile unless the user explicitly asks to switch. The debug profile disables fork detection; only the competition/track profile enables it.
-
-## Key constraints from the design docs
-
-- Do not block the line-following control loop. LoRa sending and radar parsing are advanced via non-blocking tick functions.
-- Tuning parameters should usually be centralized in `TDPS/firmware/Src/lf_config.c` and profile overrides in `TDPS/firmware/Src/lf_config_profiles.c` rather than scattered through algorithms.
-- `LF_App_NotifyCheckpoint(checkpoint_id)` is the integration entry for checkpoint events.
-- LoRa reports use `TEAM=<id>,NAME=<name>,CP=<checkpoint>,TIME=<MM:SS>\n`; current defaults are `TEAM=15`, `NAME=TDPS`.
-- Radar currently provides forward distance/state (`CLEAR/WARN/BLOCK`). It does not provide true left/right obstacle localization; current avoidance direction comes from config, last line direction, and reverse retry.
-- Track profile uses Yahboom 8-LP UART line sensor input with polarity inversion and fast calibration; verify this before changing sensor mode or weights.
-- Avoidance is timed open-loop (`AVOID_PREP -> TURN_OUT -> BYPASS -> TURN_IN -> REACQUIRE`) and must be retuned after hardware, battery, motor, floor, or load changes.
+Track/debug sensor configuration currently uses Yahboom 8-LP UART line sensor input with polarity inversion and fast calibration. Verify sensor mode, polarity, channel order, and weights before changing sensor handling; this area is high risk for real-car regressions.
 
 Before changing firmware behavior, read:
 
 1. `TDPS/agent_docs/00_project_brief.md`
 2. `TDPS/agent_docs/01_hardware_reference.md`
 3. `TDPS/agent_docs/02_current_progress.md`
-4. Relevant design docs under `TDPS/docs/`, especially `basic_design.md`, `line_following.md`, `tuning.md`, and `wireless_comm.md`.
+4. `TDPS/agent_docs/03_agent_working_notes.md`
+5. Relevant design docs under `TDPS/docs/`, especially `basic_design.md`, `line_following.md`, `tuning.md`, and `wireless_comm.md`
+
+## Wireless, radar, and checkpoint constraints
+
+- LoRa reports use `TEAM=<id>,NAME=<name>,CP=<checkpoint>,TIME=<MM:SS>\n`; current defaults are `TEAM=15`, `NAME=TDPS`.
+- LoRa sending is asynchronous with queueing, AUX readiness, retry, and optional ACK. Do not wait synchronously for radio completion in the control loop.
+- Radar currently provides forward distance/state (`CLEAR/WARN/BLOCK`). It does not provide true left/right obstacle localization.
+- Current avoidance direction comes from config, last line direction, and reverse retry, not from radar left/right perception.
+- Avoidance is timed open-loop (`AVOID_PREP -> TURN_OUT -> BYPASS -> TURN_IN -> REACQUIRE`) and must be retuned after hardware, battery, motor, floor, or load changes.
+
+## Verification expectations for behavior changes
+
+For firmware control changes, run at least the relevant CMake tests and simulator quick regression. For line-following control, sensor weighting, segment transitions, speed profile, right-angle/reorient behavior, or checkpoint behavior, use:
+
+```bash
+ctest --test-dir TDPS/firmware/build -R test_lf --output-on-failure
+bash TDPS/simulator/scripts/line_follow_cli.sh quick
+bash TDPS/simulator/scripts/run_line_follow_stability.sh
+bash TDPS/simulator/scripts/run_system_autotest.sh
+```
+
+For radar changes, also run:
+
+```bash
+bash TDPS/simulator/scripts/run_radar_autotest.sh
+```
+
+For wireless changes, also run:
+
+```bash
+ctest --test-dir TDPS/firmware/build -R test_wl --output-on-failure
+bash TDPS/simulator/scripts/run_wireless_autotest.sh
+bash TDPS/simulator/scripts/run_wireless_pc_serial.sh
+```
+
+If CMake has not been configured yet, run the CMake configure/build commands from the Common commands section first.
 
 ## Board and hardware testing
 
 Board-level test notes live at `TDPS/tests/board/tdps_board_test/README.md`. The recommended current path is ST-Link/SWD plus Keil Watch on `g_board_swd`; USART6 CLI is documented for later use with USB-TTL.
 
 Important board-test safety detail from the docs: before motor testing, raise the wheels, use current-limited power, start with low duty cycle, and stop immediately with `command = 12` or reset/power-off if anything is abnormal.
+
+Main Keil project:
+
+```text
+TDPS/firmware/MDK-ARM/TDPS_LineFollow.uvprojx
+```
+
+Standalone peripheral test projects:
+
+```text
+TDPS/tests/standalone/line_sensor_uart_8plus2_test/MDK-ARM/line_sensor_uart_8plus2_test.uvprojx
+TDPS/tests/standalone/radar_ld2410s/MDK-ARM/radar_ld2410s.uvprojx
+TDPS/tests/standalone/lora_module_test/MDK-ARM/lora_module_test.uvprojx
+```
 
 ## Generated files and large references
 
