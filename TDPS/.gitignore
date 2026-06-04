@@ -8,6 +8,7 @@ reports/notebook/outputs/
 
 # Local reference packages are indexed by README only
 docs_reference/**
+firmware_hal/
 !docs_reference/
 !docs_reference/README.md
 

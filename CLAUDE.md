@@ -34,7 +34,7 @@ Run these from the repository root unless noted otherwise.
 mkdir -p TDPS/firmware/build/gcc
 
 gcc -ITDPS/firmware/Inc -ITDPS/firmware/common -ITDPS/firmware/platform \
-    TDPS/firmware/Src/{lf_app,lf_control,lf_sensor,lf_radar,lf_chassis,lf_config,lf_platform_stub,lf_debug_monitor,lf_future_hooks,lf_led_blink,lf_run_log,wireless_hooks,wl_app,wl_lora,wl_protocol,wl_config,wl_platform_stub}.c \
+    TDPS/firmware/Src/{lf_app,lf_control,lf_sensor,lf_radar,lf_chassis,lf_config,lf_config_profiles,lf_line_features,lf_speed_math,lf_platform_stub,lf_debug_monitor,lf_future_hooks,lf_led_blink,lf_run_log,wireless_hooks,wl_app,wl_lora,wl_protocol,wl_config,wl_platform_stub}.c \
     TDPS/firmware/test/test_lf_stub.c -o TDPS/firmware/build/gcc/lf_test -lm
 ./TDPS/firmware/build/gcc/lf_test
 

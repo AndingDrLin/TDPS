@@ -21,7 +21,7 @@ PC stub 编译（不依赖 STM32 HAL）：
 mkdir -p firmware/build/gcc
 
 gcc -Ifirmware/Inc -Ifirmware/common -Ifirmware/platform \
-    firmware/Src/{lf_app,lf_control,lf_sensor,lf_radar,lf_chassis,lf_config,lf_platform_stub,lf_debug_monitor,lf_future_hooks,lf_led_blink,lf_run_log,wireless_hooks,wl_app,wl_lora,wl_protocol,wl_config,wl_platform_stub}.c \
+    firmware/Src/{lf_app,lf_control,lf_sensor,lf_radar,lf_chassis,lf_config,lf_config_profiles,lf_line_features,lf_speed_math,lf_platform_stub,lf_debug_monitor,lf_future_hooks,lf_led_blink,lf_run_log,wireless_hooks,wl_app,wl_lora,wl_protocol,wl_config,wl_platform_stub}.c \
     firmware/test/test_lf_stub.c -o firmware/build/gcc/lf_test -lm
 ./firmware/build/gcc/lf_test
 
