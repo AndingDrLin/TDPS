@@ -138,6 +138,14 @@ static const char *app_state_name(LF_AppState state)
         return "FORK_COMMIT_RIGHT";
     case LF_APP_STATE_FORK_REACQUIRE:
         return "FORK_REACQUIRE";
+    case LF_APP_STATE_REORIENT_STOP:
+        return "REORIENT_STOP";
+    case LF_APP_STATE_REORIENT_APPROACH:
+        return "REORIENT_APPR";
+    case LF_APP_STATE_REORIENT_SPIN:
+        return "REORIENT_SPIN";
+    case LF_APP_STATE_REORIENT_CONFIRM:
+        return "REORIENT_CONF";
     case LF_APP_STATE_STOPPED:
         return "STOPPED";
     case LF_APP_STATE_FAULT:
@@ -320,7 +328,7 @@ void LF_DebugMonitor_Tick(void)
 
     len = snprintf(line,
                    sizeof(line),
-                   "DBG t=%lu mode=%s app=%s reason=%s cal=%u line=%u pos=%ld sum=%lu peak=%u peakv=%u contrast=%u conf=%u edge=%d motor_l=%d motor_r=%d radar=%s rfv=%u rhas=%u rtype=%s rtgt=%u rfc=%lu rage=%lu dist=%u rerr=%lu fork_dec=%d fork_det=%u fork_blk=%u fork_valid=%u fork_min=%u fork_stale=%u wready=%u wl=%s wcp=%u wcpf=%u wcpt=%u lq=%u ldrop=%u lsucc=%u lfail=%u lretry=%u lack=%u lerr=%d\n",
+                   "DBG t=%lu mode=%s app=%s reason=%s cal=%u line=%u pos=%ld sum=%lu peak=%u peakv=%u contrast=%u conf=%u edge=%d motor_l=%d motor_r=%d radar=%s rfv=%u rhas=%u rtype=%s rtgt=%u rfc=%lu rage=%lu dist=%u rerr=%lu fork_dec=%d fork_det=%u fork_blk=%u fork_valid=%u fork_min=%u fork_stale=%u wready=%u wl=%s wcp=%u wcpf=%u wcpt=%u lq=%u ldrop=%u lsucc=%u lfail=%u lretry=%u lack=%u lerr=%d seg=%d seg_sw=%u retry=%u\n",
                    (unsigned long)now_ms,
                    g_lf_debug_monitor_config.no_car_mode ? "no_car" : "run",
                    app_state_name(ctx->state),
@@ -362,7 +370,10 @@ void LF_DebugMonitor_Tick(void)
                    (unsigned int)(link != NULL ? link->tx_fail_count : 0U),
                    (unsigned int)(link != NULL ? link->retry_count : 0U),
                    (unsigned int)((link != NULL && link->waiting_ack) ? 1U : 0U),
-                   (int)(link != NULL ? link->last_error : WL_LORA_OK));
+                   (int)(link != NULL ? link->last_error : WL_LORA_OK),
+                   (int)ctx->segment_type,
+                   (unsigned int)ctx->direction_switch_count,
+                   (unsigned int)ctx->reorient_retry_count);
 
     if (len > 0) {
         LF_Platform_DebugPrint(line);

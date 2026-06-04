@@ -27,6 +27,19 @@ typedef enum {
     LF_SENSOR_INPUT_I2C_PROTOCOL,
 } LF_SensorInputMode;
 
+/*
+ * 路段类型：用于分段控制，根据传感器模式 + 时序特征判断当前路段。
+ * 每帧由 detect_segment_type() 更新，供参数切换和策略选择使用。
+ */
+typedef enum {
+    LF_SEGMENT_STRAIGHT = 0,      /* 直道：2-3通道活跃，|pos|小且稳定 */
+    LF_SEGMENT_GENTLE_CURVE,      /* 缓弯：position逐渐偏移，一侧活跃递增 */
+    LF_SEGMENT_TIGHT_CURVE,       /* 急弯/连续弯：position大幅偏移，active>=4 */
+    LF_SEGMENT_WIDE_LINE,         /* 宽线/路口/直角弯入口：大面积亮 */
+    LF_SEGMENT_FORK,              /* 岔路口：两侧均有信号 */
+    LF_SEGMENT_LOST,              /* 丢线中 */
+} LF_SegmentType;
+
 typedef struct {
     /* 主循环节拍（ms）。建议保持固定周期执行控制算法。 */
     uint16_t control_period_ms;
@@ -264,6 +277,64 @@ typedef struct {
 
     /* 无旋转快速标定：跳过原地旋转，用固定 min/max。适合无按钮独立运行。 */
     bool sensor_fast_calibration;
+
+    /* ===== 分段控制 ===== */
+    bool segment_control_enable;
+
+    /* 路段检测 */
+    uint8_t segment_confirm_ticks;     /* 路段切换确认帧数（默认3） */
+    uint8_t segment_hold_ticks;        /* 路段最少保持帧数（默认8，防抖动） */
+    uint8_t segment_history_len;       /* 时序历史长度（用于连续弯检测，默认20） */
+
+    /* 分段参数：每种路段独立的 PD+kff 参数集 */
+    float seg_kp_straight;
+    float seg_kd_straight;
+    float seg_kff_straight;
+    int16_t seg_base_speed_straight;
+    int16_t seg_min_speed_straight;
+    int16_t seg_max_correction_straight;
+
+    float seg_kp_gentle_curve;
+    float seg_kd_gentle_curve;
+    float seg_kff_gentle_curve;
+    int16_t seg_base_speed_gentle_curve;
+    int16_t seg_min_speed_gentle_curve;
+    int16_t seg_max_correction_gentle_curve;
+
+    float seg_kp_tight_curve;
+    float seg_kd_tight_curve;
+    float seg_kff_tight_curve;
+    int16_t seg_base_speed_tight_curve;
+    int16_t seg_min_speed_tight_curve;
+    int16_t seg_max_correction_tight_curve;
+
+    float seg_kp_wide_line;
+    float seg_kd_wide_line;
+    float seg_kff_wide_line;
+    int16_t seg_base_speed_wide_line;
+    int16_t seg_min_speed_wide_line;
+    int16_t seg_max_correction_wide_line;
+
+    float seg_kp_fork;
+    float seg_kd_fork;
+    float seg_kff_fork;
+    int16_t seg_base_speed_fork;
+    int16_t seg_min_speed_fork;
+    int16_t seg_max_correction_fork;
+
+    /* 连续弯 */
+    uint8_t seg_curve_direction_window;      /* 方向切换检测窗口帧数（默认20） */
+    uint8_t seg_curve_direction_switch_min;   /* 最小方向切换次数（默认2） */
+    uint8_t seg_curve_grace_ticks_extra;      /* 连续弯额外宽容帧数（默认4，加到 line_lost_grace_ticks） */
+
+    /* 直角转弯增强 */
+    uint8_t right_angle_confirm_ticks;       /* 直角弯确认帧数（默认2） */
+    int16_t reorient_approach_speed;         /* 直角弯靠近弯点速度（默认80） */
+    uint16_t reorient_approach_ms;           /* 直角弯靠近弯点时间（默认100） */
+    bool reorient_backtrack_enable;          /* 旋转超时后倒车重试（默认true） */
+    int16_t reorient_backtrack_speed;        /* 倒车速度（默认120） */
+    uint16_t reorient_backtrack_ms;          /* 倒车时间（默认400） */
+    uint8_t reorient_max_retries;            /* 最大重试次数（默认2） */
 } LF_Config;
 
 /* 全局可变参数实例。可在 main 中直接修改，或通过 lf_config_profiles 预设覆盖。 */

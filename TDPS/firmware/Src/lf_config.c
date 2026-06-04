@@ -113,6 +113,7 @@ LF_Config g_lf_config = {
     .integral_soft_zone = 0.0f,
     .max_output_delta_per_tick = 0,  /* 单拍修正变化上限：UpdatePid 和 UpdatePD 共用，实车建议 30 */
     .max_motor_cmd = 900,
+    .max_motor_delta = 600,
     .motor_deadband = 120,
 
     /* 丢线恢复：先短退再扩大搜索，确认稳定回线后恢复 RUNNING。 */
@@ -182,4 +183,65 @@ LF_Config g_lf_config = {
     .fork_cooldown_ms = 1200U,
 
     .sensor_fast_calibration = false,
+
+    /* ===== 分段控制 ===== */
+    .segment_control_enable = false,    /* 默认关，由 debug profile 按需开启 */
+
+    .segment_confirm_ticks = 3U,
+    .segment_hold_ticks = 8U,
+    .segment_history_len = 20U,
+
+    /* 直道：稳速，小转向 */
+    .seg_kp_straight = 0.20f,
+    .seg_kd_straight = 1.20f,
+    .seg_kff_straight = 0.0f,
+    .seg_base_speed_straight = 100,
+    .seg_min_speed_straight = 80,
+    .seg_max_correction_straight = 250,
+
+    /* 缓弯：适度降速+转角 */
+    .seg_kp_gentle_curve = 0.25f,
+    .seg_kd_gentle_curve = 1.20f,
+    .seg_kff_gentle_curve = 0.0008f,
+    .seg_base_speed_gentle_curve = 200,
+    .seg_min_speed_gentle_curve = 100,
+    .seg_max_correction_gentle_curve = 300,
+
+    /* 急弯/连续弯：低速+大转向+低微分阻尼 */
+    .seg_kp_tight_curve = 0.30f,
+    .seg_kd_tight_curve = 0.80f,
+    .seg_kff_tight_curve = 0.0005f,
+    .seg_base_speed_tight_curve = 120,
+    .seg_min_speed_tight_curve = 50,
+    .seg_max_correction_tight_curve = 400,
+
+    /* 宽线/路口/直角弯入口：极低速，保守转向 */
+    .seg_kp_wide_line = 0.20f,
+    .seg_kd_wide_line = 1.00f,
+    .seg_kff_wide_line = 0.0f,
+    .seg_base_speed_wide_line = 80,
+    .seg_min_speed_wide_line = 50,
+    .seg_max_correction_wide_line = 250,
+
+    /* 岔路口：最低速，保守转向 */
+    .seg_kp_fork = 0.20f,
+    .seg_kd_fork = 1.00f,
+    .seg_kff_fork = 0.0f,
+    .seg_base_speed_fork = 60,
+    .seg_min_speed_fork = 50,
+    .seg_max_correction_fork = 200,
+
+    /* 连续弯 */
+    .seg_curve_direction_window = 20U,
+    .seg_curve_direction_switch_min = 2U,
+    .seg_curve_grace_ticks_extra = 4U,
+
+    /* 直角转弯增强 */
+    .right_angle_confirm_ticks = 2U,
+    .reorient_approach_speed = 80,
+    .reorient_approach_ms = 100U,
+    .reorient_backtrack_enable = true,
+    .reorient_backtrack_speed = 120,
+    .reorient_backtrack_ms = 400U,
+    .reorient_max_retries = 2U,
 };

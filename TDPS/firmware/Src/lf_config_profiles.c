@@ -122,6 +122,67 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.reorient_timeout_ms       = 3000U;  // 超时停车
     g_lf_config.reorient_position_threshold = 300;  // 降低阈值：直角转弯入口位置可能还不大
 
+    /* ===== 分段控制（debug profile 默认开启） ===== */
+    g_lf_config.segment_control_enable    = true;
+
+    g_lf_config.segment_confirm_ticks     = 3U;
+    g_lf_config.segment_hold_ticks        = 8U;
+    g_lf_config.segment_history_len       = 20U;
+
+    /* 直道：稳速，小转向（与全局 base_speed=100 一致） */
+    g_lf_config.seg_kp_straight           = 0.20f;
+    g_lf_config.seg_kd_straight           = 1.20f;
+    g_lf_config.seg_kff_straight          = 0.0f;
+    g_lf_config.seg_base_speed_straight   = 100;
+    g_lf_config.seg_min_speed_straight    = 80;
+    g_lf_config.seg_max_correction_straight = 250;
+
+    /* 缓弯：适度降速+转角 */
+    g_lf_config.seg_kp_gentle_curve       = 0.25f;
+    g_lf_config.seg_kd_gentle_curve       = 1.20f;
+    g_lf_config.seg_kff_gentle_curve      = 0.0008f;
+    g_lf_config.seg_base_speed_gentle_curve = 200;
+    g_lf_config.seg_min_speed_gentle_curve  = 100;
+    g_lf_config.seg_max_correction_gentle_curve = 300;
+
+    /* 急弯/连续弯：低速+大转向+低微分阻尼 */
+    g_lf_config.seg_kp_tight_curve        = 0.30f;
+    g_lf_config.seg_kd_tight_curve        = 0.80f;
+    g_lf_config.seg_kff_tight_curve       = 0.0005f;
+    g_lf_config.seg_base_speed_tight_curve = 120;
+    g_lf_config.seg_min_speed_tight_curve  = 50;
+    g_lf_config.seg_max_correction_tight_curve = 400;
+
+    /* 宽线/路口/直角弯入口：极低速，保守转向 */
+    g_lf_config.seg_kp_wide_line          = 0.20f;
+    g_lf_config.seg_kd_wide_line          = 1.00f;
+    g_lf_config.seg_kff_wide_line         = 0.0f;
+    g_lf_config.seg_base_speed_wide_line  = 80;
+    g_lf_config.seg_min_speed_wide_line   = 50;
+    g_lf_config.seg_max_correction_wide_line = 250;
+
+    /* 岔路口：最低速，保守转向 */
+    g_lf_config.seg_kp_fork               = 0.20f;
+    g_lf_config.seg_kd_fork               = 1.00f;
+    g_lf_config.seg_kff_fork              = 0.0f;
+    g_lf_config.seg_base_speed_fork       = 60;
+    g_lf_config.seg_min_speed_fork        = 50;
+    g_lf_config.seg_max_correction_fork   = 200;
+
+    /* 连续弯 */
+    g_lf_config.seg_curve_direction_window    = 20U;
+    g_lf_config.seg_curve_direction_switch_min = 2U;
+    g_lf_config.seg_curve_grace_ticks_extra   = 4U;
+
+    /* 直角转弯增强 */
+    g_lf_config.right_angle_confirm_ticks  = 2U;
+    g_lf_config.reorient_approach_speed    = 80;
+    g_lf_config.reorient_approach_ms       = 100U;
+    g_lf_config.reorient_backtrack_enable  = true;
+    g_lf_config.reorient_backtrack_speed   = 120;
+    g_lf_config.reorient_backtrack_ms      = 400U;
+    g_lf_config.reorient_max_retries       = 2U;
+
     g_lf_config.radar_enable         = false;
     g_lf_config.obstacle_avoid_enable = false;
     g_lf_config.fork_enable          = false;

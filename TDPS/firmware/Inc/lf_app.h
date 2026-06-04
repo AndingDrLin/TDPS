@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "lf_config.h"
 #include "lf_control.h"
 #include "lf_radar.h"
 #include "lf_sensor.h"
@@ -24,6 +25,7 @@ typedef enum {
     LF_APP_STATE_FORK_COMMIT_RIGHT,
     LF_APP_STATE_FORK_REACQUIRE,
     LF_APP_STATE_REORIENT_STOP,
+    LF_APP_STATE_REORIENT_APPROACH,   /* 直角弯：低速前进靠近弯点后再旋转 */
     LF_APP_STATE_REORIENT_SPIN,
     LF_APP_STATE_REORIENT_CONFIRM,
     LF_APP_STATE_STOPPED,
@@ -140,6 +142,25 @@ typedef struct {
     int8_t trusted_line_dir;
     bool trusted_line_valid;
     int16_t current_target_speed;
+
+    /* 路段检测 */
+    LF_SegmentType segment_type;
+    LF_SegmentType segment_candidate;
+    uint8_t segment_candidate_count;
+    uint8_t segment_hold_count;
+
+    /* 连续弯检测（方向切换环形缓冲） */
+    int8_t position_sign_history[20];
+    uint8_t sign_history_index;
+    uint8_t direction_switch_count;
+
+    /* 直角弯增强 */
+    uint8_t right_angle_detect_count;
+    int8_t right_angle_side;
+    uint8_t reorient_retry_count;
+    bool reorient_retry_reverse;
+    uint32_t reorient_backtrack_start_ms;
+    bool reorient_backtrack_active;
 } LF_AppContext;
 
 /* 应用层初始化。 */

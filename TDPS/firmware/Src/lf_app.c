@@ -48,6 +48,7 @@ static void update_led_for_state(void)
         LF_LedBlink_SetPattern(LF_LED_RAPID_PULSE);
         break;
     case LF_APP_STATE_REORIENT_STOP:
+    case LF_APP_STATE_REORIENT_APPROACH:
     case LF_APP_STATE_REORIENT_SPIN:
     case LF_APP_STATE_REORIENT_CONFIRM:
         LF_LedBlink_SetPattern(LF_LED_HEARTBEAT);
@@ -233,6 +234,151 @@ static bool start_straight_guard_tick(uint32_t now_ms, const LF_SensorFrame *fra
     return true;
 }
 
+/* 前向声明：detect_segment_type 内部使用 */
+static bool frame_is_interference(const LF_SensorFrame *frame);
+static bool frame_is_straight_noise(const LF_SensorFrame *frame);
+static bool frame_looks_like_fork(const LF_SensorFrame *frame);
+static int8_t detect_curve_arc_side(const LF_SensorFrame *frame);
+static int8_t detect_right_angle_turn_side(const LF_SensorFrame *frame);
+
+/*
+ * 路段检测：根据传感器特征 + 时序历史判断当前路段类型。
+ * 优先级从高到低：丢线 > 岔路 > 宽线/路口 > 急弯 > 缓弯 > 直道。
+ *
+ * 滞回机制：
+ * - 切换需要新候选连续 segment_confirm_ticks 帧一致才生效
+ * - 切换后至少保持 segment_hold_ticks 帧防止抖动
+ * - 保持期内除非丢线，否则不切换
+ */
+static void detect_segment_type(uint32_t now_ms)
+{
+    const LF_SensorFrame *frame = &s_app.last_frame;
+    int32_t abs_pos;
+    LF_SegmentType candidate = LF_SEGMENT_STRAIGHT;
+
+    if (!frame->line_detected) {
+        /* 丢线：立即切换，不经过候选期 */
+        s_app.segment_type = LF_SEGMENT_LOST;
+        s_app.segment_candidate = LF_SEGMENT_LOST;
+        s_app.segment_candidate_count = 0U;
+        s_app.segment_hold_count = g_lf_config.segment_hold_ticks;
+        return;
+    }
+
+    abs_pos = abs_i32(frame->position);
+
+    /* === 按优先级判定候选类型 === */
+
+    /* 1. 岔路：复用已有 fork 检测 */
+    if (g_lf_config.fork_enable && frame_looks_like_fork(frame)) {
+        candidate = LF_SEGMENT_FORK;
+    }
+    /* 2. 宽线/路口/直角弯入口：大面积亮 */
+    else if (frame->active_count >= 6U && frame->signal_sum >= 3500U &&
+             !frame_is_interference(frame) && !frame_is_straight_noise(frame)) {
+        candidate = LF_SEGMENT_WIDE_LINE;
+    }
+    /* 3. 急弯/连续弯：position 大幅偏移 或 检测到弯道弧线/直角转弯信号 */
+    else if ((detect_curve_arc_side(frame) != 0 || detect_right_angle_turn_side(frame) != 0) &&
+             abs_pos >= 600) {
+        candidate = LF_SEGMENT_TIGHT_CURVE;
+    }
+    /* 4. 缓弯：position 偏了 或 edge_hint 非零 */
+    else if (abs_pos >= 300 || frame->edge_hint != 0) {
+        candidate = LF_SEGMENT_GENTLE_CURVE;
+    }
+    /* 5. 直道：以上都不满足 */
+    else {
+        candidate = LF_SEGMENT_STRAIGHT;
+    }
+
+    /* === 滞回判定 === */
+
+    /* 保持期：除非丢线，否则不切换 */
+    if (s_app.segment_hold_count > 0U) {
+        s_app.segment_hold_count -= 1U;
+        return;
+    }
+
+    /* 候选与当前相同 → 立即切换 */
+    if (candidate == s_app.segment_type) {
+        s_app.segment_candidate = candidate;
+        s_app.segment_candidate_count = 0U;
+        return;
+    }
+
+    /* 新候选需要连续确认 */
+    if (candidate == s_app.segment_candidate) {
+        s_app.segment_candidate_count += 1U;
+        if (s_app.segment_candidate_count >= g_lf_config.segment_confirm_ticks) {
+            s_app.segment_type = candidate;
+            s_app.segment_hold_count = g_lf_config.segment_hold_ticks;
+            s_app.segment_candidate_count = 0U;
+        }
+    } else {
+        s_app.segment_candidate = candidate;
+        s_app.segment_candidate_count = 1U;
+    }
+}
+
+/*
+ * 连续弯方向切换检测：维护最近 N 帧的 position 符号环形缓冲，
+ * 统计方向和方向的切换次数。
+ */
+static void update_curve_direction_history(void)
+{
+    int8_t current_sign = 0;
+    int8_t prev_sign;
+    uint8_t prev_index;
+    uint8_t window = g_lf_config.seg_curve_direction_window;
+
+    /* 保护：窗口至少为 4，防止除零和数组溢出 */
+    if (window < 4U) {
+        window = 4U;
+    }
+
+    if (s_app.last_frame.position < 0) {
+        current_sign = -1;
+    } else if (s_app.last_frame.position > 0) {
+        current_sign = 1;
+    }
+
+    /* 环形缓冲写入 */
+    if (s_app.sign_history_index >= window) {
+        s_app.sign_history_index = 0U;
+    }
+    prev_sign = s_app.position_sign_history[s_app.sign_history_index];
+    s_app.position_sign_history[s_app.sign_history_index] = current_sign;
+
+    /* 检查是否发生了方向切换（当前帧方向 vs 上一帧方向） */
+    prev_index = (s_app.sign_history_index == 0U)
+                 ? (uint8_t)(window - 1U)
+                 : (uint8_t)(s_app.sign_history_index - 1U);
+    if (current_sign != 0 && prev_sign != 0 && current_sign != prev_sign) {
+        if (s_app.direction_switch_count < UINT8_MAX) {
+            s_app.direction_switch_count += 1U;
+        }
+    }
+
+    s_app.sign_history_index += 1U;
+    if (s_app.sign_history_index >= window) {
+        s_app.sign_history_index = 0U;
+    }
+
+    /* 衰减旧切换：每 window/2 帧衰减一次切换计数，保持时效性 */
+    if ((s_app.sign_history_index % (window / 2U)) == 0U) {
+        if (s_app.direction_switch_count > 0U) {
+            s_app.direction_switch_count -= 1U;
+        }
+    }
+}
+
+static bool is_continuous_curve(void)
+{
+    return s_app.segment_type == LF_SEGMENT_TIGHT_CURVE &&
+           s_app.direction_switch_count >= g_lf_config.seg_curve_direction_switch_min;
+}
+
 static bool frame_is_interference(const LF_SensorFrame *frame)
 {
     int32_t position_jump;
@@ -371,7 +517,7 @@ static int8_t detect_right_angle_turn_side(const LF_SensorFrame *frame)
     uint8_t inactive_left;
     uint8_t inactive_right;
 
-    if (frame == NULL || !frame->line_detected || frame->active_count < 5U) {
+    if (frame == NULL || !frame->line_detected || frame->active_count < 4U) {
         return 0;
     }
 
@@ -381,13 +527,22 @@ static int8_t detect_right_angle_turn_side(const LF_SensorFrame *frame)
     inactive_right = 4U - right_active;
 
     /* 暗角集中在右侧 → 线在左 → 需右转 → return +1 */
+    /* 严格条件：一侧全亮 + 另一侧 2+ 暗 */
     if (inactive_right >= 2U && inactive_left == 0U) {
         return +1;
     }
-    /* 暗角集中在左侧 → 线在右 → 需左转 → return -1 */
     if (inactive_left >= 2U && inactive_right == 0U) {
         return -1;
     }
+
+    /* 放宽条件：白底不均匀时，一侧 1+ 暗 + 另一侧 ≤1 暗 + 亮侧 ≥3 活跃 */
+    if (inactive_right >= 1U && inactive_left <= 1U && left_active >= 3U) {
+        return +1;
+    }
+    if (inactive_left >= 1U && inactive_right <= 1U && right_active >= 3U) {
+        return -1;
+    }
+
     return 0;
 }
 
@@ -1086,6 +1241,11 @@ static void start_reorient(uint32_t now_ms); /* 前向声明，定义在第 ~131
 
 static void handle_line_lost(uint32_t now_ms)
 {
+    int16_t forward;
+    int16_t turn;
+    int8_t dir;
+    uint8_t effective_grace;
+
     reset_lead_phase();
     s_app.straight_noise_count = 0U;
     s_app.fork_detect_count = 0U;
@@ -1096,8 +1256,46 @@ static void handle_line_lost(uint32_t now_ms)
     if (s_app.line_lost_count < UINT8_MAX) {
         s_app.line_lost_count += 1U;
     }
-    if (s_app.line_lost_count <= g_lf_config.line_lost_grace_ticks) {
-        hold_last_line_direction();
+
+    /* 连续弯中扩展宽容期：减少不必要的 recovery */
+    effective_grace = g_lf_config.line_lost_grace_ticks;
+    if (g_lf_config.segment_control_enable && is_continuous_curve()) {
+        effective_grace = (uint8_t)(effective_grace + g_lf_config.seg_curve_grace_ticks_extra);
+    }
+
+    if (s_app.line_lost_count <= effective_grace) {
+        /* 连续弯中的 grace 保持：使用更激进的转向，降速 + 继承上次 correction */
+        if (g_lf_config.segment_control_enable && is_continuous_curve()) {
+            dir = g_lf_config.stable_direction_enable ? s_app.trusted_line_dir : s_app.last_seen_dir;
+            forward = limit_degraded_speed(80);  /* 降速到 80 */
+            /* 使用上次 PID 输出的 80% 作为转向参考，而非固定 line_hold_turn_speed */
+            turn = limit_degraded_speed(g_lf_config.line_hold_turn_speed);
+            if (dir < 0) {
+                LF_Chassis_SetCommand((int16_t)(forward - turn), (int16_t)(forward + turn));
+            } else {
+                LF_Chassis_SetCommand((int16_t)(forward + turn), (int16_t)(forward - turn));
+            }
+        } else {
+            hold_last_line_direction();
+        }
+        set_reason(LF_APP_REASON_LINE_LOST);
+        return;
+    }
+
+    /* grace 用尽后，连续弯中最后尝试急转向（1 帧） */
+    if (g_lf_config.segment_control_enable && is_continuous_curve() &&
+        s_app.line_lost_count == (uint8_t)(effective_grace + 1U)) {
+        float last_correction = s_app.pid.prev_output;
+        int16_t emergency_corr = (int16_t)(last_correction * 1.3f);
+        int8_t dir_sign = (s_app.trusted_line_dir != 0) ? s_app.trusted_line_dir : s_app.last_seen_dir;
+        if (dir_sign < 0) {
+            emergency_corr = (int16_t)(-emergency_corr);
+        }
+        {
+            int16_t e_left, e_right;
+            LF_Control_ComputeMotorCmd(50, emergency_corr, &e_left, &e_right);
+            LF_Chassis_SetCommand(e_left, e_right);
+        }
         set_reason(LF_APP_REASON_LINE_LOST);
         return;
     }
@@ -1270,6 +1468,23 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
                 d.action = LF_RUN_ACTION_REORIENT;
                 return d;
             }
+
+            /* 宽线/路口（大面积亮但无明确方向性暗角）：也触发 reorient 停车旋转找新线段 */
+            if (g_lf_config.reorient_enable && reorient_side == 0 &&
+                s_app.last_frame.active_count >= 6U &&
+                s_app.last_frame.signal_sum >= 3500U &&
+                !frame_is_interference(&s_app.last_frame) &&
+                !frame_is_straight_noise(&s_app.last_frame)) {
+                int8_t wide_dir = s_app.last_frame.edge_hint;
+                if (wide_dir == 0) {
+                    wide_dir = (s_app.last_frame.position < 0) ? (int8_t)(-1) : (int8_t)(1);
+                }
+                s_app.reorient_spin_dir = wide_dir;
+                s_app.last_strong_curve_side = wide_dir;
+                s_app.last_curve_position = s_app.last_frame.position;
+                d.action = LF_RUN_ACTION_REORIENT;
+                return d;
+            }
         }
         /* 进入 curve_arc 时临时提高 max_motor_delta，退出时恢复。 */
         static int16_t saved_max_motor_delta = 0;
@@ -1353,9 +1568,10 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
 }
 
 /*
- * 原地旋转对准：检测到急弯/直角弯时，停车→原地旋转→中间4路传感器对准线→恢复巡线。
+ * 原地旋转对准：检测到急弯/直角弯时，停车→(可选)前进靠近弯点→原地旋转→中间4路传感器对准线→恢复巡线。
  *
  * REORIENT_STOP: 停车，记录旋转方向和起始时间。
+ * REORIENT_APPROACH: (可选)低速前进靠近弯点，让驱动轮到达转弯位置。
  * REORIENT_SPIN: 两轮反向旋转，持续检测中间传感器是否看到线。
  * REORIENT_CONFIRM: 中间传感器对准确认，连续 N 帧稳定后恢复 RUNNING。
  */
@@ -1368,16 +1584,91 @@ static void start_reorient(uint32_t now_ms)
     s_app.curve_arc_side = 0;
     s_app.reorient_start_ms = now_ms;
     s_app.reorient_confirm_count = 0U;
+    s_app.reorient_retry_count = 0U;
+    s_app.reorient_retry_reverse = false;
+    s_app.reorient_backtrack_active = false;
+    s_app.reorient_backtrack_start_ms = 0U;
     set_reason(LF_APP_REASON_REORIENT_STARTED);
-    set_state(LF_APP_STATE_REORIENT_STOP);
-    LF_Chassis_Stop();
-    LF_Platform_DebugPrint("Reorient: stop\n");
+
+    /* 如果是直角弯触发且 position 仍在中间附近，先前进靠近弯点 */
+    if (g_lf_config.reorient_approach_ms > 0U &&
+        abs_i32(s_app.last_frame.position) < 500) {
+        set_state(LF_APP_STATE_REORIENT_APPROACH);
+        LF_Platform_DebugPrint("Reorient: approach\n");
+    } else {
+        set_state(LF_APP_STATE_REORIENT_STOP);
+        LF_Chassis_Stop();
+        LF_Platform_DebugPrint("Reorient: stop\n");
+    }
 }
 
 static bool middle_sensors_aligned(const LF_SensorFrame *frame)
 {
     /* 中间 4 路传感器 (2~5) 至少 3 个活跃，说明线在传感器阵列中央 */
     return count_active_range(frame, 2U, 5U) >= 3U;
+}
+
+static void process_reorient_approach(uint32_t now_ms)
+{
+    int16_t approach_speed = limit_degraded_speed(g_lf_config.reorient_approach_speed);
+
+    LF_Sensor_ReadFrame(&s_app.last_frame);
+
+    if (time_reached(now_ms, s_app.reorient_start_ms, g_lf_config.reorient_approach_ms)) {
+        /* 前进完成，停车进入旋转 */
+        LF_Chassis_Stop();
+        set_state(LF_APP_STATE_REORIENT_STOP);
+        LF_Platform_DebugPrint("Reorient: approach done, stop\n");
+        return;
+    }
+    /* 低速直行靠近弯点 */
+    LF_Chassis_SetCommand(approach_speed, approach_speed);
+}
+
+static void reorient_retry_or_stop(uint32_t now_ms)
+{
+    if (!g_lf_config.reorient_backtrack_enable ||
+        s_app.reorient_retry_count >= g_lf_config.reorient_max_retries) {
+        LF_Chassis_Stop();
+        set_reason(LF_APP_REASON_REORIENT_TIMEOUT);
+        set_state(LF_APP_STATE_STOPPED);
+        LF_Platform_DebugPrint("Reorient: timeout, max retries exhausted\n");
+        return;
+    }
+
+    /* 倒车重试 */
+    s_app.reorient_retry_count += 1U;
+    s_app.reorient_retry_reverse = !s_app.reorient_retry_reverse;
+    s_app.reorient_backtrack_active = true;
+    s_app.reorient_backtrack_start_ms = now_ms;
+
+    /* 反转旋转方向 */
+    s_app.reorient_spin_dir = (int8_t)(-s_app.reorient_spin_dir);
+
+    LF_Platform_DebugPrint("Reorient: backtrack retry %d\n", s_app.reorient_retry_count);
+}
+
+static void process_reorient_backtrack(uint32_t now_ms)
+{
+    int16_t backtrack_speed = g_lf_config.reorient_backtrack_speed;
+    uint32_t backtrack_ms = g_lf_config.reorient_backtrack_ms;
+    if (s_app.reorient_retry_reverse) {
+        backtrack_ms = (uint32_t)(backtrack_ms * (uint32_t)(s_app.reorient_retry_count + 1U) / 2U);
+    }
+
+    LF_Sensor_ReadFrame(&s_app.last_frame);
+
+    if (time_reached(now_ms, s_app.reorient_backtrack_start_ms, backtrack_ms)) {
+        s_app.reorient_backtrack_active = false;
+        s_app.reorient_start_ms = now_ms;   /* 重置超时计时 */
+        set_state(LF_APP_STATE_REORIENT_SPIN);
+        LF_LedBlink_SetPattern(LF_LED_HEARTBEAT);
+        LF_Platform_DebugPrint("Reorient: backtrack done, re-spin\n");
+        return;
+    }
+
+    /* 倒车 */
+    LF_Chassis_SetCommand((int16_t)(-backtrack_speed), (int16_t)(-backtrack_speed));
 }
 
 static void process_reorient_stop(uint32_t now_ms)
@@ -1397,12 +1688,9 @@ static void process_reorient_spin(uint32_t now_ms)
 
     LF_Sensor_ReadFrame(&s_app.last_frame);
 
-    /* 超时保护 */
+    /* 超时保护 → 倒车重试 */
     if ((uint32_t)(now_ms - s_app.reorient_start_ms) >= g_lf_config.reorient_timeout_ms) {
-        LF_Chassis_Stop();
-        set_reason(LF_APP_REASON_REORIENT_TIMEOUT);
-        set_state(LF_APP_STATE_STOPPED);
-        LF_Platform_DebugPrint("Reorient: timeout\n");
+        reorient_retry_or_stop(now_ms);
         return;
     }
 
@@ -1431,12 +1719,9 @@ static void process_reorient_confirm(uint32_t now_ms)
 {
     LF_Sensor_ReadFrame(&s_app.last_frame);
 
-    /* 超时保护 */
+    /* 超时保护 → 倒车重试 */
     if ((uint32_t)(now_ms - s_app.reorient_start_ms) >= g_lf_config.reorient_timeout_ms) {
-        LF_Chassis_Stop();
-        set_reason(LF_APP_REASON_REORIENT_TIMEOUT);
-        set_state(LF_APP_STATE_STOPPED);
-        LF_Platform_DebugPrint("Reorient: timeout in confirm\n");
+        reorient_retry_or_stop(now_ms);
         return;
     }
 
@@ -1469,6 +1754,12 @@ static void process_running(uint32_t now_ms, float dt_s)
     float error;
 
     LF_Sensor_ReadFrame(&s_app.last_frame);
+
+    /* 路段检测 + 连续弯方向追踪（在仲裁前执行，供 handle_line_lost 使用） */
+    if (g_lf_config.segment_control_enable) {
+        detect_segment_type(now_ms);
+        update_curve_direction_history();
+    }
 
     LF_RunDecision decision = arbitrate_running_action(now_ms);
 
@@ -1509,6 +1800,94 @@ static void process_running(uint32_t now_ms, float dt_s)
         {
             float ratio;
             int16_t raw_speed;
+            float active_kp = g_lf_config.kp;
+            float active_kd = g_lf_config.kd;
+            float active_kff = g_lf_config.kff;
+            int16_t active_base_speed = g_lf_config.base_speed;
+            int16_t active_min_speed = g_lf_config.min_speed;
+            int16_t active_max_correction = g_lf_config.max_correction;
+
+            /* 分段参数选择（平滑过渡到目标参数集） */
+            if (g_lf_config.segment_control_enable) {
+                static LF_SegmentType blended_segment = LF_SEGMENT_STRAIGHT;
+                static float blend_kp = 0.25f, blend_kd = 0.60f, blend_kff = 0.0f;
+                static int16_t blend_bs = 100, blend_ms = 60;
+                static int16_t blend_mc = 300;
+                float target_kp, target_kd, target_kff;
+                int16_t target_bs, target_ms, target_mc;
+                const float blend_alpha = 0.5f;  /* 每帧过渡 50% */
+
+                switch (s_app.segment_type) {
+                case LF_SEGMENT_STRAIGHT:
+                    target_kp = g_lf_config.seg_kp_straight;
+                    target_kd = g_lf_config.seg_kd_straight;
+                    target_kff = g_lf_config.seg_kff_straight;
+                    target_bs = g_lf_config.seg_base_speed_straight;
+                    target_ms = g_lf_config.seg_min_speed_straight;
+                    target_mc = g_lf_config.seg_max_correction_straight;
+                    break;
+                case LF_SEGMENT_GENTLE_CURVE:
+                    target_kp = g_lf_config.seg_kp_gentle_curve;
+                    target_kd = g_lf_config.seg_kd_gentle_curve;
+                    target_kff = g_lf_config.seg_kff_gentle_curve;
+                    target_bs = g_lf_config.seg_base_speed_gentle_curve;
+                    target_ms = g_lf_config.seg_min_speed_gentle_curve;
+                    target_mc = g_lf_config.seg_max_correction_gentle_curve;
+                    break;
+                case LF_SEGMENT_TIGHT_CURVE:
+                    target_kp = g_lf_config.seg_kp_tight_curve;
+                    target_kd = g_lf_config.seg_kd_tight_curve;
+                    target_kff = g_lf_config.seg_kff_tight_curve;
+                    target_bs = g_lf_config.seg_base_speed_tight_curve;
+                    target_ms = g_lf_config.seg_min_speed_tight_curve;
+                    target_mc = g_lf_config.seg_max_correction_tight_curve;
+                    break;
+                case LF_SEGMENT_WIDE_LINE:
+                    target_kp = g_lf_config.seg_kp_wide_line;
+                    target_kd = g_lf_config.seg_kd_wide_line;
+                    target_kff = g_lf_config.seg_kff_wide_line;
+                    target_bs = g_lf_config.seg_base_speed_wide_line;
+                    target_ms = g_lf_config.seg_min_speed_wide_line;
+                    target_mc = g_lf_config.seg_max_correction_wide_line;
+                    break;
+                case LF_SEGMENT_FORK:
+                    target_kp = g_lf_config.seg_kp_fork;
+                    target_kd = g_lf_config.seg_kd_fork;
+                    target_kff = g_lf_config.seg_kff_fork;
+                    target_bs = g_lf_config.seg_base_speed_fork;
+                    target_ms = g_lf_config.seg_min_speed_fork;
+                    target_mc = g_lf_config.seg_max_correction_fork;
+                    break;
+                case LF_SEGMENT_LOST:
+                default:
+                    /* 丢线时回落全局默认参数 */
+                    target_kp = g_lf_config.kp;
+                    target_kd = g_lf_config.kd;
+                    target_kff = g_lf_config.kff;
+                    target_bs = g_lf_config.base_speed;
+                    target_ms = g_lf_config.min_speed;
+                    target_mc = g_lf_config.max_correction;
+                    break;
+                }
+
+                if (s_app.segment_type != blended_segment) {
+                    blended_segment = s_app.segment_type;
+                }
+                /* 一阶 IIR 平滑过渡 */
+                blend_kp  = blend_kp  * blend_alpha + target_kp  * (1.0f - blend_alpha);
+                blend_kd  = blend_kd  * blend_alpha + target_kd  * (1.0f - blend_alpha);
+                blend_kff = blend_kff * blend_alpha + target_kff * (1.0f - blend_alpha);
+                blend_bs  = (int16_t)((float)blend_bs * blend_alpha + (float)target_bs * (1.0f - blend_alpha));
+                blend_ms  = (int16_t)((float)blend_ms * blend_alpha + (float)target_ms * (1.0f - blend_alpha));
+                blend_mc  = (int16_t)((float)blend_mc * blend_alpha + (float)target_mc * (1.0f - blend_alpha));
+
+                active_kp = blend_kp;
+                active_kd = blend_kd;
+                active_kff = blend_kff;
+                active_base_speed = blend_bs;
+                active_min_speed = blend_ms;
+                active_max_correction = blend_mc;
+            }
 
             error = (float)(decision.interference
                             ? s_app.last_trusted_position
@@ -1519,20 +1898,22 @@ static void process_running(uint32_t now_ms, float dt_s)
                 float raw_abs = (error > 0.0f) ? error : -error;
                 ratio = raw_abs / 1750.0f;
                 if (ratio > 1.0f) ratio = 1.0f;
-                raw_speed = (int16_t)((float)g_lf_config.base_speed -
-                             (float)(g_lf_config.base_speed - g_lf_config.min_speed) * ratio);
-                if (raw_speed < g_lf_config.min_speed) raw_speed = g_lf_config.min_speed;
+                raw_speed = (int16_t)((float)active_base_speed -
+                             (float)(active_base_speed - active_min_speed) * ratio);
+                if (raw_speed < active_min_speed) raw_speed = active_min_speed;
             }
 
             error = shape_control_error(error);
 
             /* 一阶 IIR 平滑速度变化，alpha=0.4 */
             base_speed = (int16_t)(0.4f * (float)raw_speed + 0.6f * (float)s_app.current_target_speed);
-            if (base_speed < g_lf_config.min_speed) base_speed = g_lf_config.min_speed;
+            if (base_speed < active_min_speed) base_speed = active_min_speed;
             s_app.current_target_speed = base_speed;
 
-            /* PD + kff 前馈：kff*derivative*speed 在 UpdatePD 内部计算 */
-            correction = LF_Control_UpdatePD(error, dt_s, base_speed, &s_app.pid);
+            /* PD + kff 前馈：使用选中参数集 */
+            correction = LF_Control_UpdatePDWithParams(error, dt_s, base_speed,
+                                                        &s_app.pid, active_kp, active_kd,
+                                                        active_kff, active_max_correction);
         }
         if (decision.start_guard_active) {
             base_speed = limit_degraded_speed(g_lf_config.start_straight_guard_speed);
@@ -1902,6 +2283,29 @@ void LF_App_Init(void)
     s_app.trusted_line_valid = false;
     s_app.current_target_speed = g_lf_config.base_speed;
 
+    /* 路段检测初始化 */
+    s_app.segment_type = LF_SEGMENT_STRAIGHT;
+    s_app.segment_candidate = LF_SEGMENT_STRAIGHT;
+    s_app.segment_candidate_count = 0U;
+    s_app.segment_hold_count = 0U;
+    {
+        uint8_t i;
+        uint8_t hist_len = g_lf_config.segment_history_len;
+        if (hist_len < 4U) hist_len = 4U;
+        if (hist_len > 20U) hist_len = 20U;
+        for (i = 0U; i < 20U; i++) {
+            s_app.position_sign_history[i] = 0;
+        }
+    }
+    s_app.sign_history_index = 0U;
+    s_app.direction_switch_count = 0U;
+    s_app.right_angle_detect_count = 0U;
+    s_app.right_angle_side = 0;
+    s_app.reorient_retry_count = 0U;
+    s_app.reorient_retry_reverse = false;
+    s_app.reorient_backtrack_start_ms = 0U;
+    s_app.reorient_backtrack_active = false;
+
     set_state(LF_APP_STATE_WAIT_START);
 }
 
@@ -2012,15 +2416,31 @@ void LF_App_RunStep(void)
             break;
 
         case LF_APP_STATE_REORIENT_STOP:
-            process_reorient_stop(now_ms);
+            if (s_app.reorient_backtrack_active) {
+                process_reorient_backtrack(now_ms);
+            } else {
+                process_reorient_stop(now_ms);
+            }
+            break;
+
+        case LF_APP_STATE_REORIENT_APPROACH:
+            process_reorient_approach(now_ms);
             break;
 
         case LF_APP_STATE_REORIENT_SPIN:
-            process_reorient_spin(now_ms);
+            if (s_app.reorient_backtrack_active) {
+                process_reorient_backtrack(now_ms);
+            } else {
+                process_reorient_spin(now_ms);
+            }
             break;
 
         case LF_APP_STATE_REORIENT_CONFIRM:
-            process_reorient_confirm(now_ms);
+            if (s_app.reorient_backtrack_active) {
+                process_reorient_backtrack(now_ms);
+            } else {
+                process_reorient_confirm(now_ms);
+            }
             break;
 
         case LF_APP_STATE_STOPPED:
