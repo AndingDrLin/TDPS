@@ -137,21 +137,21 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.seg_min_speed_straight    = 80;
     g_lf_config.seg_max_correction_straight = 250;
 
-    /* 缓弯：适度降速+转角 */
-    g_lf_config.seg_kp_gentle_curve       = 0.25f;
-    g_lf_config.seg_kd_gentle_curve       = 1.20f;
+    /* 缓弯/S弯入口：快速响应，提高kp和max_correction */
+    g_lf_config.seg_kp_gentle_curve       = 0.35f;  /* 提高P增益，更快响应S弯 */
+    g_lf_config.seg_kd_gentle_curve       = 1.00f;  /* 适度D阻尼 */
     g_lf_config.seg_kff_gentle_curve      = 0.0008f;
-    g_lf_config.seg_base_speed_gentle_curve = 200;
-    g_lf_config.seg_min_speed_gentle_curve  = 100;
-    g_lf_config.seg_max_correction_gentle_curve = 300;
+    g_lf_config.seg_base_speed_gentle_curve = 150;   /* 降低速度，给更多反应时间 */
+    g_lf_config.seg_min_speed_gentle_curve  = 80;
+    g_lf_config.seg_max_correction_gentle_curve = 350; /* 提高差速上限 */
 
     /* 急弯/连续弯：低速+大转向+低微分阻尼 */
-    g_lf_config.seg_kp_tight_curve        = 0.30f;
-    g_lf_config.seg_kd_tight_curve        = 0.80f;
+    g_lf_config.seg_kp_tight_curve        = 0.40f;  /* 更高P增益，急弯全力转向 */
+    g_lf_config.seg_kd_tight_curve        = 0.60f;  /* 降低D阻尼，减少转向抑制 */
     g_lf_config.seg_kff_tight_curve       = 0.0005f;
-    g_lf_config.seg_base_speed_tight_curve = 120;
-    g_lf_config.seg_min_speed_tight_curve  = 50;
-    g_lf_config.seg_max_correction_tight_curve = 400;
+    g_lf_config.seg_base_speed_tight_curve = 100;    /* 继续降速 */
+    g_lf_config.seg_min_speed_tight_curve  = 40;     /* 更低最低速 */
+    g_lf_config.seg_max_correction_tight_curve = 450; /* 更大差速 */
 
     /* 宽线/路口/直角弯入口：极低速，保守转向 */
     g_lf_config.seg_kp_wide_line          = 0.20f;

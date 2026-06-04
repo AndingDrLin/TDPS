@@ -281,9 +281,12 @@ static void detect_segment_type(uint32_t now_ms)
              !frame_is_interference(frame) && !frame_is_straight_noise(frame)) {
         candidate = LF_SEGMENT_WIDE_LINE;
     }
-    /* 3. 急弯/连续弯：position 大幅偏移 或 检测到弯道弧线/直角转弯信号 */
-    else if ((detect_curve_arc_side(frame) != 0 || detect_right_angle_turn_side(frame) != 0) &&
-             abs_pos >= 600) {
+    /* 3a. 直角转弯：无需 position 门限，传感器分布已足够判别（一侧1-2暗+对侧全亮） */
+    else if (detect_right_angle_turn_side(frame) != 0) {
+        candidate = LF_SEGMENT_TIGHT_CURVE;
+    }
+    /* 3b. 急弯/连续弯：curve_arc 检测 + position 门限 */
+    else if (detect_curve_arc_side(frame) != 0 && abs_pos >= 400) {
         candidate = LF_SEGMENT_TIGHT_CURVE;
     }
     /* 4. 缓弯：position 偏了（降低门限到200）、position 变化率大（S弯入口检测）、或 edge_hint 非零 */
@@ -509,13 +512,13 @@ static int8_t detect_curve_arc_side(const LF_SensorFrame *frame)
 }
 
 /*
- * 直角转弯/急弯检测：绕过 middle_lane_is_good 的屏蔽。
- * 直角转弯时传感器模式为"大面积亮 + 暗角集中在一侧"（6+ 活跃，1-2 个暗在对侧）。
- * detect_curve_arc_side 会因 middle_lane_is_good=true 返回 0，此函数直接检查原始分布。
+ * 直角转弯检测：传感器模式为"大面积亮 + 暗角集中在一侧"。
+ * 用户需求：最外侧1-2个通道不亮 + 其余全亮 → 判定直角弯并触发停车旋转。
  *
- * 严格条件要求 ≥3 暗（排除正常偏线巡线场景），
- * 或 ≥2 暗且 total active ≥6（大面积亮 + 暗角的直角转弯典型模式）。
- * 之前的 inactive≥2 && inactive==0 条件在正常偏线（一侧4亮/另一侧2亮）时也会误触发。
+ * 条件：一侧 inactive=1~2 + 另一侧 inactive=0（全亮）+ total_active >= 6
+ * 一侧有1-2个暗角是直角弯入口的典型模式。
+ * total_active>=6 保证不是正常偏线巡线（通常4-5 active）。
+ * 严格条件（>=3暗）保留作为兜底。
  */
 static int8_t detect_right_angle_turn_side(const LF_SensorFrame *frame)
 {
@@ -535,21 +538,21 @@ static int8_t detect_right_angle_turn_side(const LF_SensorFrame *frame)
     inactive_right = 4U - right_active;
     total_active = frame->active_count;
 
-    /* 严格条件：一侧 ≥3 暗（排除正常偏线巡线的 2-暗场景） */
+    /* 主条件：一侧1-2暗 + 另一侧全亮 + 至少6路活跃 → 直角弯入口检测 */
+    if (inactive_right >= 1U && inactive_right <= 2U &&
+        inactive_left == 0U && total_active >= 6U) {
+        return +1;
+    }
+    if (inactive_left >= 1U && inactive_left <= 2U &&
+        inactive_right == 0U && total_active >= 6U) {
+        return -1;
+    }
+
+    /* 兜底：一侧 >=3 暗 + 另一侧全亮（直角弯已深入） */
     if (inactive_right >= 3U && inactive_left == 0U) {
         return +1;
     }
     if (inactive_left >= 3U && inactive_right == 0U) {
-        return -1;
-    }
-
-    /* 次级条件：一侧 ≥2 暗 + 另一侧全亮 + total active ≥6
-     * 大面积亮+少量暗角是直角转弯的典型模式，
-     * active≥6 保证不会在正常偏线巡线（通常4-5 active）时误触发 */
-    if (inactive_right >= 2U && inactive_left == 0U && total_active >= 6U) {
-        return +1;
-    }
-    if (inactive_left >= 2U && inactive_right == 0U && total_active >= 6U) {
         return -1;
     }
 
@@ -1465,18 +1468,24 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
                            frame_is_lead_event(&s_app.last_frame);
         bool curve_allowed = (!lead_active && (!d.start_guard_active || strong_curve_side != 0));
 
-        /* 急弯原地旋转对准：side_wide 检测到急弯 + 位置偏差超过阈值。
-         * 额外加入 right_angle_side（直角转弯专检：3+暗 或 2+暗+6+active）。
-         * 冷却期检查：防止 U 弯中反复触发 REORIENT 导致振荡。
-         * 仅靠 position 门限触发，不使用 active_count（太敏感）。 */
+        /* 急弯原地旋转对准。
+         * 直角转弯（right_angle_side）：传感器模式已足够判别（一侧1-2暗+对侧全亮），无需position门限，立即触发。
+         * 急弯（strong_curve_side）：需要position超过门限才触发，避免正常偏线误触发。
+         * 冷却期检查：防止 U 弯中反复触发 REORIENT 导致振荡。 */
         {
             bool reorient_cooling = g_lf_config.reorient_cooldown_ms > 0U &&
                 s_app.reorient_last_finish_ms > 0U &&
                 (uint32_t)(now_ms - s_app.reorient_last_finish_ms) < g_lf_config.reorient_cooldown_ms;
-            if (g_lf_config.reorient_enable && !reorient_cooling &&
-                (strong_curve_side != 0 || right_angle_side != 0) &&
+            /* 直角弯：传感器检测到即触发，不需position门限 */
+            if (g_lf_config.reorient_enable && !reorient_cooling && right_angle_side != 0) {
+                s_app.reorient_spin_dir = right_angle_side;
+                d.action = LF_RUN_ACTION_REORIENT;
+                return d;
+            }
+            /* 急弯：需要position超过门限 */
+            if (g_lf_config.reorient_enable && !reorient_cooling && strong_curve_side != 0 &&
                 abs_i32(s_app.last_frame.position) >= g_lf_config.reorient_position_threshold) {
-                s_app.reorient_spin_dir = (strong_curve_side != 0) ? strong_curve_side : right_angle_side;
+                s_app.reorient_spin_dir = strong_curve_side;
                 d.action = LF_RUN_ACTION_REORIENT;
                 return d;
             }
