@@ -273,14 +273,15 @@ static void detect_segment_type(uint32_t now_ms)
     if (g_lf_config.fork_enable && frame_looks_like_fork(frame)) {
         candidate = LF_SEGMENT_FORK;
     }
-    /* 2. 宽线/路口/直角弯入口：大面积亮 */
+    /* 2. 宽线/路口：大面积亮且非直角弯（直角弯入口有一侧暗传感器，应优先判为急弯） */
     else if (frame->active_count >= 6U && frame->signal_sum >= 3500U &&
-             !frame_is_interference(frame) && !frame_is_straight_noise(frame)) {
+             !frame_is_interference(frame) && !frame_is_straight_noise(frame) &&
+             detect_right_angle_turn_side(frame) == 0) {
         candidate = LF_SEGMENT_WIDE_LINE;
     }
-    /* 3. 急弯/连续弯：检测到弯道弧线或直角转弯信号 + position 门限（降低到400加快响应） */
+    /* 3. 急弯/连续弯：检测到弯道弧线或直角转弯信号 + position 门限（降低到300匹配单暗传感器场景） */
     else if ((detect_curve_arc_side(frame) != 0 || detect_right_angle_turn_side(frame) != 0) &&
-             abs_pos >= 400) {
+             abs_pos >= 300) {
         candidate = LF_SEGMENT_TIGHT_CURVE;
     }
     /* 4. 缓弯：position 偏了 或 edge_hint 非零 */
@@ -544,13 +545,14 @@ static int8_t detect_right_angle_turn_side(const LF_SensorFrame *frame)
     if (inactive_right >= 2U && inactive_left == 0U && total_active >= 6U) return +1;
     if (inactive_left >= 2U && inactive_right == 0U && total_active >= 6U) return -1;
 
-    /* C级：≥1 暗 + 对侧全亮 + ≥6 active + position 大跳变 ≥500
-     * 直角弯入口：position 从居中突然跳到 700+，单帧跳变 500+
-     * S弯/U弯：position 渐进偏移，单帧跳变通常 <300 */
+    /* C级：≥1 暗 + 对侧全亮 + ≥6 active + position 大跳变 ≥300
+     * 直角弯入口：position 从居中突然跳到 300+，单帧跳变 300+
+     * S弯/U弯：position 渐进偏移，单帧跳变通常 <200
+     * 阈值从500降到300：覆盖单暗传感器场景（|position|≈300） */
     if (total_active >= 6U && s_app.trusted_line_valid) {
         int32_t pos_jump = abs_i32(frame->position - s_app.last_trusted_position);
-        if (inactive_right == 1U && inactive_left == 0U && pos_jump >= 500) return +1;
-        if (inactive_left == 1U && inactive_right == 0U && pos_jump >= 500) return -1;
+        if (inactive_right == 1U && inactive_left == 0U && pos_jump >= 300) return +1;
+        if (inactive_left == 1U && inactive_right == 0U && pos_jump >= 300) return -1;
     }
 
     return 0;

@@ -31,7 +31,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.ki  = 0.05f;    // 小积分：消除弯道跟踪的稳态误差（P-only在曲线上是鞍点不稳定）
     g_lf_config.kd  = 0.60f;    // 倒三轮：提高D阻尼0.60→0.80，抑制高频振荡
 		
-    g_lf_config.control_error_deadband  = 60;    // 简化控制：不屏蔽小偏差
+    g_lf_config.control_error_deadband  = 30;    // 降低死区：S弯入口小偏差也能产生校正量，60→30
     g_lf_config.control_error_soft_zone = 120;   // 简化控制：不做软区衰减
 		
     g_lf_config.max_correction            = 300;  // 提高差速上限，增强急弯转向能力
@@ -120,17 +120,17 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.reorient_spin_speed       = 180;    // 原地旋转速度，提高到180加快对准
     g_lf_config.reorient_confirm_ticks    = 1U;     // 降低确认帧数，更快恢复巡线
     g_lf_config.reorient_timeout_ms       = 5000U;  // 增加超时，留足等待+旋转时间
-    g_lf_config.reorient_position_threshold = 700;  // 提高门限，只在真正急弯/直角弯触发
+    g_lf_config.reorient_position_threshold = 300;  // 降低门限700→300：覆盖单暗传感器场景(pos≈307)，配合C级检测+consistently_drifting防S弯误触发
 
     /* ===== 分段控制（debug profile 默认开启） ===== */
     g_lf_config.segment_control_enable    = true;
 
-    g_lf_config.segment_confirm_ticks     = 2U;    /* 2帧确认，加快S弯入口响应 */
-    g_lf_config.segment_hold_ticks        = 5U;    /* 减少保持，路段切换更灵活 */
+    g_lf_config.segment_confirm_ticks     = 1U;    /* 1帧确认，最快响应S弯入口（原2帧） */
+    g_lf_config.segment_hold_ticks        = 3U;    /* 减少保持5→3：允许更快升级到TIGHT_CURVE */
     g_lf_config.segment_history_len       = 20U;
 
     /* 直道：稳速，小转向（与全局 base_speed=100 一致） */
-    g_lf_config.seg_kp_straight           = 0.15f;
+    g_lf_config.seg_kp_straight           = 0.20f;  /* 提高0.15→0.20：直道也不过度抑制小偏差，S弯入口提前响应 */
     g_lf_config.seg_kd_straight           = 1.20f;
     g_lf_config.seg_kff_straight          = 0.0f;
     g_lf_config.seg_base_speed_straight   = 100;
@@ -138,11 +138,11 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.seg_max_correction_straight = 250;
 
     /* 缓弯/S弯入口：快速响应，提高kp和max_correction */
-    g_lf_config.seg_kp_gentle_curve       = 0.35f;  /* 提高P增益，更快响应S弯 */
+    g_lf_config.seg_kp_gentle_curve       = 0.40f;  /* 提高0.35→0.40：更强初始弯道响应 */
     g_lf_config.seg_kd_gentle_curve       = 1.00f;  /* 适度D阻尼 */
     g_lf_config.seg_kff_gentle_curve      = 0.0008f;
-    g_lf_config.seg_base_speed_gentle_curve = 100;   /* 降低速度，给更多反应时间 */
-    g_lf_config.seg_min_speed_gentle_curve  = 80;
+    g_lf_config.seg_base_speed_gentle_curve = 90;    /* 降速100→90：S弯入口给更多反应时间 */
+    g_lf_config.seg_min_speed_gentle_curve  = 75;     /* 降速80→75 */
     g_lf_config.seg_max_correction_gentle_curve = 350; /* 提高差速上限 */
 
     /* 急弯/连续弯：低速+大转向+低微分阻尼 */
