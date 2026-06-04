@@ -359,6 +359,38 @@ static int8_t detect_curve_arc_side(const LF_SensorFrame *frame)
     return 0;
 }
 
+/*
+ * 直角转弯/急弯检测：绕过 middle_lane_is_good 的屏蔽。
+ * 直角转弯时传感器模式为"大面积亮 + 暗角集中在一侧"（6+ 活跃，1-2 个暗在对侧）。
+ * detect_curve_arc_side 会因 middle_lane_is_good=true 返回 0，此函数直接检查原始分布。
+ */
+static int8_t detect_right_angle_turn_side(const LF_SensorFrame *frame)
+{
+    uint8_t left_active;
+    uint8_t right_active;
+    uint8_t inactive_left;
+    uint8_t inactive_right;
+
+    if (frame == NULL || !frame->line_detected || frame->active_count < 5U) {
+        return 0;
+    }
+
+    left_active = count_active_range(frame, 0U, 3U);
+    right_active = count_active_range(frame, 4U, 7U);
+    inactive_left = 4U - left_active;
+    inactive_right = 4U - right_active;
+
+    /* 暗角集中在右侧 → 线在左 → 需右转 → return +1 */
+    if (inactive_right >= 2U && inactive_left == 0U) {
+        return +1;
+    }
+    /* 暗角集中在左侧 → 线在右 → 需左转 → return -1 */
+    if (inactive_left >= 2U && inactive_right == 0U) {
+        return -1;
+    }
+    return 0;
+}
+
 static bool frame_is_straight_noise(const LF_SensorFrame *frame)
 {
     int32_t position_delta;
@@ -1050,6 +1082,8 @@ typedef struct {
     bool start_guard_active;
 } LF_RunDecision;
 
+static void start_reorient(uint32_t now_ms); /* 前向声明，定义在第 ~1313 行 */
+
 static void handle_line_lost(uint32_t now_ms)
 {
     reset_lead_phase();
@@ -1068,10 +1102,11 @@ static void handle_line_lost(uint32_t now_ms)
         return;
     }
 
-    /* 丢线前刚检测到急弯且位置偏差大 → 原地旋转对准（替代 recovery） */
+    /* 丢线前刚检测到急弯且位置偏差大或大面积亮 → 原地旋转对准（替代 recovery） */
     if (g_lf_config.reorient_enable &&
         s_app.last_strong_curve_side != 0 &&
-        abs_i32(s_app.last_curve_position) >= g_lf_config.reorient_position_threshold) {
+        (abs_i32(s_app.last_curve_position) >= g_lf_config.reorient_position_threshold ||
+         s_app.last_frame.active_count >= 5U)) {
         s_app.reorient_spin_dir = s_app.last_strong_curve_side;
         s_app.last_strong_curve_side = 0;
         start_reorient(now_ms);
@@ -1148,16 +1183,16 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
     d.start_guard_active = start_straight_guard_tick(now_ms, &s_app.last_frame);
 
     /* 保存急弯检测结果，供丢线时判断是否原地旋转对准。
-     * side_wide 需要 5+ 传感器活跃（严格），curve_arc 只需 2+ 差异（宽松）。
-     * 两者都记录：side_wide 用于在线时触发，curve_arc 用于丢线时的紧急判断。 */
+     * side_wide(5+端点) > right_angle(大面积亮+暗角) > curve_arc(2+差异) */
     {
         int8_t sw = detect_side_wide_curve_arc_side(&s_app.last_frame);
+        int8_t ra = detect_right_angle_turn_side(&s_app.last_frame);
         int8_t cs = detect_curve_arc_side(&s_app.last_frame);
-        if (sw != 0) {
-            s_app.last_strong_curve_side = sw;
-            s_app.last_curve_position = s_app.last_frame.position;
-        } else if (cs != 0 && abs_i32(s_app.last_frame.position) >= 1000) {
-            s_app.last_strong_curve_side = cs;
+        int8_t best = sw;
+        if (best == 0) best = ra;
+        if (best == 0) best = cs;
+        if (best != 0) {
+            s_app.last_strong_curve_side = best;
             s_app.last_curve_position = s_app.last_frame.position;
         }
     }
@@ -1211,16 +1246,30 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
 
     {
         int8_t strong_curve_side = detect_side_wide_curve_arc_side(&s_app.last_frame);
+        int8_t curve_side = detect_curve_arc_side(&s_app.last_frame);
+        int8_t right_angle_side = detect_right_angle_turn_side(&s_app.last_frame);
         bool lead_active = (s_app.lead_phase != (uint8_t)LF_LEAD_PHASE_IDLE) ||
                            frame_is_lead_event(&s_app.last_frame);
         bool curve_allowed = (!lead_active && (!d.start_guard_active || strong_curve_side != 0));
 
-        /* 急弯原地旋转对准：side_wide 检测到急弯 + 位置偏差超过阈值 */
-        if (g_lf_config.reorient_enable && strong_curve_side != 0 &&
-            abs_i32(s_app.last_frame.position) >= g_lf_config.reorient_position_threshold) {
-            s_app.reorient_spin_dir = strong_curve_side;
-            d.action = LF_RUN_ACTION_REORIENT;
-            return d;
+        /* 急弯原地旋转对准：
+         * 优先级：side_wide(5+端点) > right_angle(大面积亮+暗角) > curve_arc(2+差异)
+         * right_angle 绕过 middle_lane_is_good 屏蔽，专门检测直角转弯的"大面积亮"模式。 */
+        {
+            int8_t reorient_side = strong_curve_side;
+            if (reorient_side == 0) {
+                reorient_side = right_angle_side;
+            }
+            if (reorient_side == 0) {
+                reorient_side = curve_side;
+            }
+            if (g_lf_config.reorient_enable && reorient_side != 0 &&
+                (abs_i32(s_app.last_frame.position) >= g_lf_config.reorient_position_threshold ||
+                 s_app.last_frame.active_count >= 5U)) {
+                s_app.reorient_spin_dir = reorient_side;
+                d.action = LF_RUN_ACTION_REORIENT;
+                return d;
+            }
         }
         /* 进入 curve_arc 时临时提高 max_motor_delta，退出时恢复。 */
         static int16_t saved_max_motor_delta = 0;
@@ -1333,6 +1382,7 @@ static bool middle_sensors_aligned(const LF_SensorFrame *frame)
 
 static void process_reorient_stop(uint32_t now_ms)
 {
+    LF_Sensor_ReadFrame(&s_app.last_frame);
     LF_Chassis_Stop();
     /* 停车稳定 1 个控制周期后进入旋转 */
     set_state(LF_APP_STATE_REORIENT_SPIN);
@@ -1344,6 +1394,8 @@ static void process_reorient_spin(uint32_t now_ms)
     int16_t spin = g_lf_config.reorient_spin_speed;
     int16_t left_cmd;
     int16_t right_cmd;
+
+    LF_Sensor_ReadFrame(&s_app.last_frame);
 
     /* 超时保护 */
     if ((uint32_t)(now_ms - s_app.reorient_start_ms) >= g_lf_config.reorient_timeout_ms) {
@@ -1377,6 +1429,8 @@ static void process_reorient_spin(uint32_t now_ms)
 
 static void process_reorient_confirm(uint32_t now_ms)
 {
+    LF_Sensor_ReadFrame(&s_app.last_frame);
+
     /* 超时保护 */
     if ((uint32_t)(now_ms - s_app.reorient_start_ms) >= g_lf_config.reorient_timeout_ms) {
         LF_Chassis_Stop();

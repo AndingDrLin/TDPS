@@ -43,7 +43,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.integral_separation_threshold = 400.0f;  // 积分分离：error>400 时积分衰减，防止弯道入口积分累积
     g_lf_config.integral_soft_zone            = 100.0f;  // 过渡区：400~500 线性降速积分
 
-    g_lf_config.base_speed          = 150;   // 降速：给急弯控制器更多响应时间
+    g_lf_config.base_speed          = 100;   // 降速：给急弯控制器更多响应时间
     g_lf_config.min_speed           = 60;    // 弯道最低速度
     g_lf_config.kff                 = 0.0f;  // 倒三轮：传感器距轮轴仅 ~4cm，无有效预瞄距离，关前馈
     g_lf_config.steering_dir_sign   = -1;    // 倒三轮：电机方向翻转，删除此行会导致车反转
@@ -120,7 +120,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.reorient_spin_speed       = 150;    // 原地旋转速度
     g_lf_config.reorient_confirm_ticks    = 3U;     // 中间传感器对准确认帧数
     g_lf_config.reorient_timeout_ms       = 3000U;  // 超时停车
-    g_lf_config.reorient_position_threshold = 800;  // 位置偏差阈值：超过此值触发原地旋转
+    g_lf_config.reorient_position_threshold = 300;  // 降低阈值：直角转弯入口位置可能还不大
 
     g_lf_config.radar_enable         = false;
     g_lf_config.obstacle_avoid_enable = false;

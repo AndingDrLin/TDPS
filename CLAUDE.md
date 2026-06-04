@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Language
 
-Always respond in Chinese (中文).
+Always respond in Chinese (中文). 每次回答开头都要说我已经查看了CLAUDE.md
 
 ## Repository layout
 
@@ -118,9 +118,13 @@ Firmware layers:
 
 ### Geometric constraints
 
-Sensor array center to drive axle midpoint ~22 cm, left-right wheel track ~16 cm. When handling junctions, U-turn apexes, right-angle turns, and circular turn entries, use the drive axle midpoint as the steering reference. When the front sensor first sees a special line pattern, do not immediately execute a definitive turn.
+当前车型为**倒三轮**（两前驱主动轮 + 后万向轮），传感器阵列中心到前驱动轮轴线中点约 **4 cm**，左右驱动轮中心距约 16 cm。传感器前置距离极短（4 cm vs 正三轮 22 cm），导致：
+- 入弯检测窗口极短（传感器看到特殊线型时，驱动轮轴几乎同时到达）
+- `lead_compensation` 前探补偿意义不大（已关闭）
+- 急弯/直角转弯必须依赖"停车+原地旋转对准"策略（`reorient_*` 参数）
+- PID 参数 kp/kd 需比正三轮低（短前探 = 高频振荡风险更大）
 
-Priority tuning order: `lead_advance_*` (let drive axle reach the special position), then `lead_turn_delta` and `lead_turn_hold_ticks`. For ground dirt, map wrinkles, and reflections on straights, adjust `straight_noise_*` first, not PID or `base_speed`.
+当处理路口、U 型顶点、直角转弯和圆形入口时，以驱动轮轴线中点作为转向参考点。
 
 ### Project state
 
