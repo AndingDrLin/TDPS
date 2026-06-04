@@ -120,7 +120,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.reorient_spin_speed       = 150;    // 原地旋转速度
     g_lf_config.reorient_confirm_ticks    = 3U;     // 中间传感器对准确认帧数
     g_lf_config.reorient_timeout_ms       = 3000U;  // 超时停车
-    g_lf_config.reorient_position_threshold = 300;  // 降低阈值：直角转弯入口位置可能还不大
+    g_lf_config.reorient_position_threshold = 500;  // 防止正常巡线时误触发 reorient
 
     /* ===== 分段控制（debug profile 默认开启） ===== */
     g_lf_config.segment_control_enable    = true;
