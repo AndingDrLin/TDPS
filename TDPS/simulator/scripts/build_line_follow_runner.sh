@@ -57,9 +57,12 @@ gcc -std=c11 -Wall -Wextra -Werror \
   "${FW_ROOT}/Src/lf_app.c" \
   "${FW_ROOT}/Src/lf_chassis.c" \
   "${LF_SUITE_DIR}/lf_sim_config_override.c" \
+  "${FW_ROOT}/Src/lf_config_profiles.c" \
   "${FW_ROOT}/Src/lf_control.c" \
   "${FW_ROOT}/Src/lf_debug_monitor.c" \
+  "${FW_ROOT}/Src/lf_line_features.c" \
   "${FW_ROOT}/Src/lf_sensor.c" \
+  "${FW_ROOT}/Src/lf_speed_math.c" \
   "${FW_ROOT}/Src/lf_radar.c" \
   "${FW_ROOT}/Src/lf_future_hooks.c" \
   "${FW_ROOT}/Src/lf_led_blink.c" \
