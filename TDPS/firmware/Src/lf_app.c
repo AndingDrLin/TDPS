@@ -254,7 +254,6 @@ static void detect_segment_type(uint32_t now_ms)
 {
     const LF_SensorFrame *frame = &s_app.last_frame;
     int32_t abs_pos;
-    int32_t pos_delta;
     LF_SegmentType candidate = LF_SEGMENT_STRAIGHT;
 
     if (!frame->line_detected) {
@@ -267,8 +266,6 @@ static void detect_segment_type(uint32_t now_ms)
     }
 
     abs_pos = abs_i32(frame->position);
-    pos_delta = s_app.trusted_line_valid ?
-        abs_i32(frame->position - s_app.last_trusted_position) : 0;
 
     /* === 按优先级判定候选类型 === */
 
@@ -281,16 +278,13 @@ static void detect_segment_type(uint32_t now_ms)
              !frame_is_interference(frame) && !frame_is_straight_noise(frame)) {
         candidate = LF_SEGMENT_WIDE_LINE;
     }
-    /* 3a. 直角转弯：无需 position 门限，传感器分布已足够判别（一侧1-2暗+对侧全亮） */
-    else if (detect_right_angle_turn_side(frame) != 0) {
+    /* 3. 急弯/连续弯：检测到弯道弧线或直角转弯信号 + position 门限（降低到400加快响应） */
+    else if ((detect_curve_arc_side(frame) != 0 || detect_right_angle_turn_side(frame) != 0) &&
+             abs_pos >= 400) {
         candidate = LF_SEGMENT_TIGHT_CURVE;
     }
-    /* 3b. 急弯/连续弯：curve_arc 检测 + position 门限 */
-    else if (detect_curve_arc_side(frame) != 0 && abs_pos >= 400) {
-        candidate = LF_SEGMENT_TIGHT_CURVE;
-    }
-    /* 4. 缓弯：position 偏了（降低门限到200）、position 变化率大（S弯入口检测）、或 edge_hint 非零 */
-    else if (abs_pos >= 200 || pos_delta >= 150 || frame->edge_hint != 0) {
+    /* 4. 缓弯：position 偏了 或 edge_hint 非零 */
+    else if (abs_pos >= 300 || frame->edge_hint != 0) {
         candidate = LF_SEGMENT_GENTLE_CURVE;
     }
     /* 5. 直道：以上都不满足 */
@@ -513,12 +507,16 @@ static int8_t detect_curve_arc_side(const LF_SensorFrame *frame)
 
 /*
  * 直角转弯检测：传感器模式为"大面积亮 + 暗角集中在一侧"。
- * 用户需求：最外侧1-2个通道不亮 + 其余全亮 → 判定直角弯并触发停车旋转。
  *
- * 条件：一侧 inactive=1~2 + 另一侧 inactive=0（全亮）+ total_active >= 6
- * 一侧有1-2个暗角是直角弯入口的典型模式。
- * total_active>=6 保证不是正常偏线巡线（通常4-5 active）。
- * 严格条件（>=3暗）保留作为兜底。
+ * 三级条件：
+ * A. ≥3暗+对侧全亮 → 高置信度直角弯（深入拐角）
+ * B. ≥2暗+对侧全亮+≥6active → 中置信度
+ * C. ≥1暗+对侧全亮+≥6active+position跳变≥500 → 低置信度但有位置验证
+ *    直角弯的1暗伴随大位置跳变（从居中突然到700+），S弯偏移是渐进的。
+ *
+ * 仅靠单帧传感器模式无法区分"S弯/U弯偏移"和"直角弯入口"，
+ * C 级条件通过 position 跳变来区分：直角弯=跳变，S弯=渐进。
+ * 时序判别由调用方（arbitrate_running_action）的 consistently_drifting 负责。
  */
 static int8_t detect_right_angle_turn_side(const LF_SensorFrame *frame)
 {
@@ -538,25 +536,53 @@ static int8_t detect_right_angle_turn_side(const LF_SensorFrame *frame)
     inactive_right = 4U - right_active;
     total_active = frame->active_count;
 
-    /* 主条件：一侧1-2暗 + 另一侧全亮 + 至少6路活跃 → 直角弯入口检测 */
-    if (inactive_right >= 1U && inactive_right <= 2U &&
-        inactive_left == 0U && total_active >= 6U) {
-        return +1;
-    }
-    if (inactive_left >= 1U && inactive_left <= 2U &&
-        inactive_right == 0U && total_active >= 6U) {
-        return -1;
-    }
+    /* A级：≥3 暗 + 对侧全亮 → 高置信度 */
+    if (inactive_right >= 3U && inactive_left == 0U) return +1;
+    if (inactive_left >= 3U && inactive_right == 0U) return -1;
 
-    /* 兜底：一侧 >=3 暗 + 另一侧全亮（直角弯已深入） */
-    if (inactive_right >= 3U && inactive_left == 0U) {
-        return +1;
-    }
-    if (inactive_left >= 3U && inactive_right == 0U) {
-        return -1;
+    /* B级：≥2 暗 + 对侧全亮 + ≥6 active */
+    if (inactive_right >= 2U && inactive_left == 0U && total_active >= 6U) return +1;
+    if (inactive_left >= 2U && inactive_right == 0U && total_active >= 6U) return -1;
+
+    /* C级：≥1 暗 + 对侧全亮 + ≥6 active + position 大跳变 ≥500
+     * 直角弯入口：position 从居中突然跳到 700+，单帧跳变 500+
+     * S弯/U弯：position 渐进偏移，单帧跳变通常 <300 */
+    if (total_active >= 6U && s_app.trusted_line_valid) {
+        int32_t pos_jump = abs_i32(frame->position - s_app.last_trusted_position);
+        if (inactive_right == 1U && inactive_left == 0U && pos_jump >= 500) return +1;
+        if (inactive_left == 1U && inactive_right == 0U && pos_jump >= 500) return -1;
     }
 
     return 0;
+}
+
+/*
+ * 位置一致性偏移检测：检查最近N帧的position是否持续同向偏移。
+ * 用于区分"S弯/U弯中的持续偏移"和"直角弯入口的快速到达"。
+ * 连续弯/S弯：position持续同向增长 → 返回 true。
+ * 直角弯入口：position快速到达后拐角 → 返回 false。
+ */
+static bool position_is_consistently_drifting(int8_t check_sign, uint8_t min_frames)
+{
+    uint8_t window = g_lf_config.seg_curve_direction_window;
+    uint8_t count = 0U;
+    uint8_t i;
+
+    if (window < 4U) window = 4U;
+    if (check_sign == 0 || min_frames == 0U) return false;
+
+    /* sign_history 已在 update_curve_direction_history 中更新（在 arbitrate 之前调用）。
+     * sign_history_index 指向下一个写入位置，最新条目在 (index-1+window)%window。
+     * 从最新条目往回检查连续同向帧数。 */
+    for (i = 0U; i < window && count < min_frames; ++i) {
+        uint8_t idx = (uint8_t)((s_app.sign_history_index + window - 1U - i) % window);
+        if (s_app.position_sign_history[idx] == check_sign) {
+            count++;
+        } else {
+            break;  /* 遇到不同符号就停止，只算连续的 */
+        }
+    }
+    return count >= min_frames;
 }
 
 static bool frame_is_straight_noise(const LF_SensorFrame *frame)
@@ -1469,20 +1495,32 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
         bool curve_allowed = (!lead_active && (!d.start_guard_active || strong_curve_side != 0));
 
         /* 急弯原地旋转对准。
-         * 直角转弯（right_angle_side）：传感器模式已足够判别（一侧1-2暗+对侧全亮），无需position门限，立即触发。
-         * 急弯（strong_curve_side）：需要position超过门限才触发，避免正常偏线误触发。
+         *
+         * 核心难点：单帧传感器模式无法区分"S弯/U弯中的偏移"和"直角弯入口"。
+         * 两者可能产生完全相同的传感器分布（如 1,1,1,1,1,1,0,0）。
+         *
+         * 解法：加入时序判别——
+         * - S弯/U弯：position 持续同向偏移多帧（车一直在跟着弯走）
+         * - 直角弯：position 快速到达后拐角（车到达拐角点，position 跳变但不持续增长）
+         * - position_is_consistently_drifting 检查最近4帧是否持续同向。
+         *
          * 冷却期检查：防止 U 弯中反复触发 REORIENT 导致振荡。 */
         {
             bool reorient_cooling = g_lf_config.reorient_cooldown_ms > 0U &&
                 s_app.reorient_last_finish_ms > 0U &&
                 (uint32_t)(now_ms - s_app.reorient_last_finish_ms) < g_lf_config.reorient_cooldown_ms;
-            /* 直角弯：传感器检测到即触发，不需position门限 */
-            if (g_lf_config.reorient_enable && !reorient_cooling && right_angle_side != 0) {
-                s_app.reorient_spin_dir = right_angle_side;
-                d.action = LF_RUN_ACTION_REORIENT;
-                return d;
+
+            /* 直角弯触发：position超过门限 + 不是在持续同向偏移（排除S弯/U弯跟随） */
+            if (g_lf_config.reorient_enable && !reorient_cooling && right_angle_side != 0 &&
+                abs_i32(s_app.last_frame.position) >= g_lf_config.reorient_position_threshold) {
+                int8_t pos_sign = (s_app.last_frame.position > 0) ? 1 : -1;
+                if (!position_is_consistently_drifting(pos_sign, 4U)) {
+                    s_app.reorient_spin_dir = right_angle_side;
+                    d.action = LF_RUN_ACTION_REORIENT;
+                    return d;
+                }
             }
-            /* 急弯：需要position超过门限 */
+            /* 急弯触发：side_wide 检测 + position 超过门限 */
             if (g_lf_config.reorient_enable && !reorient_cooling && strong_curve_side != 0 &&
                 abs_i32(s_app.last_frame.position) >= g_lf_config.reorient_position_threshold) {
                 s_app.reorient_spin_dir = strong_curve_side;

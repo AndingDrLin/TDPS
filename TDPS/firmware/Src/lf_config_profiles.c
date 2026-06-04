@@ -29,13 +29,13 @@ void LF_Config_ApplyDebugProfile(void)
 	
     g_lf_config.kp  = 0.25f;    // 提高P增益：S弯跟踪需要更强的比例响应
     g_lf_config.ki  = 0.05f;    // 小积分：消除弯道跟踪的稳态误差（P-only在曲线上是鞍点不稳定）
-    g_lf_config.kd  = 0.60f;    // 倒三轮：短前探降低高频振荡，kd=0.6 转向最平滑
+    g_lf_config.kd  = 0.60f;    // 倒三轮：提高D阻尼0.60→0.80，抑制高频振荡
 		
     g_lf_config.control_error_deadband  = 80;    // 简化控制：不屏蔽小偏差
     g_lf_config.control_error_soft_zone = 150;   // 简化控制：不做软区衰减
 		
     g_lf_config.max_correction            = 300;  // 提高差速上限，增强急弯转向能力
-    g_lf_config.max_output_delta_per_tick = 20;   // 降低单拍修正跳变
+    g_lf_config.max_output_delta_per_tick = 20;   // 进一步降低单拍修正跳变(20→15)，倒三轮更平滑
     g_lf_config.max_motor_cmd             = 900;  // 恢复满功率，死区由 motor_deadband 处理
     g_lf_config.motor_deadband            = 120;
     g_lf_config.derivative_filter_alpha   = 0.35f; // D 项一阶低通，抑制 dt=0.01 下的噪声放大
@@ -76,8 +76,8 @@ void LF_Config_ApplyDebugProfile(void)
 		
     g_lf_config.line_stability_enable               = false;
     g_lf_config.stable_direction_enable             = true;
-    g_lf_config.interference_active_count_threshold  = 6U;   /* 低速下提高门限，减少正常偏线误判 */
-    g_lf_config.interference_position_jump_threshold = 350;  /* 低速下放宽跳变门限 */
+    g_lf_config.interference_active_count_threshold  = 6U;   /* 收紧：箭头处6+active应被检测为干扰 */
+    g_lf_config.interference_position_jump_threshold = 350;  /* 收紧：低速下280已是大跳变 */
     g_lf_config.direction_update_confidence_min      = 0.50f;
 
     g_lf_config.straight_noise_reject_enable         = true;
@@ -103,7 +103,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.recover_turn_speed       = 120;
     g_lf_config.recover_backtrack_speed  = 80;
     g_lf_config.line_hold_speed          = 120;
-    g_lf_config.line_hold_turn_speed     = 120;    /* 提高丢线时转向力度，原来45太弱 */
+    g_lf_config.line_hold_turn_speed     = 120;    /* 提高丢线时转向力度 */
     g_lf_config.edge_realign_enable      = false;
     g_lf_config.edge_realign_dir_sign    = 1;
     g_lf_config.edge_realign_speed       = 135;
