@@ -1645,7 +1645,13 @@ static void reorient_retry_or_stop(uint32_t now_ms)
     /* 反转旋转方向 */
     s_app.reorient_spin_dir = (int8_t)(-s_app.reorient_spin_dir);
 
-    LF_Platform_DebugPrint("Reorient: backtrack retry %d\n", s_app.reorient_retry_count);
+    {
+        char dbg_buf[64];
+        snprintf(dbg_buf, sizeof(dbg_buf),
+                 "Reorient: backtrack retry %d\n",
+                 (int)s_app.reorient_retry_count);
+        LF_Platform_DebugPrint(dbg_buf);
+    }
 }
 
 static void process_reorient_backtrack(uint32_t now_ms)
