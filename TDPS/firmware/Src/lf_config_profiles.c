@@ -76,8 +76,8 @@ void LF_Config_ApplyDebugProfile(void)
 		
     g_lf_config.line_stability_enable               = false;
     g_lf_config.stable_direction_enable             = true;
-    g_lf_config.interference_active_count_threshold  = 5U;
-    g_lf_config.interference_position_jump_threshold = 200;
+    g_lf_config.interference_active_count_threshold  = 6U;   /* 低速下提高门限，减少正常偏线误判 */
+    g_lf_config.interference_position_jump_threshold = 350;  /* 低速下放宽跳变门限 */
     g_lf_config.direction_update_confidence_min      = 0.50f;
 
     g_lf_config.straight_noise_reject_enable         = true;
@@ -103,7 +103,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.recover_turn_speed       = 120;
     g_lf_config.recover_backtrack_speed  = 80;
     g_lf_config.line_hold_speed          = 120;
-    g_lf_config.line_hold_turn_speed     = 45;
+    g_lf_config.line_hold_turn_speed     = 120;    /* 提高丢线时转向力度，原来45太弱 */
     g_lf_config.edge_realign_enable      = false;
     g_lf_config.edge_realign_dir_sign    = 1;
     g_lf_config.edge_realign_speed       = 135;
@@ -117,16 +117,16 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.curve_arc_release_ticks  = 4U;
 
     g_lf_config.reorient_enable           = true;   // 急弯停车+原地旋转对准
-    g_lf_config.reorient_spin_speed       = 150;    // 原地旋转速度
-    g_lf_config.reorient_confirm_ticks    = 3U;     // 中间传感器对准确认帧数
-    g_lf_config.reorient_timeout_ms       = 3000U;  // 超时停车
-    g_lf_config.reorient_position_threshold = 500;  // 防止正常巡线时误触发 reorient
+    g_lf_config.reorient_spin_speed       = 180;    // 原地旋转速度，提高到180加快对准
+    g_lf_config.reorient_confirm_ticks    = 2U;     // 降低确认帧数，更快恢复巡线
+    g_lf_config.reorient_timeout_ms       = 5000U;  // 增加超时，留足等待+旋转时间
+    g_lf_config.reorient_position_threshold = 700;  // 提高门限，只在真正急弯/直角弯触发
 
     /* ===== 分段控制（debug profile 默认开启） ===== */
     g_lf_config.segment_control_enable    = true;
 
-    g_lf_config.segment_confirm_ticks     = 3U;
-    g_lf_config.segment_hold_ticks        = 8U;
+    g_lf_config.segment_confirm_ticks     = 2U;    /* 2帧确认，加快S弯入口响应 */
+    g_lf_config.segment_hold_ticks        = 5U;    /* 减少保持，路段切换更灵活 */
     g_lf_config.segment_history_len       = 20U;
 
     /* 直道：稳速，小转向（与全局 base_speed=100 一致） */
@@ -172,16 +172,18 @@ void LF_Config_ApplyDebugProfile(void)
     /* 连续弯 */
     g_lf_config.seg_curve_direction_window    = 20U;
     g_lf_config.seg_curve_direction_switch_min = 2U;
-    g_lf_config.seg_curve_grace_ticks_extra   = 4U;
+    g_lf_config.seg_curve_grace_ticks_extra   = 2U;  /* 减少grace，让紧急转向更早 */
 
     /* 直角转弯增强 */
     g_lf_config.right_angle_confirm_ticks  = 2U;
     g_lf_config.reorient_approach_speed    = 80;
-    g_lf_config.reorient_approach_ms       = 100U;
+    g_lf_config.reorient_approach_ms       = 0U;    /* 不前进靠近弯点，直接停车等待 */
+    g_lf_config.reorient_stop_ms           = 1000U; /* 停车等待1秒，车身完全静止后再旋转 */
     g_lf_config.reorient_backtrack_enable  = true;
     g_lf_config.reorient_backtrack_speed   = 120;
     g_lf_config.reorient_backtrack_ms      = 400U;
     g_lf_config.reorient_max_retries       = 2U;
+    g_lf_config.reorient_cooldown_ms       = 1500U;  /* reorient完成后1.5秒冷却，防U弯振荡 */
 
     g_lf_config.radar_enable         = false;
     g_lf_config.obstacle_avoid_enable = false;

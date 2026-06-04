@@ -105,6 +105,7 @@ LF_Config g_lf_config = {
     .reorient_confirm_ticks = 4U,
     .reorient_timeout_ms = 3000U,
     .reorient_position_threshold = 900,
+    .reorient_stop_ms = 1000U,          /* 停车等待1秒后再旋转 */
 
     .derivative_filter_alpha = 0.0f,  /* D 项一阶低通滤波：UpdatePid 和 UpdatePD 共用，实车建议 0.35 */
     /* 积分保护链：硬限幅 → 分离衰减 → 输出变化率限幅 → 反饱和回退 */
@@ -244,4 +245,5 @@ LF_Config g_lf_config = {
     .reorient_backtrack_speed = 120,
     .reorient_backtrack_ms = 400U,
     .reorient_max_retries = 2U,
+    .reorient_cooldown_ms = 1500U,         /* reorient完成后1.5秒冷却 */
 };

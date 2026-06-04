@@ -161,6 +161,7 @@ typedef struct {
     bool reorient_retry_reverse;
     uint32_t reorient_backtrack_start_ms;
     bool reorient_backtrack_active;
+    uint32_t reorient_last_finish_ms;    /* 上次 reorient 完成时间戳，用于冷却 */
 } LF_AppContext;
 
 /* 应用层初始化。 */

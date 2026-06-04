@@ -185,6 +185,7 @@ typedef struct {
     uint8_t reorient_confirm_ticks;
     uint16_t reorient_timeout_ms;
     int16_t reorient_position_threshold;
+    uint16_t reorient_stop_ms;             /* 停车等待时间（默认1000ms），车身静止稳定后再旋转 */
 
     float derivative_filter_alpha;
     float integral_limit;
@@ -335,6 +336,7 @@ typedef struct {
     int16_t reorient_backtrack_speed;        /* 倒车速度（默认120） */
     uint16_t reorient_backtrack_ms;          /* 倒车时间（默认400） */
     uint8_t reorient_max_retries;            /* 最大重试次数（默认2） */
+    uint16_t reorient_cooldown_ms;           /* reorient完成后的冷却期（默认1500ms），防止U弯振荡 */
 } LF_Config;
 
 /* 全局可变参数实例。可在 main 中直接修改，或通过 lf_config_profiles 预设覆盖。 */

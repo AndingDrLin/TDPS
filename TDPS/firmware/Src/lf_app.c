@@ -254,6 +254,7 @@ static void detect_segment_type(uint32_t now_ms)
 {
     const LF_SensorFrame *frame = &s_app.last_frame;
     int32_t abs_pos;
+    int32_t pos_delta;
     LF_SegmentType candidate = LF_SEGMENT_STRAIGHT;
 
     if (!frame->line_detected) {
@@ -266,6 +267,8 @@ static void detect_segment_type(uint32_t now_ms)
     }
 
     abs_pos = abs_i32(frame->position);
+    pos_delta = s_app.trusted_line_valid ?
+        abs_i32(frame->position - s_app.last_trusted_position) : 0;
 
     /* === 按优先级判定候选类型 === */
 
@@ -283,8 +286,8 @@ static void detect_segment_type(uint32_t now_ms)
              abs_pos >= 600) {
         candidate = LF_SEGMENT_TIGHT_CURVE;
     }
-    /* 4. 缓弯：position 偏了 或 edge_hint 非零 */
-    else if (abs_pos >= 300 || frame->edge_hint != 0) {
+    /* 4. 缓弯：position 偏了（降低门限到200）、position 变化率大（S弯入口检测）、或 edge_hint 非零 */
+    else if (abs_pos >= 200 || pos_delta >= 150 || frame->edge_hint != 0) {
         candidate = LF_SEGMENT_GENTLE_CURVE;
     }
     /* 5. 直道：以上都不满足 */
@@ -1271,12 +1274,13 @@ static void handle_line_lost(uint32_t now_ms)
     }
 
     if (s_app.line_lost_count <= effective_grace) {
-        /* 连续弯中的 grace 保持：使用更激进的转向，降速 + 继承上次 correction */
+        /* 连续弯中的 grace 保持：使用更激进的转向，降速 + 大差速 */
         if (g_lf_config.segment_control_enable && is_continuous_curve()) {
             dir = g_lf_config.stable_direction_enable ? s_app.trusted_line_dir : s_app.last_seen_dir;
-            forward = limit_degraded_speed(80);  /* 降速到 80 */
-            /* 使用上次 PID 输出的 80% 作为转向参考，而非固定 line_hold_turn_speed */
-            turn = limit_degraded_speed(g_lf_config.line_hold_turn_speed);
+            forward = limit_degraded_speed(60);  /* 更低速度，留更多修正余量 */
+            /* 使用 line_hold_turn_speed 的 1.5 倍作为转向力度 */
+            turn = limit_degraded_speed((int16_t)(g_lf_config.line_hold_turn_speed * 3 / 2));
+            if (turn < 80) turn = 80;  /* 最低转向力度 */
             if (dir < 0) {
                 LF_Chassis_SetCommand((int16_t)(forward - turn), (int16_t)(forward + turn));
             } else {
@@ -1289,33 +1293,36 @@ static void handle_line_lost(uint32_t now_ms)
         return;
     }
 
-    /* grace 用尽后，连续弯中最后尝试急转向（1 帧） */
+    /* grace 用尽后，连续弯中急转向尝试（3帧） */
     if (g_lf_config.segment_control_enable && is_continuous_curve() &&
-        s_app.line_lost_count == (uint8_t)(effective_grace + 1U)) {
-        float last_correction = s_app.pid.prev_output;
-        int16_t emergency_corr = (int16_t)(last_correction * 1.3f);
+        s_app.line_lost_count <= (uint8_t)(effective_grace + 3U)) {
         int8_t dir_sign = (s_app.trusted_line_dir != 0) ? s_app.trusted_line_dir : s_app.last_seen_dir;
+        int16_t emergency_turn = limit_degraded_speed((int16_t)(g_lf_config.line_hold_turn_speed * 2));
+        if (emergency_turn < 100) emergency_turn = 100;
         if (dir_sign < 0) {
-            emergency_corr = (int16_t)(-emergency_corr);
-        }
-        {
-            int16_t e_left, e_right;
-            LF_Control_ComputeMotorCmd(50, emergency_corr, &e_left, &e_right);
-            LF_Chassis_SetCommand(e_left, e_right);
+            LF_Chassis_SetCommand((int16_t)(-emergency_turn), emergency_turn);
+        } else {
+            LF_Chassis_SetCommand(emergency_turn, (int16_t)(-emergency_turn));
         }
         set_reason(LF_APP_REASON_LINE_LOST);
         return;
     }
 
-    /* 丢线前刚检测到急弯且位置偏差大或大面积亮 → 原地旋转对准（替代 recovery） */
-    if (g_lf_config.reorient_enable &&
-        s_app.last_strong_curve_side != 0 &&
-        (abs_i32(s_app.last_curve_position) >= g_lf_config.reorient_position_threshold ||
-         s_app.last_frame.active_count >= 5U)) {
-        s_app.reorient_spin_dir = s_app.last_strong_curve_side;
-        s_app.last_strong_curve_side = 0;
-        start_reorient(now_ms);
-        return;
+    /* 丢线前刚检测到急弯且位置偏差大 → 原地旋转对准（替代 recovery）
+     * 冷却期检查：防止 U 弯中反复触发。
+     * 仅靠 position 门限触发，不使用 active_count（太敏感）。 */
+    {
+        bool cooling = g_lf_config.reorient_cooldown_ms > 0U &&
+            s_app.reorient_last_finish_ms > 0U &&
+            (uint32_t)(now_ms - s_app.reorient_last_finish_ms) < g_lf_config.reorient_cooldown_ms;
+        if (g_lf_config.reorient_enable && !cooling &&
+            s_app.last_strong_curve_side != 0 &&
+            abs_i32(s_app.last_curve_position) >= g_lf_config.reorient_position_threshold) {
+            s_app.reorient_spin_dir = s_app.last_strong_curve_side;
+            s_app.last_strong_curve_side = 0;
+            start_reorient(now_ms);
+            return;
+        }
     }
 
     s_app.recover_start_ms = now_ms;
@@ -1460,14 +1467,19 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
 
         /* 急弯原地旋转对准：side_wide 检测到急弯 + 位置偏差超过阈值。
          * 额外加入 right_angle_side（直角转弯专检：3+暗 或 2+暗+6+active）。
-         * 不用 curve_side（detect_curve_arc_side，仅需2-difference）——太敏感，正常偏线会误触发。 */
-        if (g_lf_config.reorient_enable &&
-            (strong_curve_side != 0 || right_angle_side != 0) &&
-            (abs_i32(s_app.last_frame.position) >= g_lf_config.reorient_position_threshold ||
-             s_app.last_frame.active_count >= 5U)) {
-            s_app.reorient_spin_dir = (strong_curve_side != 0) ? strong_curve_side : right_angle_side;
-            d.action = LF_RUN_ACTION_REORIENT;
-            return d;
+         * 冷却期检查：防止 U 弯中反复触发 REORIENT 导致振荡。
+         * 仅靠 position 门限触发，不使用 active_count（太敏感）。 */
+        {
+            bool reorient_cooling = g_lf_config.reorient_cooldown_ms > 0U &&
+                s_app.reorient_last_finish_ms > 0U &&
+                (uint32_t)(now_ms - s_app.reorient_last_finish_ms) < g_lf_config.reorient_cooldown_ms;
+            if (g_lf_config.reorient_enable && !reorient_cooling &&
+                (strong_curve_side != 0 || right_angle_side != 0) &&
+                abs_i32(s_app.last_frame.position) >= g_lf_config.reorient_position_threshold) {
+                s_app.reorient_spin_dir = (strong_curve_side != 0) ? strong_curve_side : right_angle_side;
+                d.action = LF_RUN_ACTION_REORIENT;
+                return d;
+            }
         }
         /* 进入 curve_arc 时临时提高 max_motor_delta，退出时恢复。 */
         static int16_t saved_max_motor_delta = 0;
@@ -1662,11 +1674,31 @@ static void process_reorient_backtrack(uint32_t now_ms)
 
 static void process_reorient_stop(uint32_t now_ms)
 {
+    int16_t spin_speed;
+    int16_t left_cmd;
+    int16_t right_cmd;
+
     LF_Sensor_ReadFrame(&s_app.last_frame);
     LF_Chassis_Stop();
-    /* 停车稳定 1 个控制周期后进入旋转 */
+
+    /* 等待 reorient_stop_ms（默认1000ms），车身完全静止稳定后再旋转 */
+    if (!time_reached(now_ms, s_app.reorient_start_ms, g_lf_config.reorient_stop_ms)) {
+        return;
+    }
+
+    /* 停车等待完成，直接启动原地两轮反转旋转 */
+    spin_speed = g_lf_config.reorient_spin_speed;
+    if (s_app.reorient_spin_dir > 0) {
+        left_cmd = spin_speed;
+        right_cmd = (int16_t)(-spin_speed);
+    } else {
+        left_cmd = (int16_t)(-spin_speed);
+        right_cmd = spin_speed;
+    }
+    LF_Chassis_SetCommand(left_cmd, right_cmd);
+    s_app.reorient_start_ms = now_ms;  /* 重置超时计时，从旋转开始算 */
     set_state(LF_APP_STATE_REORIENT_SPIN);
-    LF_Platform_DebugPrint("Reorient: spinning\n");
+    LF_Platform_DebugPrint("Reorient: stop wait done, spinning\n");
 }
 
 static void process_reorient_spin(uint32_t now_ms)
@@ -1720,6 +1752,7 @@ static void process_reorient_confirm(uint32_t now_ms)
             /* 对准成功：重置 PID，恢复 RUNNING */
             LF_Control_ResetPid(&s_app.pid);
             s_app.current_target_speed = g_lf_config.min_speed;
+            s_app.reorient_last_finish_ms = now_ms;  /* 记录冷却起点 */
             set_reason(LF_APP_REASON_REORIENT_ALIGNED);
             set_state(LF_APP_STATE_RUNNING);
             LF_Platform_DebugPrint("Reorient: aligned, resume\n");
@@ -2294,6 +2327,7 @@ void LF_App_Init(void)
     s_app.reorient_retry_reverse = false;
     s_app.reorient_backtrack_start_ms = 0U;
     s_app.reorient_backtrack_active = false;
+    s_app.reorient_last_finish_ms = 0U;
 
     set_state(LF_APP_STATE_WAIT_START);
 }
