@@ -31,8 +31,8 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.ki  = 0.05f;    // 小积分：消除弯道跟踪的稳态误差（P-only在曲线上是鞍点不稳定）
     g_lf_config.kd  = 0.60f;    // 倒三轮：提高D阻尼0.60→0.80，抑制高频振荡
 		
-    g_lf_config.control_error_deadband  = 80;    // 简化控制：不屏蔽小偏差
-    g_lf_config.control_error_soft_zone = 150;   // 简化控制：不做软区衰减
+    g_lf_config.control_error_deadband  = 60;    // 简化控制：不屏蔽小偏差
+    g_lf_config.control_error_soft_zone = 120;   // 简化控制：不做软区衰减
 		
     g_lf_config.max_correction            = 300;  // 提高差速上限，增强急弯转向能力
     g_lf_config.max_output_delta_per_tick = 20;   // 进一步降低单拍修正跳变(20→15)，倒三轮更平滑
@@ -76,8 +76,8 @@ void LF_Config_ApplyDebugProfile(void)
 		
     g_lf_config.line_stability_enable               = false;
     g_lf_config.stable_direction_enable             = true;
-    g_lf_config.interference_active_count_threshold  = 6U;   /* 收紧：箭头处6+active应被检测为干扰 */
-    g_lf_config.interference_position_jump_threshold = 350;  /* 收紧：低速下280已是大跳变 */
+    g_lf_config.interference_active_count_threshold  = 5U;   /* 收紧：箭头处6+active应被检测为干扰 */
+    g_lf_config.interference_position_jump_threshold = 2800;  /* 收紧：低速下280已是大跳变 */
     g_lf_config.direction_update_confidence_min      = 0.50f;
 
     g_lf_config.straight_noise_reject_enable         = true;
@@ -118,7 +118,7 @@ void LF_Config_ApplyDebugProfile(void)
 
     g_lf_config.reorient_enable           = true;   // 急弯停车+原地旋转对准
     g_lf_config.reorient_spin_speed       = 180;    // 原地旋转速度，提高到180加快对准
-    g_lf_config.reorient_confirm_ticks    = 2U;     // 降低确认帧数，更快恢复巡线
+    g_lf_config.reorient_confirm_ticks    = 1U;     // 降低确认帧数，更快恢复巡线
     g_lf_config.reorient_timeout_ms       = 5000U;  // 增加超时，留足等待+旋转时间
     g_lf_config.reorient_position_threshold = 700;  // 提高门限，只在真正急弯/直角弯触发
 
@@ -130,7 +130,7 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.segment_history_len       = 20U;
 
     /* 直道：稳速，小转向（与全局 base_speed=100 一致） */
-    g_lf_config.seg_kp_straight           = 0.20f;
+    g_lf_config.seg_kp_straight           = 0.15f;
     g_lf_config.seg_kd_straight           = 1.20f;
     g_lf_config.seg_kff_straight          = 0.0f;
     g_lf_config.seg_base_speed_straight   = 100;
@@ -141,17 +141,17 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.seg_kp_gentle_curve       = 0.35f;  /* 提高P增益，更快响应S弯 */
     g_lf_config.seg_kd_gentle_curve       = 1.00f;  /* 适度D阻尼 */
     g_lf_config.seg_kff_gentle_curve      = 0.0008f;
-    g_lf_config.seg_base_speed_gentle_curve = 150;   /* 降低速度，给更多反应时间 */
+    g_lf_config.seg_base_speed_gentle_curve = 100;   /* 降低速度，给更多反应时间 */
     g_lf_config.seg_min_speed_gentle_curve  = 80;
     g_lf_config.seg_max_correction_gentle_curve = 350; /* 提高差速上限 */
 
     /* 急弯/连续弯：低速+大转向+低微分阻尼 */
-    g_lf_config.seg_kp_tight_curve        = 0.40f;  /* 更高P增益，急弯全力转向 */
+    g_lf_config.seg_kp_tight_curve        = 0.45f;  /* 更高P增益，急弯全力转向 */
     g_lf_config.seg_kd_tight_curve        = 0.60f;  /* 降低D阻尼，减少转向抑制 */
     g_lf_config.seg_kff_tight_curve       = 0.0005f;
-    g_lf_config.seg_base_speed_tight_curve = 100;    /* 继续降速 */
+    g_lf_config.seg_base_speed_tight_curve = 80;    /* 继续降速 */
     g_lf_config.seg_min_speed_tight_curve  = 40;     /* 更低最低速 */
-    g_lf_config.seg_max_correction_tight_curve = 450; /* 更大差速 */
+    g_lf_config.seg_max_correction_tight_curve = 500; /* 更大差速 */
 
     /* 宽线/路口/直角弯入口：极低速，保守转向 */
     g_lf_config.seg_kp_wide_line          = 0.20f;
