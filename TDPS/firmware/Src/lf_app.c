@@ -15,6 +15,7 @@
 #include "lf_radar.h"
 #include "lf_run_log.h"
 #include "lf_sensor.h"
+#include "lf_sensor_uart.h"
 #include "lf_watch_debug.h"
 
 static LF_AppContext s_app;
@@ -51,6 +52,9 @@ static void update_led_for_state(void)
     case LF_APP_STATE_REORIENT_APPROACH:
     case LF_APP_STATE_REORIENT_SPIN:
     case LF_APP_STATE_REORIENT_CONFIRM:
+    case LF_APP_STATE_FIXED_TURN_STOP:
+    case LF_APP_STATE_FIXED_TURN_SPIN:
+    case LF_APP_STATE_FIXED_TURN_SETTLE:
         LF_LedBlink_SetPattern(LF_LED_HEARTBEAT);
         break;
     default:
@@ -74,6 +78,15 @@ typedef enum {
     LF_RECOVER_SWEEP,
     LF_RECOVER_CONFIRM,
 } LF_RecoverPhase;
+
+typedef enum {
+    LF_ROUTE_EVENT_NONE = 0,
+    LF_ROUTE_EVENT_INITIAL_RIGHT_ANGLE,
+    LF_ROUTE_EVENT_FIRST_T_RIGHT,
+    LF_ROUTE_EVENT_LEFT_RIGHT_ANGLE,
+    LF_ROUTE_EVENT_NEXT_LEFT_RIGHT_ANGLE,
+    LF_ROUTE_EVENT_FINAL_T_RIGHT,
+} LF_RouteEvent;
 
 static bool time_reached(uint32_t now, uint32_t last, uint32_t period)
 {
@@ -238,9 +251,180 @@ static bool start_straight_guard_tick(uint32_t now_ms, const LF_SensorFrame *fra
 static bool frame_is_interference(const LF_SensorFrame *frame);
 static bool frame_is_straight_noise(const LF_SensorFrame *frame);
 static bool frame_looks_like_fork(const LF_SensorFrame *frame);
+static bool sensor_lane_active_now(const LF_SensorFrame *frame, uint8_t index);
+static bool sensor_lane_dark_now(const LF_SensorFrame *frame, uint8_t index);
+static uint8_t count_active_range_now(const LF_SensorFrame *frame, uint8_t first, uint8_t last);
 static int8_t detect_curve_arc_side(const LF_SensorFrame *frame);
 static int8_t detect_outer_gap_right_angle_side(const LF_SensorFrame *frame);
 static int8_t detect_right_angle_turn_side(const LF_SensorFrame *frame);
+
+/*
+ * 固定 90°原地旋转触发判断：只用即时采样 instant_norm[]，
+ * 不依赖 line_detected / signal_sum / trusted_line_valid。
+ * 这样遮住传感器也能触发。
+ */
+
+static bool route_lane_on_now(uint8_t index)
+{
+    uint8_t digital[LF_SENSOR_COUNT];
+    if (LF_SensorUart_GetDigitalFrame(digital) && index < LF_SENSOR_COUNT) {
+        return digital[index] == 0U;
+    }
+    return false;
+}
+
+static bool route_lane_off_now(uint8_t index)
+{
+    uint8_t digital[LF_SENSOR_COUNT];
+    if (LF_SensorUart_GetDigitalFrame(digital) && index < LF_SENSOR_COUNT) {
+        return digital[index] != 0U;
+    }
+    return true;
+}
+
+static bool frame_looks_like_all_on_cross(void)
+{
+    uint8_t i;
+    for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
+        if (!route_lane_on_now(i)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool frame_looks_like_left_right_angle(void)
+{
+    bool right_outer_gap;
+    bool left_outer_gap;
+
+    right_outer_gap = route_lane_off_now(7U) &&
+                      route_lane_on_now(0U) &&
+                      route_lane_on_now(1U) &&
+                      route_lane_on_now(2U) &&
+                      route_lane_on_now(3U) &&
+                      route_lane_on_now(4U) &&
+                      route_lane_on_now(5U);
+    left_outer_gap = route_lane_off_now(0U) &&
+                     route_lane_on_now(2U) &&
+                     route_lane_on_now(3U) &&
+                     route_lane_on_now(4U) &&
+                     route_lane_on_now(5U) &&
+                     route_lane_on_now(6U) &&
+                     route_lane_on_now(7U);
+
+    return right_outer_gap || left_outer_gap;
+}
+
+static int8_t detect_fixed_right_angle_side(void)
+{
+    if (frame_looks_like_left_right_angle()) {
+        return -1;
+    }
+    return 0;
+}
+
+static bool fixed_turn_cooldown_active(uint32_t now_ms)
+{
+    return g_lf_config.fixed_turn_cooldown_ms > 0U &&
+           s_app.route_last_event_ms > 0U &&
+           (uint32_t)(now_ms - s_app.route_last_event_ms) < g_lf_config.fixed_turn_cooldown_ms;
+}
+
+static bool route_script_try_match(uint32_t now_ms, int8_t *turn_dir, uint8_t *event)
+{
+    bool all_on;
+    bool left_right_angle;
+
+    (void)now_ms;
+
+    if (turn_dir != NULL) *turn_dir = 0;
+    if (event != NULL) *event = (uint8_t)LF_ROUTE_EVENT_NONE;
+
+    if (!g_lf_config.route_script_enable || !g_lf_config.fixed_turn_enable) {
+        return false;
+    }
+
+    all_on = frame_looks_like_all_on_cross();
+    left_right_angle = frame_looks_like_left_right_angle();
+
+    switch ((LF_RoutePhase)s_app.route_phase) {
+    case LF_ROUTE_PHASE_WAIT_ARM_AFTER_CURVES:
+    case LF_ROUTE_PHASE_WAIT_INITIAL_RIGHT_ANGLE:
+        if (left_right_angle) {
+            if (turn_dir != NULL) *turn_dir = -1;
+            if (event != NULL) *event = (uint8_t)LF_ROUTE_EVENT_INITIAL_RIGHT_ANGLE;
+            s_app.route_phase = (uint8_t)LF_ROUTE_PHASE_WAIT_FIRST_T_RIGHT;
+            return true;
+        }
+        if (all_on) {
+            if (turn_dir != NULL) *turn_dir = +1;
+            if (event != NULL) *event = (uint8_t)LF_ROUTE_EVENT_FIRST_T_RIGHT;
+            s_app.route_phase = (uint8_t)LF_ROUTE_PHASE_WAIT_LEFT_RIGHT_ANGLE;
+            return true;
+        }
+        return false;
+
+    case LF_ROUTE_PHASE_WAIT_FIRST_T_RIGHT:
+        if (all_on) {
+            if (turn_dir != NULL) *turn_dir = +1;
+            if (event != NULL) *event = (uint8_t)LF_ROUTE_EVENT_FIRST_T_RIGHT;
+            s_app.route_phase = (uint8_t)LF_ROUTE_PHASE_WAIT_LEFT_RIGHT_ANGLE;
+            return true;
+        }
+        return false;
+
+    case LF_ROUTE_PHASE_WAIT_LEFT_RIGHT_ANGLE:
+        if (left_right_angle) {
+            if (turn_dir != NULL) *turn_dir = -1;
+            if (event != NULL) *event = (uint8_t)LF_ROUTE_EVENT_LEFT_RIGHT_ANGLE;
+            s_app.route_phase = (uint8_t)LF_ROUTE_PHASE_COUNT_TWO_CROSSES;
+            s_app.route_cross_count = 0U;
+            s_app.route_cross_armed = false;
+            return true;
+        }
+        return false;
+
+    case LF_ROUTE_PHASE_COUNT_TWO_CROSSES:
+        if (!all_on) {
+            s_app.route_cross_armed = true;
+            return false;
+        }
+        if (!s_app.route_cross_armed) {
+            return false;
+        }
+        s_app.route_cross_armed = false;
+        if (s_app.route_cross_count < 2U) {
+            s_app.route_cross_count += 1U;
+        }
+        if (s_app.route_cross_count >= 2U) {
+            s_app.route_phase = (uint8_t)LF_ROUTE_PHASE_WAIT_NEXT_LEFT_RIGHT_ANGLE;
+        }
+        return false;
+
+    case LF_ROUTE_PHASE_WAIT_NEXT_LEFT_RIGHT_ANGLE:
+        if (left_right_angle) {
+            if (turn_dir != NULL) *turn_dir = -1;
+            if (event != NULL) *event = (uint8_t)LF_ROUTE_EVENT_NEXT_LEFT_RIGHT_ANGLE;
+            s_app.route_phase = (uint8_t)LF_ROUTE_PHASE_DONE;
+            return true;
+        }
+        return false;
+
+    case LF_ROUTE_PHASE_WAIT_FINAL_T_RIGHT:
+        if (all_on) {
+            if (turn_dir != NULL) *turn_dir = +1;
+            if (event != NULL) *event = (uint8_t)LF_ROUTE_EVENT_FINAL_T_RIGHT;
+            s_app.route_phase = (uint8_t)LF_ROUTE_PHASE_DONE;
+            return true;
+        }
+        return false;
+
+    case LF_ROUTE_PHASE_DONE:
+    default:
+        return false;
+    }
+}
 
 /*
  * 路段检测：根据传感器特征 + 时序历史判断当前路段类型。
@@ -454,6 +638,26 @@ static uint8_t count_active_range(const LF_SensorFrame *frame, uint8_t first, ui
     return count;
 }
 
+static uint8_t count_active_range_now(const LF_SensorFrame *frame, uint8_t first, uint8_t last)
+{
+    uint8_t count = 0U;
+    uint8_t i;
+
+    if (frame == NULL || first >= LF_SENSOR_COUNT) {
+        return 0U;
+    }
+    if (last >= LF_SENSOR_COUNT) {
+        last = (uint8_t)(LF_SENSOR_COUNT - 1U);
+    }
+
+    for (i = first; i <= last; ++i) {
+        if (sensor_lane_active_now(frame, i)) {
+            count++;
+        }
+    }
+    return count;
+}
+
 static bool middle_lane_is_good(const LF_SensorFrame *frame)
 {
     uint8_t middle_count = count_active_range(frame, 1U, 6U);
@@ -538,7 +742,7 @@ static int8_t detect_curve_arc_side(const LF_SensorFrame *frame)
 
 static int8_t detect_outer_gap_right_angle_side(const LF_SensorFrame *frame)
 {
-    if (frame == NULL || !frame->line_detected) {
+    if (frame == NULL) {
         return 0;
     }
 
@@ -555,10 +759,22 @@ static int8_t detect_outer_gap_right_angle_side(const LF_SensorFrame *frame)
         sensor_lane_active_now(frame, 4U) && sensor_lane_active_now(frame, 5U)) {
         return -1;
     }
+    if (sensor_lane_active_now(frame, 7U) &&
+        sensor_lane_dark_now(frame, 0U) && sensor_lane_dark_now(frame, 1U) &&
+        sensor_lane_dark_now(frame, 2U) && sensor_lane_dark_now(frame, 3U) &&
+        sensor_lane_dark_now(frame, 4U) && sensor_lane_dark_now(frame, 5U)) {
+        return -1;
+    }
     if (sensor_lane_dark_now(frame, 0U) &&
         sensor_lane_active_now(frame, 2U) && sensor_lane_active_now(frame, 3U) &&
         sensor_lane_active_now(frame, 4U) && sensor_lane_active_now(frame, 5U) &&
         sensor_lane_active_now(frame, 6U) && sensor_lane_active_now(frame, 7U)) {
+        return +1;
+    }
+    if (sensor_lane_active_now(frame, 0U) &&
+        sensor_lane_dark_now(frame, 2U) && sensor_lane_dark_now(frame, 3U) &&
+        sensor_lane_dark_now(frame, 4U) && sensor_lane_dark_now(frame, 5U) &&
+        sensor_lane_dark_now(frame, 6U) && sensor_lane_dark_now(frame, 7U)) {
         return +1;
     }
     return 0;
@@ -649,6 +865,15 @@ static bool position_is_consistently_drifting(int8_t check_sign, uint8_t min_fra
         }
     }
     return count >= min_frames;
+}
+
+static uint16_t route_event_min_sum(void)
+{
+    uint16_t min_sum = g_lf_config.fork_detect_min_sum;
+    if (min_sum < g_lf_config.line_detect_min_sum) {
+        min_sum = g_lf_config.line_detect_min_sum;
+    }
+    return min_sum;
 }
 
 static bool frame_is_straight_noise(const LF_SensorFrame *frame)
@@ -1329,6 +1554,7 @@ typedef enum {
     LF_RUN_ACTION_LINE_LOST,
     LF_RUN_ACTION_FORK,
     LF_RUN_ACTION_OBSTACLE,
+    LF_RUN_ACTION_FIXED_TURN,
     LF_RUN_ACTION_LEAD_COMPENSATION,
     LF_RUN_ACTION_EDGE_REALIGN,
     LF_RUN_ACTION_CURVE_ARC,
@@ -1341,6 +1567,9 @@ typedef struct {
     bool fork_candidate;
     bool interference;
     bool start_guard_active;
+    bool force_pid_control;
+    int8_t fixed_turn_dir;
+    uint8_t fixed_turn_event;
 } LF_RunDecision;
 
 static void start_reorient(uint32_t now_ms); /* 前向声明，定义在第 ~1313 行 */
@@ -1485,6 +1714,7 @@ static void process_curve_arc(void)
 static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
 {
     LF_RunDecision d;
+    d.action = LF_RUN_ACTION_NONE;
     d.fork_candidate = false;
     d.interference = frame_is_interference(&s_app.last_frame);
     if (d.interference) {
@@ -1500,6 +1730,30 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
         d.interference = true;
     }
     d.start_guard_active = false;
+    d.force_pid_control = false;
+    d.fixed_turn_dir = 0;
+    d.fixed_turn_event = (uint8_t)LF_ROUTE_EVENT_NONE;
+
+    /* 固定 90°原地旋转：最高优先级，只看当前灯型。 */
+    if (g_lf_config.fixed_turn_enable) {
+        int8_t dir = 0;
+        uint8_t ev  = (uint8_t)LF_ROUTE_EVENT_NONE;
+        if (route_script_try_match(now_ms, &dir, &ev) && dir != 0) {
+            d.fixed_turn_dir = dir;
+            d.fixed_turn_event = ev;
+            d.action = LF_RUN_ACTION_FIXED_TURN;
+            return d;
+        }
+        if (!fixed_turn_cooldown_active(now_ms)) {
+            dir = detect_fixed_right_angle_side();
+            if (dir != 0) {
+                d.fixed_turn_dir = dir;
+                d.fixed_turn_event = (uint8_t)LF_ROUTE_EVENT_NONE;
+                d.action = LF_RUN_ACTION_FIXED_TURN;
+                return d;
+            }
+        }
+    }
 
     /* 优先级 0：丢线（不可降级，立即接管） */
     if (!s_app.last_frame.line_detected) {
@@ -1550,20 +1804,20 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
         return d;
     }
 
-    /* 明确直角灯型优先于箭头/宽黑干扰保护，避免 1~6亮、7/8灭 被干扰逻辑吃掉。 */
+    /* 旧 reorient 分支：仅在 fixed_turn 关闭时可用。 */
     {
         int8_t outer_right_angle_side = detect_outer_gap_right_angle_side(&s_app.last_frame);
         bool reorient_cooling = g_lf_config.reorient_cooldown_ms > 0U &&
             s_app.reorient_last_finish_ms > 0U &&
             (uint32_t)(now_ms - s_app.reorient_last_finish_ms) < g_lf_config.reorient_cooldown_ms;
-        if (g_lf_config.reorient_enable && !reorient_cooling && outer_right_angle_side != 0) {
+        if (!g_lf_config.fixed_turn_enable && g_lf_config.reorient_enable && !reorient_cooling && outer_right_angle_side != 0) {
             s_app.reorient_spin_dir = outer_right_angle_side;
             d.action = LF_RUN_ACTION_REORIENT;
             return d;
         }
     }
 
-    /* 箭头/宽黑干扰：不让干扰帧触发前探/弯道/岔路，但仍交给正常 PID 用上一可信位置纠偏。 */
+    /* 更新窗口/start guard */
     if (d.interference) {
         d.action = LF_RUN_ACTION_PID_CONTROL;
         return d;
@@ -1622,7 +1876,7 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
                     right_angle_confirm_ticks = 1U;
                 }
 
-                if (g_lf_config.reorient_enable && !reorient_cooling && right_angle_side != 0) {
+                if (!g_lf_config.fixed_turn_enable && g_lf_config.reorient_enable && !reorient_cooling && right_angle_side != 0) {
                     bool right_angle_outer_gap = detect_outer_gap_right_angle_side(&s_app.last_frame) != 0;
                     if (right_angle_outer_gap ||
                         abs_i32(s_app.last_frame.position) >= g_lf_config.reorient_position_threshold) {
@@ -1740,14 +1994,13 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
  * REORIENT_SPIN: 两轮反向旋转，持续检测中间传感器是否看到线。
  * REORIENT_CONFIRM: 中间传感器对准确认，连续 N 帧稳定后恢复 RUNNING。
  */
-static void set_reorient_spin_command(void)
+static void set_opposite_spin_command(int8_t dir, int16_t spin_speed)
 {
-    int16_t spin_speed = g_lf_config.reorient_spin_speed;
     int16_t left_cmd;
     int16_t right_cmd;
     int16_t saved_max_motor_delta = g_lf_config.max_motor_delta;
 
-    if (s_app.reorient_spin_dir > 0) {
+    if (dir > 0) {
         left_cmd = spin_speed;
         right_cmd = (int16_t)(-spin_speed);
     } else {
@@ -1758,6 +2011,11 @@ static void set_reorient_spin_command(void)
     g_lf_config.max_motor_delta = 0;
     LF_Chassis_SetCommand(left_cmd, right_cmd);
     g_lf_config.max_motor_delta = saved_max_motor_delta;
+}
+
+static void set_reorient_spin_command(void)
+{
+    set_opposite_spin_command(s_app.reorient_spin_dir, g_lf_config.reorient_spin_speed);
 }
 
 static void start_reorient(uint32_t now_ms)
@@ -1792,6 +2050,94 @@ static void start_reorient(uint32_t now_ms)
         LF_Chassis_Stop();
         LF_Platform_DebugPrint("Reorient: stop\n");
     }
+}
+
+static uint16_t fixed_turn_duration_for_dir(int8_t dir)
+{
+    return (dir < 0) ? g_lf_config.fixed_turn_90_ms_left : g_lf_config.fixed_turn_90_ms_right;
+}
+
+static void set_fixed_turn_spin_command(void)
+{
+    set_opposite_spin_command(s_app.fixed_turn_dir, g_lf_config.fixed_turn_spin_speed);
+}
+
+static void start_fixed_90_turn(uint32_t now_ms, int8_t dir, uint8_t event)
+{
+    if (!g_lf_config.fixed_turn_enable || dir == 0) {
+        return;
+    }
+
+    reset_lead_phase();
+    LF_Control_ResetPid(&s_app.pid);
+    s_app.curve_arc_count = 0U;
+    s_app.curve_arc_release_count = 0U;
+    s_app.curve_arc_side = 0;
+    s_app.edge_realign_count = 0U;
+    s_app.edge_realign_side = 0;
+    s_app.right_angle_detect_count = 0U;
+    s_app.right_angle_side = 0;
+
+    s_app.fixed_turn_start_ms = now_ms;
+    s_app.fixed_turn_phase_start_ms = now_ms;
+    s_app.fixed_turn_dir = dir;
+    s_app.fixed_turn_event = event;
+    set_reason(LF_APP_REASON_FIXED_TURN_STARTED);
+
+    if (g_lf_config.fixed_turn_stop_ms == 0U) {
+        set_fixed_turn_spin_command();
+        set_state(LF_APP_STATE_FIXED_TURN_SPIN);
+    } else {
+        LF_Chassis_Stop();
+        set_state(LF_APP_STATE_FIXED_TURN_STOP);
+    }
+}
+
+static void process_fixed_turn_stop(uint32_t now_ms)
+{
+    LF_Sensor_ReadFrame(&s_app.last_frame);
+    LF_Chassis_Stop();
+
+    if (!time_reached(now_ms, s_app.fixed_turn_phase_start_ms, g_lf_config.fixed_turn_stop_ms)) {
+        return;
+    }
+
+    s_app.fixed_turn_phase_start_ms = now_ms;
+    set_fixed_turn_spin_command();
+    set_state(LF_APP_STATE_FIXED_TURN_SPIN);
+}
+
+static void process_fixed_turn_spin(uint32_t now_ms)
+{
+    LF_Sensor_ReadFrame(&s_app.last_frame);
+
+    if (!time_reached(now_ms, s_app.fixed_turn_phase_start_ms,
+                      fixed_turn_duration_for_dir(s_app.fixed_turn_dir))) {
+        set_fixed_turn_spin_command();
+        return;
+    }
+
+    LF_Chassis_Stop();
+    s_app.fixed_turn_phase_start_ms = now_ms;
+    set_state(LF_APP_STATE_FIXED_TURN_SETTLE);
+}
+
+static void process_fixed_turn_settle(uint32_t now_ms)
+{
+    LF_Sensor_ReadFrame(&s_app.last_frame);
+    LF_Chassis_Stop();
+
+    if (!time_reached(now_ms, s_app.fixed_turn_phase_start_ms, g_lf_config.fixed_turn_settle_ms)) {
+        return;
+    }
+
+    LF_Control_ResetPid(&s_app.pid);
+    s_app.current_target_speed = g_lf_config.min_speed;
+    s_app.route_last_event_ms = now_ms;
+    s_app.fixed_turn_dir = 0;
+    s_app.fixed_turn_event = (uint8_t)LF_ROUTE_EVENT_NONE;
+    set_reason(LF_APP_REASON_FIXED_TURN_DONE);
+    set_state(LF_APP_STATE_RUNNING);
 }
 
 static bool middle_sensors_aligned(const LF_SensorFrame *frame)
@@ -1977,6 +2323,10 @@ static void process_running(uint32_t now_ms, float dt_s)
         reset_lead_phase();
         set_reason(LF_APP_REASON_RADAR_BLOCK);
         start_avoidance(now_ms);
+        return;
+
+    case LF_RUN_ACTION_FIXED_TURN:
+        start_fixed_90_turn(now_ms, decision.fixed_turn_dir, decision.fixed_turn_event);
         return;
 
     case LF_RUN_ACTION_LEAD_COMPENSATION:
@@ -2332,6 +2682,28 @@ static void process_avoid_reacquire(uint32_t now_ms)
     }
 }
 
+static bool try_start_fixed_turn_from_current(uint32_t now_ms)
+{
+    int8_t dir = 0;
+    uint8_t event = (uint8_t)LF_ROUTE_EVENT_NONE;
+
+    if (!g_lf_config.fixed_turn_enable) {
+        return false;
+    }
+    if (route_script_try_match(now_ms, &dir, &event) && dir != 0) {
+        start_fixed_90_turn(now_ms, dir, event);
+        return true;
+    }
+    if (!fixed_turn_cooldown_active(now_ms)) {
+        dir = detect_fixed_right_angle_side();
+        if (dir != 0) {
+            start_fixed_90_turn(now_ms, dir, (uint8_t)LF_ROUTE_EVENT_NONE);
+            return true;
+        }
+    }
+    return false;
+}
+
 static void process_recovery(uint32_t now_ms)
 {
     uint32_t elapsed = now_ms - s_app.recover_start_ms;
@@ -2340,6 +2712,11 @@ static void process_recovery(uint32_t now_ms)
 
     if (confirm_ticks == 0U) {
         confirm_ticks = 1U;
+    }
+
+    LF_Sensor_ReadFrame(&s_app.last_frame);
+    if (try_start_fixed_turn_from_current(now_ms)) {
+        return;
     }
 
     if (g_lf_config.obstacle_avoid_enable &&
@@ -2508,6 +2885,17 @@ void LF_App_Init(void)
     s_app.reorient_backtrack_start_ms = 0U;
     s_app.reorient_backtrack_active = false;
     s_app.reorient_last_finish_ms = 0U;
+    s_app.fixed_turn_start_ms = 0U;
+    s_app.fixed_turn_phase_start_ms = 0U;
+    s_app.fixed_turn_dir = 0;
+    s_app.fixed_turn_event = (uint8_t)LF_ROUTE_EVENT_NONE;
+    s_app.route_phase = (uint8_t)LF_ROUTE_PHASE_WAIT_ARM_AFTER_CURVES;
+    s_app.route_cross_count = 0U;
+    s_app.route_event_confirm_count = 0U;
+    s_app.route_cross_armed = true;
+    s_app.route_curve_seen = false;
+    s_app.route_last_event_ms = 0U;
+    s_app.route_stable_after_curve_count = 0U;
 
     set_state(LF_APP_STATE_WAIT_START);
 }
@@ -2644,6 +3032,18 @@ void LF_App_RunStep(void)
             } else {
                 process_reorient_confirm(now_ms);
             }
+            break;
+
+        case LF_APP_STATE_FIXED_TURN_STOP:
+            process_fixed_turn_stop(now_ms);
+            break;
+
+        case LF_APP_STATE_FIXED_TURN_SPIN:
+            process_fixed_turn_spin(now_ms);
+            break;
+
+        case LF_APP_STATE_FIXED_TURN_SETTLE:
+            process_fixed_turn_settle(now_ms);
             break;
 
         case LF_APP_STATE_STOPPED:
