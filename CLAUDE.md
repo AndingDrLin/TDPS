@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Language
 
-Always respond in Chinese (中文). 每次回答开头都要说我已经查看了CLAUDE.md
+Always respond in Chinese (中文).
 
 ## Source of truth
 
