@@ -177,6 +177,24 @@ void LF_Sensor_ReadFrame(LF_SensorFrame *out_frame)
     memset(out_frame, 0, sizeof(*out_frame));
     LF_Platform_ReadLineSensorRaw(out_frame->raw);
 
+    for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
+        uint16_t instant;
+        bool sensor_valid = ((s_calib.bad_mask & (uint16_t)(1U << i)) == 0U);
+
+        if (g_lf_config.sensor_input_mode == LF_SENSOR_INPUT_DIGITAL_GPIO) {
+            instant = normalize_digital_level(out_frame->raw[i]);
+        } else {
+            instant = normalize_with_calib(out_frame->raw[i], s_calib.min_raw[i], s_calib.max_raw[i]);
+            if (g_lf_config.sensor_invert_polarity) {
+                instant = (uint16_t)(1000U - instant);
+            }
+            if (!sensor_valid) {
+                instant = 0U;
+            }
+        }
+        out_frame->instant_norm[i] = instant;
+    }
+
     /*
      * 3 样本中值滤波：消除传感器脉冲噪声（地面反光、颗粒等）。
      * 每个传感器维护 3 帧历史，取中值作为当前噪声抑制后的原始值。

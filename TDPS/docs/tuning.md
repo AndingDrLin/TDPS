@@ -87,8 +87,9 @@
 | `straight_noise_max_sum` | `1800`（debug profile） | 直线噪声允许的最大总强度。 | 与 `lead_event_min_sum=2200` 拉开距离；强宽黑/路口不应归为噪声。 |
 | `straight_noise_max_position_error` | `250`（debug profile） | 直线噪声允许的最大中心偏差。 | 直线反光偏差较大可放宽；弯道误判为噪声就收紧。 |
 | `straight_noise_max_position_delta` | `120`（debug profile） | 相对上一可信位置的最大跳变。 | 地图褶皱导致小跳变可放宽；大跳变应交给干扰/恢复逻辑。 |
-| `interference_active_count_threshold` | `5`（debug profile） | 疑似宽黑/箭头干扰的激活传感器数量。 | 用于压制箭头型岔路宽黑干扰；若真实岔路被压制再提高。 |
-| `interference_position_jump_threshold` | `320`（debug profile） | 干扰帧相对上一可信位置的跳变阈值。 | 用于减少箭头岔路和 U 型入口突然大摆头。 |
+| `interference_active_count_threshold` | `5`（debug profile） | 疑似宽黑/箭头干扰的激活传感器数量。 | 用于压制箭头型岔路宽黑干扰；低速通过箭头停留更久，保持 5+active 即进入保护。 |
+| `interference_position_jump_threshold` | `260`（debug profile） | 干扰帧相对上一可信直线位置的跳变阈值。 | 低速直线巡线下约 260 的跳变进入箭头保护；保护只抑制岔路/前探/方向更新，正常 PID 仍及时纠偏。 |
+| `interference_hold_ticks` | `8`（debug profile） | 箭头/宽黑干扰命中后的短保持 tick 数。 | 用于覆盖箭头尾部几帧跳变；不要设成秒级，否则会拖慢直线纠偏。 |
 | `direction_update_confidence_min` | `0.50`（debug profile） | 更新丢线恢复方向所需最低置信度。 | 避免低置信干扰帧刷新可信方向。 |
 
 ## 6. 长前探车身与特殊线型参数
@@ -109,6 +110,8 @@
 | `lead_turn_speed` | `55`（debug profile） | 转向保持阶段前进速度。 | 当前低速保守；过快会冲出，过慢可能原地抖。 |
 | `lead_turn_delta` | `115`（debug profile） | 转向保持阶段左右轮速度差。 | 补偿后仍转不过去再增大；转向过猛就减小。 |
 | `lead_entry_memory_ticks` | `40`（debug profile） | 入口方向记忆保留时间。 | 方向丢得太快就增大；过旧方向导致误转就减小。 |
+| `reorient_min_spin_ms` | `180`（debug profile） | 直角原地旋转的最短持续时间。 | 避免刚触发直角时中间通道仍亮导致立刻停止；直角转不过去可增大，过转则减小。 |
+| 直角当前帧灯型 | 左转：`1~6` 亮、`8` 灭、`7` 可亮可灭 | 用当前采样 `instant_norm[]`，不经过 3 点中值和 IIR 滤波。 | 若肉眼看到外侧灭但不触发，优先查当前采样/极性/通道顺序；滤波值可能还残留为亮。 |
 
 调参顺序固定为：先 `lead_advance_ticks`，再 `lead_turn_delta`，再 `lead_turn_hold_ticks`，最后才调 `lead_event_*`。如果没有明确入口方向，代码只做保守前探，不随机强制转向。`lead_event_entry_error_threshold` 不能小于或接近 `lead_event_center_error_threshold`。
 
@@ -184,8 +187,8 @@
 | 权重 | `{1750,1250,750,250,-250,-750,-1250,-1750}` |
 | 核心 6 参数 | `base_speed=280`、`min_speed=60`、`kp=0.25`、`kd=1.20`、`kff=0.0008`、`max_correction=300` |
 | 关闭项 | `ki=0`、`deadband=0`、`soft_zone=0`、`max_output_delta_per_tick=0`、`derivative_filter_alpha=0.0`、`integral_limit=0` |
-| 策略开关 | `straight_boost_enable=false`、`curve_prepare_enable=false`、`lead_compensation_enable=false`、`fork_enable=false`、`obstacle_avoid_enable=false` |
-| 直线噪声 | `straight_noise_reject_enable=true`、`straight_noise_confirm_ticks=2`、`straight_noise_active_count_threshold=5`、`straight_noise_max_sum=1800` |
+| 策略开关 | `straight_boost_enable=false`、`curve_prepare_enable=false`、`line_stability_enable=true`、`lead_compensation_enable=false`、`fork_enable=false`、`obstacle_avoid_enable=false` |
+| 直线/箭头干扰 | `straight_noise_reject_enable=true`、`straight_noise_confirm_ticks=2`、`straight_noise_active_count_threshold=5`、`straight_noise_max_sum=1800`、`interference_active_count_threshold=5`、`interference_position_jump_threshold=260`、`interference_hold_ticks=8` |
 
 ### 模拟器参数扫描结果
 

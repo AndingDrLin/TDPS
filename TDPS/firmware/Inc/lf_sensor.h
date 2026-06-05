@@ -24,6 +24,7 @@ typedef struct {
 typedef struct {
     uint16_t raw[LF_SENSOR_COUNT];
     uint16_t norm[LF_SENSOR_COUNT];
+    uint16_t instant_norm[LF_SENSOR_COUNT]; /* 当前采样即时归一化值，不经过中值/IIR；用于直角外侧灭灯判定 */
     float filtered[LF_SENSOR_COUNT];
     uint16_t filtered_u16[LF_SENSOR_COUNT];
     uint32_t signal_sum;

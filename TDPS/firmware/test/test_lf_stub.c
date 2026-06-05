@@ -397,6 +397,36 @@ static void set_wide_biased_straight_noise(void)
     LF_PlatformStub_SetLineSensorRaw(raw);
 }
 
+static void set_slight_right_center_line(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {900U, 900U, 2200U, 3100U, 3300U, 2600U, 900U, 900U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
+static void set_arrow_right_disturbance_line(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {900U, 900U, 900U, 3300U, 3300U, 3300U, 3300U, 3300U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
+static void set_left_right_angle_ch1_to_ch6_on_ch8_dark(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {3300U, 3300U, 3300U, 3300U, 3300U, 3300U, 3300U, 900U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
+static void set_left_right_angle_ch1_to_ch6_on_ch7_ch8_dark(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {3300U, 3300U, 3300U, 3300U, 3300U, 3300U, 900U, 900U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
+static void set_left_right_angle_filtered_residue(void)
+{
+    const uint16_t all_on[LF_SENSOR_COUNT] = {3300U, 3300U, 3300U, 3300U, 3300U, 3300U, 3300U, 3300U};
+    LF_PlatformStub_SetLineSensorRaw(all_on);
+}
+
 static void set_start_box_offset_line(void)
 {
     const uint16_t raw[LF_SENSOR_COUNT] = {900U, 900U, 900U, 2800U, 3300U, 3300U, 3300U, 2800U};
@@ -924,6 +954,178 @@ static int test_arrow_like_wide_frame_does_not_start_lead_without_entry(void)
     return failures;
 }
 
+static int test_arrow_interference_drives_straight_on_low_speed_line(void)
+{
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.lead_compensation_enable = true;
+    g_lf_config.reorient_enable = true;
+    g_lf_config.curve_arc_enable = true;
+    g_lf_config.line_stability_enable = true;
+    g_lf_config.stable_direction_enable = true;
+    g_lf_config.sensor_filter_alpha = 1.0f;
+    g_lf_config.base_speed = 100;
+    g_lf_config.seg_base_speed_straight = 100;
+    g_lf_config.start_straight_guard_speed = 90;
+    g_lf_config.interference_active_count_threshold = 5U;
+    g_lf_config.interference_position_jump_threshold = 260;
+    g_lf_config.interference_hold_ticks = 8U;
+    g_lf_config.straight_noise_max_position_error = 250;
+    g_lf_config.lead_event_confirm_ticks = 1U;
+    g_lf_config.lead_event_active_count_threshold = 5U;
+    g_lf_config.lead_event_min_sum = 1800U;
+    g_lf_config.reorient_position_threshold = 300;
+
+    set_slight_right_center_line();
+    run_app_for(40U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->trusted_line_valid, "trusted straight line established before arrow interference");
+
+    set_arrow_right_disturbance_line();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+
+    failures += expect_true(ctx->state == LF_APP_STATE_RUNNING, "arrow interference stays in RUNNING");
+    failures += expect_true(ctx->lead_phase == (uint8_t)LF_LEAD_PHASE_IDLE,
+                            "arrow interference does not start lead compensation");
+    failures += expect_true(ctx->fork_detect_count == 0U, "arrow interference does not accumulate fork detection");
+
+    run_app_for(20U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_RUNNING,
+                            "arrow interference tail stays in RUNNING without recovery/reorient");
+
+    set_center_line();
+    run_app_for(30U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->interference_hold_count == 0U,
+                            "normal center line releases arrow interference hold");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int expect_opposite_equal_spin(const char *message)
+{
+    int16_t left;
+    int16_t right;
+    LF_DebugMonitor_GetLastMotorCommand(&left, &right);
+    return expect_true(left == (int16_t)(-right), message) |
+           expect_true(left != 0 && right != 0, "reorient spin command is non-zero");
+}
+
+static int test_left_right_angle_reorient_accepts_ch8_dark(void)
+{
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.lead_compensation_enable = false;
+    g_lf_config.curve_arc_enable = true;
+    g_lf_config.reorient_enable = true;
+    g_lf_config.right_angle_confirm_ticks = 1U;
+    g_lf_config.reorient_approach_ms = 0U;
+    g_lf_config.reorient_stop_ms = 0U;
+    g_lf_config.reorient_min_spin_ms = 180U;
+    g_lf_config.reorient_position_threshold = 520;
+    g_lf_config.sensor_filter_alpha = 1.0f;
+
+    set_left_right_angle_ch1_to_ch6_on_ch8_dark();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_REORIENT_SPIN,
+                            "left right-angle with ch1..ch6 on and ch8 dark starts immediate reorient spin");
+    failures += expect_true(ctx->reorient_spin_dir == -1,
+                            "left right-angle with ch8 dark spins left");
+    failures += expect_opposite_equal_spin("left right-angle with ch8 dark uses opposite equal wheel speeds");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_left_right_angle_reorient_accepts_ch7_ch8_dark(void)
+{
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.lead_compensation_enable = false;
+    g_lf_config.curve_arc_enable = true;
+    g_lf_config.reorient_enable = true;
+    g_lf_config.right_angle_confirm_ticks = 1U;
+    g_lf_config.reorient_approach_ms = 0U;
+    g_lf_config.reorient_stop_ms = 0U;
+    g_lf_config.reorient_min_spin_ms = 180U;
+    g_lf_config.reorient_position_threshold = 520;
+    g_lf_config.sensor_filter_alpha = 1.0f;
+
+    set_left_right_angle_ch1_to_ch6_on_ch7_ch8_dark();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_REORIENT_SPIN,
+                            "left right-angle with ch1..ch6 on and ch7/ch8 dark starts immediate reorient spin");
+    failures += expect_true(ctx->reorient_spin_dir == -1,
+                            "left right-angle with ch7/ch8 dark spins left");
+    failures += expect_opposite_equal_spin("left right-angle with ch7/ch8 dark uses opposite equal wheel speeds");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_left_right_angle_uses_current_sample_not_filtered_residue(void)
+{
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.lead_compensation_enable = false;
+    g_lf_config.curve_arc_enable = true;
+    g_lf_config.reorient_enable = true;
+    g_lf_config.right_angle_confirm_ticks = 1U;
+    g_lf_config.reorient_approach_ms = 0U;
+    g_lf_config.reorient_stop_ms = 0U;
+    g_lf_config.reorient_min_spin_ms = 180U;
+    g_lf_config.reorient_position_threshold = 520;
+    g_lf_config.sensor_filter_alpha = 0.20f;
+
+    set_left_right_angle_filtered_residue();
+    run_app_for(40U);
+    set_left_right_angle_ch1_to_ch6_on_ch8_dark();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->last_frame.norm[7] >= g_lf_config.line_detect_min_peak,
+                            "median ch8 residue remains active");
+    failures += expect_true(ctx->last_frame.filtered_u16[7] >= g_lf_config.line_detect_min_peak,
+                            "filtered ch8 residue remains active");
+    failures += expect_true(ctx->last_frame.instant_norm[7] < g_lf_config.line_detect_min_peak,
+                            "current ch8 instant sample is dark");
+    failures += expect_true(ctx->state == LF_APP_STATE_REORIENT_SPIN,
+                            "left right-angle triggers from current sample despite median/filter residue");
+    failures += expect_true(ctx->reorient_spin_dir == -1,
+                            "filtered-residue left right-angle spins left");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
 static int test_biased_wide_noise_does_not_start_lead_event(void)
 {
     const LF_AppContext *ctx;
@@ -1252,6 +1454,10 @@ int main(void)
     failures += test_curve_arc_preserves_pid_state();
     failures += test_straight_noise_keeps_base_speed();
     failures += test_arrow_like_wide_frame_does_not_start_lead_without_entry();
+    failures += test_arrow_interference_drives_straight_on_low_speed_line();
+    failures += test_left_right_angle_reorient_accepts_ch8_dark();
+    failures += test_left_right_angle_reorient_accepts_ch7_ch8_dark();
+    failures += test_left_right_angle_uses_current_sample_not_filtered_residue();
     failures += test_biased_wide_noise_does_not_start_lead_event();
     failures += test_lead_event_advances_before_turning();
     failures += test_lead_event_without_entry_direction_does_not_random_turn();

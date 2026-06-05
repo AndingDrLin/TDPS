@@ -145,6 +145,7 @@ typedef struct {
     uint8_t curve_prepare_confirm_ticks;
     uint8_t interference_active_count_threshold;
     int16_t interference_position_jump_threshold;
+    uint16_t interference_hold_ticks;
     float direction_update_confidence_min;
     bool lead_compensation_enable;
     uint8_t lead_event_active_count_threshold;
@@ -186,6 +187,7 @@ typedef struct {
     uint16_t reorient_timeout_ms;
     int16_t reorient_position_threshold;
     uint16_t reorient_stop_ms;             /* 停车等待时间（默认1000ms），车身静止稳定后再旋转 */
+    uint16_t reorient_min_spin_ms;         /* 原地旋转最短持续时间，避免直角入口中间通道仍亮时立即确认 */
 
     float derivative_filter_alpha;
     float integral_limit;

@@ -239,6 +239,7 @@ static bool frame_is_interference(const LF_SensorFrame *frame);
 static bool frame_is_straight_noise(const LF_SensorFrame *frame);
 static bool frame_looks_like_fork(const LF_SensorFrame *frame);
 static int8_t detect_curve_arc_side(const LF_SensorFrame *frame);
+static int8_t detect_outer_gap_right_angle_side(const LF_SensorFrame *frame);
 static int8_t detect_right_angle_turn_side(const LF_SensorFrame *frame);
 
 /*
@@ -376,9 +377,22 @@ static bool is_continuous_curve(void)
            s_app.direction_switch_count >= g_lf_config.seg_curve_direction_switch_min;
 }
 
+static bool frame_is_normal_center_line(const LF_SensorFrame *frame)
+{
+    uint8_t release_active = g_lf_config.start_straight_guard_active_count;
+    if (release_active == 0U) {
+        release_active = 4U;
+    }
+
+    return frame != NULL && frame->line_detected &&
+           frame->active_count <= release_active &&
+           abs_i32(frame->position) <= g_lf_config.start_straight_guard_release_error;
+}
+
 static bool frame_is_interference(const LF_SensorFrame *frame)
 {
     int32_t position_jump;
+    bool trusted_was_straight;
 
     if (!g_lf_config.line_stability_enable || frame == NULL || !frame->line_detected ||
         !s_app.trusted_line_valid) {
@@ -387,9 +401,17 @@ static bool frame_is_interference(const LF_SensorFrame *frame)
     if (frame->active_count < g_lf_config.interference_active_count_threshold) {
         return false;
     }
-    if (frame->edge_hint != 0 && abs_i32(frame->position) >= g_lf_config.curve_prepare_error_threshold) {
+    if (detect_outer_gap_right_angle_side(frame) != 0) {
         return false;
     }
+
+    trusted_was_straight = abs_i32(s_app.last_trusted_position) <=
+                           g_lf_config.straight_noise_max_position_error;
+    if (frame->edge_hint != 0 && abs_i32(frame->position) >= g_lf_config.curve_prepare_error_threshold &&
+        !trusted_was_straight) {
+        return false;
+    }
+
     position_jump = abs_i32(frame->position - s_app.last_trusted_position);
     return position_jump >= g_lf_config.interference_position_jump_threshold;
 }
@@ -398,6 +420,18 @@ static bool sensor_lane_active(const LF_SensorFrame *frame, uint8_t index)
 {
     return frame != NULL && index < LF_SENSOR_COUNT &&
            frame->filtered_u16[index] >= g_lf_config.line_detect_min_peak;
+}
+
+static bool sensor_lane_active_now(const LF_SensorFrame *frame, uint8_t index)
+{
+    return frame != NULL && index < LF_SENSOR_COUNT &&
+           frame->instant_norm[index] >= g_lf_config.line_detect_min_peak;
+}
+
+static bool sensor_lane_dark_now(const LF_SensorFrame *frame, uint8_t index)
+{
+    return frame != NULL && index < LF_SENSOR_COUNT &&
+           frame->instant_norm[index] < g_lf_config.line_detect_min_peak;
 }
 
 static uint8_t count_active_range(const LF_SensorFrame *frame, uint8_t first, uint8_t last)
@@ -502,6 +536,34 @@ static int8_t detect_curve_arc_side(const LF_SensorFrame *frame)
     return 0;
 }
 
+static int8_t detect_outer_gap_right_angle_side(const LF_SensorFrame *frame)
+{
+    if (frame == NULL || !frame->line_detected) {
+        return 0;
+    }
+
+    /*
+     * 直角入口按当前采样 instant_norm[] 判定，而不是 norm[]/filtered_u16[]。
+     * 根因：3点中值和 IIR 滤波都会让刚灭的最外侧通道继续残留为"亮"，导致实车看到 7/8 灭而软件不触发。
+     *
+     * 用户实测左转直角：1~6 全亮，8 灭，7 可亮可灭。
+     * 镜像右转直角：3~8 全亮，1 灭，2 可亮可灭。
+     */
+    if (sensor_lane_dark_now(frame, 7U) &&
+        sensor_lane_active_now(frame, 0U) && sensor_lane_active_now(frame, 1U) &&
+        sensor_lane_active_now(frame, 2U) && sensor_lane_active_now(frame, 3U) &&
+        sensor_lane_active_now(frame, 4U) && sensor_lane_active_now(frame, 5U)) {
+        return -1;
+    }
+    if (sensor_lane_dark_now(frame, 0U) &&
+        sensor_lane_active_now(frame, 2U) && sensor_lane_active_now(frame, 3U) &&
+        sensor_lane_active_now(frame, 4U) && sensor_lane_active_now(frame, 5U) &&
+        sensor_lane_active_now(frame, 6U) && sensor_lane_active_now(frame, 7U)) {
+        return +1;
+    }
+    return 0;
+}
+
 /*
  * 直角转弯检测：传感器模式为"大面积亮 + 暗角集中在一侧"。
  *
@@ -522,9 +584,15 @@ static int8_t detect_right_angle_turn_side(const LF_SensorFrame *frame)
     uint8_t inactive_left;
     uint8_t inactive_right;
     uint8_t total_active;
+    int8_t outer_gap_side;
 
     if (frame == NULL || !frame->line_detected || frame->active_count < 4U) {
         return 0;
+    }
+
+    outer_gap_side = detect_outer_gap_right_angle_side(frame);
+    if (outer_gap_side != 0) {
+        return outer_gap_side;
     }
 
     left_active = count_active_range(frame, 0U, 3U);
@@ -1285,6 +1353,7 @@ static void handle_line_lost(uint32_t now_ms)
     uint8_t effective_grace;
 
     reset_lead_phase();
+    s_app.interference_hold_count = 0U;
     s_app.straight_noise_count = 0U;
     s_app.fork_detect_count = 0U;
 
@@ -1418,6 +1487,18 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
     LF_RunDecision d;
     d.fork_candidate = false;
     d.interference = frame_is_interference(&s_app.last_frame);
+    if (d.interference) {
+        uint16_t hold_ticks = g_lf_config.interference_hold_ticks;
+        if (hold_ticks == 0U) {
+            hold_ticks = 1U;
+        }
+        s_app.interference_hold_count = hold_ticks;
+    } else if (s_app.interference_hold_count > 0U && frame_is_normal_center_line(&s_app.last_frame)) {
+        s_app.interference_hold_count = 0U;
+    } else if (s_app.interference_hold_count > 0U) {
+        s_app.interference_hold_count--;
+        d.interference = true;
+    }
     d.start_guard_active = false;
 
     /* 优先级 0：丢线（不可降级，立即接管） */
@@ -1434,7 +1515,7 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
      * side_wide 需要 5+ 传感器活跃（严格），curve_arc 只需 2+ 差异（宽松）。
      * 两者都记录：side_wide 用于在线时触发，curve_arc 用于丢线时的紧急判断。
      * 注意：curve_arc 仅在 position>=1000 时才保存——避免正常偏线时误设置。 */
-    {
+    if (!d.interference) {
         int8_t sw = detect_side_wide_curve_arc_side(&s_app.last_frame);
         int8_t cs = detect_curve_arc_side(&s_app.last_frame);
         if (sw != 0) {
@@ -1466,6 +1547,25 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
     if (!d.fork_candidate && g_lf_config.obstacle_avoid_enable &&
         s_app.obstacle_state == LF_RADAR_OBSTACLE_BLOCK) {
         d.action = LF_RUN_ACTION_OBSTACLE;
+        return d;
+    }
+
+    /* 明确直角灯型优先于箭头/宽黑干扰保护，避免 1~6亮、7/8灭 被干扰逻辑吃掉。 */
+    {
+        int8_t outer_right_angle_side = detect_outer_gap_right_angle_side(&s_app.last_frame);
+        bool reorient_cooling = g_lf_config.reorient_cooldown_ms > 0U &&
+            s_app.reorient_last_finish_ms > 0U &&
+            (uint32_t)(now_ms - s_app.reorient_last_finish_ms) < g_lf_config.reorient_cooldown_ms;
+        if (g_lf_config.reorient_enable && !reorient_cooling && outer_right_angle_side != 0) {
+            s_app.reorient_spin_dir = outer_right_angle_side;
+            d.action = LF_RUN_ACTION_REORIENT;
+            return d;
+        }
+    }
+
+    /* 箭头/宽黑干扰：不让干扰帧触发前探/弯道/岔路，但仍交给正常 PID 用上一可信位置纠偏。 */
+    if (d.interference) {
+        d.action = LF_RUN_ACTION_PID_CONTROL;
         return d;
     }
 
@@ -1522,20 +1622,26 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
                     right_angle_confirm_ticks = 1U;
                 }
 
-                if (g_lf_config.reorient_enable && !reorient_cooling && right_angle_side != 0 &&
-                    abs_i32(s_app.last_frame.position) >= g_lf_config.reorient_position_threshold) {
-                    int8_t pos_sign = (s_app.last_frame.position > 0) ? 1 : -1;
-                    if (!position_is_consistently_drifting(pos_sign, 4U)) {
-                        if (s_app.right_angle_side == right_angle_side) {
-                            bump_counter(&s_app.right_angle_detect_count);
+                if (g_lf_config.reorient_enable && !reorient_cooling && right_angle_side != 0) {
+                    bool right_angle_outer_gap = detect_outer_gap_right_angle_side(&s_app.last_frame) != 0;
+                    if (right_angle_outer_gap ||
+                        abs_i32(s_app.last_frame.position) >= g_lf_config.reorient_position_threshold) {
+                        int8_t pos_sign = (s_app.last_frame.position > 0) ? 1 : -1;
+                        if (right_angle_outer_gap || !position_is_consistently_drifting(pos_sign, 4U)) {
+                            if (s_app.right_angle_side == right_angle_side) {
+                                bump_counter(&s_app.right_angle_detect_count);
+                            } else {
+                                s_app.right_angle_side = right_angle_side;
+                                s_app.right_angle_detect_count = 1U;
+                            }
+                            if (s_app.right_angle_detect_count >= right_angle_confirm_ticks) {
+                                s_app.reorient_spin_dir = right_angle_side;
+                                d.action = LF_RUN_ACTION_REORIENT;
+                                return d;
+                            }
                         } else {
-                            s_app.right_angle_side = right_angle_side;
-                            s_app.right_angle_detect_count = 1U;
-                        }
-                        if (s_app.right_angle_detect_count >= right_angle_confirm_ticks) {
-                            s_app.reorient_spin_dir = right_angle_side;
-                            d.action = LF_RUN_ACTION_REORIENT;
-                            return d;
+                            s_app.right_angle_detect_count = 0U;
+                            s_app.right_angle_side = 0;
                         }
                     } else {
                         s_app.right_angle_detect_count = 0U;
@@ -1634,6 +1740,26 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
  * REORIENT_SPIN: 两轮反向旋转，持续检测中间传感器是否看到线。
  * REORIENT_CONFIRM: 中间传感器对准确认，连续 N 帧稳定后恢复 RUNNING。
  */
+static void set_reorient_spin_command(void)
+{
+    int16_t spin_speed = g_lf_config.reorient_spin_speed;
+    int16_t left_cmd;
+    int16_t right_cmd;
+    int16_t saved_max_motor_delta = g_lf_config.max_motor_delta;
+
+    if (s_app.reorient_spin_dir > 0) {
+        left_cmd = spin_speed;
+        right_cmd = (int16_t)(-spin_speed);
+    } else {
+        left_cmd = (int16_t)(-spin_speed);
+        right_cmd = spin_speed;
+    }
+
+    g_lf_config.max_motor_delta = 0;
+    LF_Chassis_SetCommand(left_cmd, right_cmd);
+    g_lf_config.max_motor_delta = saved_max_motor_delta;
+}
+
 static void start_reorient(uint32_t now_ms)
 {
     reset_lead_phase();
@@ -1656,6 +1782,11 @@ static void start_reorient(uint32_t now_ms)
         abs_i32(s_app.last_frame.position) < 500) {
         set_state(LF_APP_STATE_REORIENT_APPROACH);
         LF_Platform_DebugPrint("Reorient: approach\n");
+    } else if (g_lf_config.reorient_stop_ms == 0U) {
+        s_app.reorient_start_ms = now_ms;
+        set_reorient_spin_command();
+        set_state(LF_APP_STATE_REORIENT_SPIN);
+        LF_Platform_DebugPrint("Reorient: spin now\n");
     } else {
         set_state(LF_APP_STATE_REORIENT_STOP);
         LF_Chassis_Stop();
@@ -1740,28 +1871,15 @@ static void process_reorient_backtrack(uint32_t now_ms)
 
 static void process_reorient_stop(uint32_t now_ms)
 {
-    int16_t spin_speed;
-    int16_t left_cmd;
-    int16_t right_cmd;
-
     LF_Sensor_ReadFrame(&s_app.last_frame);
     LF_Chassis_Stop();
 
-    /* 等待 reorient_stop_ms（默认1000ms），车身完全静止稳定后再旋转 */
+    /* 等待 reorient_stop_ms（debug profile 为 0，直角命中后立即旋转） */
     if (!time_reached(now_ms, s_app.reorient_start_ms, g_lf_config.reorient_stop_ms)) {
         return;
     }
 
-    /* 停车等待完成，直接启动原地两轮反转旋转 */
-    spin_speed = g_lf_config.reorient_spin_speed;
-    if (s_app.reorient_spin_dir > 0) {
-        left_cmd = spin_speed;
-        right_cmd = (int16_t)(-spin_speed);
-    } else {
-        left_cmd = (int16_t)(-spin_speed);
-        right_cmd = spin_speed;
-    }
-    LF_Chassis_SetCommand(left_cmd, right_cmd);
+    set_reorient_spin_command();
     s_app.reorient_start_ms = now_ms;  /* 重置超时计时，从旋转开始算 */
     set_state(LF_APP_STATE_REORIENT_SPIN);
     LF_Platform_DebugPrint("Reorient: stop wait done, spinning\n");
@@ -1769,15 +1887,17 @@ static void process_reorient_stop(uint32_t now_ms)
 
 static void process_reorient_spin(uint32_t now_ms)
 {
-    int16_t spin = g_lf_config.reorient_spin_speed;
-    int16_t left_cmd;
-    int16_t right_cmd;
-
     LF_Sensor_ReadFrame(&s_app.last_frame);
 
     /* 超时保护 → 倒车重试 */
     if ((uint32_t)(now_ms - s_app.reorient_start_ms) >= g_lf_config.reorient_timeout_ms) {
         reorient_retry_or_stop(now_ms);
+        return;
+    }
+
+    /* 最短旋转时间未到时，不允许因为入口处中间通道仍亮而立刻确认完成。 */
+    if ((uint32_t)(now_ms - s_app.reorient_start_ms) < g_lf_config.reorient_min_spin_ms) {
+        set_reorient_spin_command();
         return;
     }
 
@@ -1792,14 +1912,7 @@ static void process_reorient_spin(uint32_t now_ms)
 
     /* 原地旋转：reorient_spin_dir > 0 → 右转(左轮正, 右轮负)
      *            reorient_spin_dir < 0 → 左转(左轮负, 右轮正) */
-    if (s_app.reorient_spin_dir > 0) {
-        left_cmd = spin;
-        right_cmd = (int16_t)(-spin);
-    } else {
-        left_cmd = (int16_t)(-spin);
-        right_cmd = spin;
-    }
-    LF_Chassis_SetCommand(left_cmd, right_cmd);
+    set_reorient_spin_command();
 }
 
 static void process_reorient_confirm(uint32_t now_ms)
@@ -2350,6 +2463,7 @@ void LF_App_Init(void)
     s_app.straight_stable_count = 0U;
     s_app.curve_prepare_count = 0U;
     s_app.interference_count = 0U;
+    s_app.interference_hold_count = 0U;
     s_app.lead_phase = (uint8_t)LF_LEAD_PHASE_IDLE;
     s_app.lead_event_count = 0U;
     s_app.lead_phase_ticks = 0U;

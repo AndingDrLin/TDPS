@@ -77,6 +77,7 @@ LF_Config g_lf_config = {
     .curve_prepare_confirm_ticks = 1U,
     .interference_active_count_threshold = 6U,
     .interference_position_jump_threshold = 450,
+    .interference_hold_ticks = 8U,
     .direction_update_confidence_min = 0.45f,
     .lead_compensation_enable = true,
     .lead_event_active_count_threshold = 6U,
@@ -106,6 +107,7 @@ LF_Config g_lf_config = {
     .reorient_timeout_ms = 3000U,
     .reorient_position_threshold = 900,
     .reorient_stop_ms = 1000U,          /* 停车等待1秒后再旋转 */
+    .reorient_min_spin_ms = 180U,
 
     .derivative_filter_alpha = 0.0f,  /* D 项一阶低通滤波：UpdatePid 和 UpdatePD 共用，实车建议 0.35 */
     /* 积分保护链：硬限幅 → 分离衰减 → 输出变化率限幅 → 反饱和回退 */

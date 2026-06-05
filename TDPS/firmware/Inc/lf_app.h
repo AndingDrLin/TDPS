@@ -119,6 +119,7 @@ typedef struct {
     uint8_t straight_stable_count;
     uint8_t curve_prepare_count;
     uint8_t interference_count;
+    uint16_t interference_hold_count;
     uint8_t lead_phase;
     uint8_t lead_event_count;
     uint8_t lead_phase_ticks;
