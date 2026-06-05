@@ -196,7 +196,7 @@ void LF_Config_ApplyDebugProfile(void)
     /* 固定 90°原地旋转默认开启，所有直角和 T 口直接原地旋转，不再走差速巡线。 */
     g_lf_config.fixed_turn_enable = true;
     g_lf_config.fixed_turn_spin_speed = 200;
-    g_lf_config.fixed_turn_stop_ms = 0U;
+    g_lf_config.fixed_turn_stop_ms = 60U;   /* 原地旋转前停车 60ms 消除前进惯性 */
     g_lf_config.fixed_turn_90_ms_left = 720U;
     g_lf_config.fixed_turn_90_ms_right = 720U;
     g_lf_config.fixed_turn_settle_ms = 80U;

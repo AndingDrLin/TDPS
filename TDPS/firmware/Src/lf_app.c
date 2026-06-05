@@ -258,68 +258,125 @@ static int8_t detect_curve_arc_side(const LF_SensorFrame *frame);
 static int8_t detect_outer_gap_right_angle_side(const LF_SensorFrame *frame);
 static int8_t detect_right_angle_turn_side(const LF_SensorFrame *frame);
 
+/* 前向声明：handle_line_lost 中使用 */
+static void route_refresh_digital_cache(void);
+static bool try_start_fixed_turn_from_current(uint32_t now_ms);
+static void start_fixed_90_turn(uint32_t now_ms, int8_t dir, uint8_t event);
+
 /*
- * 固定 90°原地旋转触发判断：只用即时采样 instant_norm[]，
+ * 固定 90°原地旋转触发判断：只用 D帧数字值（0=黑线=LED亮，1=白底=LED灭）。
  * 不依赖 line_detected / signal_sum / trusted_line_valid。
- * 这样遮住传感器也能触发。
+ * D帧每控制周期刷新一次到缓存，后续所有 route_lane_on_now/off_now 读缓存，
+ * 避免同一次检测中多次独立 UART 临界区读取导致数据不一致。
  */
+
+static uint8_t s_digital_cache[LF_SENSOR_COUNT];
+static bool s_digital_cache_valid = false;
+
+/* 每控制周期调用一次，刷新 D帧缓存。在 process_running 和 process_recovery 入口调用。 */
+static void route_refresh_digital_cache(void)
+{
+    s_digital_cache_valid = LF_SensorUart_GetDigitalFrame(s_digital_cache);
+}
 
 static bool route_lane_on_now(uint8_t index)
 {
-    uint8_t digital[LF_SENSOR_COUNT];
-    if (LF_SensorUart_GetDigitalFrame(digital) && index < LF_SENSOR_COUNT) {
-        return digital[index] == 0U;
+    if (s_digital_cache_valid && index < LF_SENSOR_COUNT) {
+        return s_digital_cache[index] == 0U;  /* 0 = 黑线 = LED亮 = "亮" */
     }
     return false;
 }
 
 static bool route_lane_off_now(uint8_t index)
 {
-    uint8_t digital[LF_SENSOR_COUNT];
-    if (LF_SensorUart_GetDigitalFrame(digital) && index < LF_SENSOR_COUNT) {
-        return digital[index] != 0U;
+    if (s_digital_cache_valid && index < LF_SENSOR_COUNT) {
+        return s_digital_cache[index] != 0U;  /* 1 = 白底 = LED灭 = "灭" */
     }
     return true;
 }
 
+/*
+ * D帧 T口/十字检测：7+/8 个传感器亮。
+ * 6+ 在正常巡线中也可能触发（传感器阵列偏移），改回更保守的阈值。
+ */
 static bool frame_looks_like_all_on_cross(void)
 {
     uint8_t i;
+    uint8_t on_count = 0U;
     for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
-        if (!route_lane_on_now(i)) {
-            return false;
+        if (route_lane_on_now(i)) {
+            on_count++;
         }
     }
-    return true;
+    return on_count >= 7U;
 }
 
+/*
+ * D帧直角检测：7/1 标准 + 位置偏移确认。
+ *
+ * 仅靠传感器灯型无法区分"直角入口"和"正常巡线时外侧传感器短暂离线"。
+ * 加入 analog position 门限：直角入口时车在 tape 边缘，position 偏移量大；
+ * 正常巡线即使外侧传感器闪灭，position 仍接近中心。
+ *
+ * 左直角：ch0~5 亮，ch7 灭 → position 应偏向右侧（正方向）
+ * 右直角：ch2~7 亮，ch0 灭 → position 应偏向左侧（负方向）
+ */
 static bool frame_looks_like_left_right_angle(void)
 {
-    bool right_outer_gap;
-    bool left_outer_gap;
+    int32_t pos = s_app.last_frame.position;
+    bool left_turn;
+    bool right_turn;
 
-    right_outer_gap = route_lane_off_now(7U) &&
-                      route_lane_on_now(0U) &&
-                      route_lane_on_now(1U) &&
-                      route_lane_on_now(2U) &&
-                      route_lane_on_now(3U) &&
-                      route_lane_on_now(4U) &&
-                      route_lane_on_now(5U);
-    left_outer_gap = route_lane_off_now(0U) &&
-                     route_lane_on_now(2U) &&
-                     route_lane_on_now(3U) &&
-                     route_lane_on_now(4U) &&
-                     route_lane_on_now(5U) &&
-                     route_lane_on_now(6U) &&
-                     route_lane_on_now(7U);
+    /* 左直角：ch0~5 全亮，ch7 灭，且 position 偏右 ≥ 500 */
+    left_turn = (pos >= 500) &&
+                route_lane_off_now(7U) &&
+                route_lane_on_now(0U) &&
+                route_lane_on_now(1U) &&
+                route_lane_on_now(2U) &&
+                route_lane_on_now(3U) &&
+                route_lane_on_now(4U) &&
+                route_lane_on_now(5U);
 
-    return right_outer_gap || left_outer_gap;
+    /* 右直角：ch2~7 全亮，ch0 灭，且 position 偏左 ≤ -500 */
+    right_turn = (pos <= -500) &&
+                 route_lane_off_now(0U) &&
+                 route_lane_on_now(2U) &&
+                 route_lane_on_now(3U) &&
+                 route_lane_on_now(4U) &&
+                 route_lane_on_now(5U) &&
+                 route_lane_on_now(6U) &&
+                 route_lane_on_now(7U);
+
+    return left_turn || right_turn;
 }
 
+/*
+ * 独立直角检测（不依赖路线阶段机）：7/1 标准 + 位置偏移确认 + 左右都检测。
+ * 作为 route_script_peek 的 fallback。
+ */
 static int8_t detect_fixed_right_angle_side(void)
 {
-    if (frame_looks_like_left_right_angle()) {
+    int32_t pos = s_app.last_frame.position;
+
+    if (!s_digital_cache_valid) {
+        return 0;
+    }
+
+    /* 左直角：ch0~5 全亮，ch7 灭，position 偏右 ≥ 500 */
+    if (pos >= 500 &&
+        s_digital_cache[7] != 0U &&
+        s_digital_cache[0] == 0U && s_digital_cache[1] == 0U &&
+        s_digital_cache[2] == 0U && s_digital_cache[3] == 0U &&
+        s_digital_cache[4] == 0U && s_digital_cache[5] == 0U) {
         return -1;
+    }
+    /* 右直角：ch2~7 全亮，ch0 灭，position 偏左 ≤ -500 */
+    if (pos <= -500 &&
+        s_digital_cache[0] != 0U &&
+        s_digital_cache[2] == 0U && s_digital_cache[3] == 0U &&
+        s_digital_cache[4] == 0U && s_digital_cache[5] == 0U &&
+        s_digital_cache[6] == 0U && s_digital_cache[7] == 0U) {
+        return +1;
     }
     return 0;
 }
@@ -331,7 +388,27 @@ static bool fixed_turn_cooldown_active(uint32_t now_ms)
            (uint32_t)(now_ms - s_app.route_last_event_ms) < g_lf_config.fixed_turn_cooldown_ms;
 }
 
-static bool route_script_try_match(uint32_t now_ms, int8_t *turn_dir, uint8_t *event)
+/*
+ * peek+commit 模式：route_script_peek() 只检测灯型并设置输出参数，
+ * 不修改 route_phase。调用方确认要执行固定转弯后，调 route_script_commit()
+ * 才推进阶段机。防止转弯事件被提前消费（如 line_detected 抢先导致丢线恢复）。
+ */
+static uint8_t s_route_pending_phase = 0xFF;  /* 0xFF = 无待提交 */
+
+static void route_script_commit(void)
+{
+    if (s_route_pending_phase != 0xFF) {
+        /* 进入 COUNT_TWO_CROSSES 时重置十字计数器 */
+        if (s_route_pending_phase == (uint8_t)LF_ROUTE_PHASE_COUNT_TWO_CROSSES) {
+            s_app.route_cross_count = 0U;
+            s_app.route_cross_armed = false;
+        }
+        s_app.route_phase = s_route_pending_phase;
+        s_route_pending_phase = 0xFF;
+    }
+}
+
+static bool route_script_peek(uint32_t now_ms, int8_t *turn_dir, uint8_t *event)
 {
     bool all_on;
     bool left_right_angle;
@@ -340,6 +417,7 @@ static bool route_script_try_match(uint32_t now_ms, int8_t *turn_dir, uint8_t *e
 
     if (turn_dir != NULL) *turn_dir = 0;
     if (event != NULL) *event = (uint8_t)LF_ROUTE_EVENT_NONE;
+    s_route_pending_phase = 0xFF;
 
     if (!g_lf_config.route_script_enable || !g_lf_config.fixed_turn_enable) {
         return false;
@@ -354,13 +432,13 @@ static bool route_script_try_match(uint32_t now_ms, int8_t *turn_dir, uint8_t *e
         if (left_right_angle) {
             if (turn_dir != NULL) *turn_dir = -1;
             if (event != NULL) *event = (uint8_t)LF_ROUTE_EVENT_INITIAL_RIGHT_ANGLE;
-            s_app.route_phase = (uint8_t)LF_ROUTE_PHASE_WAIT_FIRST_T_RIGHT;
+            s_route_pending_phase = (uint8_t)LF_ROUTE_PHASE_WAIT_FIRST_T_RIGHT;
             return true;
         }
         if (all_on) {
             if (turn_dir != NULL) *turn_dir = +1;
             if (event != NULL) *event = (uint8_t)LF_ROUTE_EVENT_FIRST_T_RIGHT;
-            s_app.route_phase = (uint8_t)LF_ROUTE_PHASE_WAIT_LEFT_RIGHT_ANGLE;
+            s_route_pending_phase = (uint8_t)LF_ROUTE_PHASE_WAIT_LEFT_RIGHT_ANGLE;
             return true;
         }
         return false;
@@ -369,7 +447,7 @@ static bool route_script_try_match(uint32_t now_ms, int8_t *turn_dir, uint8_t *e
         if (all_on) {
             if (turn_dir != NULL) *turn_dir = +1;
             if (event != NULL) *event = (uint8_t)LF_ROUTE_EVENT_FIRST_T_RIGHT;
-            s_app.route_phase = (uint8_t)LF_ROUTE_PHASE_WAIT_LEFT_RIGHT_ANGLE;
+            s_route_pending_phase = (uint8_t)LF_ROUTE_PHASE_WAIT_LEFT_RIGHT_ANGLE;
             return true;
         }
         return false;
@@ -378,9 +456,8 @@ static bool route_script_try_match(uint32_t now_ms, int8_t *turn_dir, uint8_t *e
         if (left_right_angle) {
             if (turn_dir != NULL) *turn_dir = -1;
             if (event != NULL) *event = (uint8_t)LF_ROUTE_EVENT_LEFT_RIGHT_ANGLE;
-            s_app.route_phase = (uint8_t)LF_ROUTE_PHASE_COUNT_TWO_CROSSES;
-            s_app.route_cross_count = 0U;
-            s_app.route_cross_armed = false;
+            s_route_pending_phase = (uint8_t)LF_ROUTE_PHASE_COUNT_TWO_CROSSES;
+            /* 十字计数器重置延迟到 commit 中执行 */
             return true;
         }
         return false;
@@ -406,7 +483,7 @@ static bool route_script_try_match(uint32_t now_ms, int8_t *turn_dir, uint8_t *e
         if (left_right_angle) {
             if (turn_dir != NULL) *turn_dir = -1;
             if (event != NULL) *event = (uint8_t)LF_ROUTE_EVENT_NEXT_LEFT_RIGHT_ANGLE;
-            s_app.route_phase = (uint8_t)LF_ROUTE_PHASE_DONE;
+            s_route_pending_phase = (uint8_t)LF_ROUTE_PHASE_DONE;
             return true;
         }
         return false;
@@ -415,7 +492,7 @@ static bool route_script_try_match(uint32_t now_ms, int8_t *turn_dir, uint8_t *e
         if (all_on) {
             if (turn_dir != NULL) *turn_dir = +1;
             if (event != NULL) *event = (uint8_t)LF_ROUTE_EVENT_FINAL_T_RIGHT;
-            s_app.route_phase = (uint8_t)LF_ROUTE_PHASE_DONE;
+            s_route_pending_phase = (uint8_t)LF_ROUTE_PHASE_DONE;
             return true;
         }
         return false;
@@ -1641,6 +1718,15 @@ static void handle_line_lost(uint32_t now_ms)
         bool cooling = g_lf_config.reorient_cooldown_ms > 0U &&
             s_app.reorient_last_finish_ms > 0U &&
             (uint32_t)(now_ms - s_app.reorient_last_finish_ms) < g_lf_config.reorient_cooldown_ms;
+
+        /* fixed_turn_enable 时优先尝试固定转弯（基于 D帧灯型） */
+        if (g_lf_config.fixed_turn_enable) {
+            route_refresh_digital_cache();
+            if (try_start_fixed_turn_from_current(now_ms)) {
+                return;  /* 固定转弯已启动 */
+            }
+        }
+
         if (g_lf_config.reorient_enable && !cooling &&
             s_app.last_strong_curve_side != 0 &&
             abs_i32(s_app.last_curve_position) >= g_lf_config.reorient_position_threshold) {
@@ -1738,11 +1824,11 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
     if (g_lf_config.fixed_turn_enable) {
         int8_t dir = 0;
         uint8_t ev  = (uint8_t)LF_ROUTE_EVENT_NONE;
-        if (route_script_try_match(now_ms, &dir, &ev) && dir != 0) {
+        if (route_script_peek(now_ms, &dir, &ev) && dir != 0) {
             d.fixed_turn_dir = dir;
             d.fixed_turn_event = ev;
             d.action = LF_RUN_ACTION_FIXED_TURN;
-            return d;
+            return d;  /* 阶段推进延迟到 start_fixed_90_turn 中 route_script_commit() */
         }
         if (!fixed_turn_cooldown_active(now_ms)) {
             dir = detect_fixed_right_angle_side();
@@ -1998,7 +2084,6 @@ static void set_opposite_spin_command(int8_t dir, int16_t spin_speed)
 {
     int16_t left_cmd;
     int16_t right_cmd;
-    int16_t saved_max_motor_delta = g_lf_config.max_motor_delta;
 
     if (dir > 0) {
         left_cmd = spin_speed;
@@ -2008,9 +2093,14 @@ static void set_opposite_spin_command(int8_t dir, int16_t spin_speed)
         right_cmd = spin_speed;
     }
 
-    g_lf_config.max_motor_delta = 0;
+    /*
+     * 直接下发 LF_Chassis_SetCommand。
+     * 内部 max_motor_delta=420 对 spin_speed=200 足够（delta=400<420）。
+     * 原来临时设 max_motor_delta=0 的代码意图是"跳过 delta 限制"，
+     * 但 LF_Chassis_LimitMotorDelta(limit<=0) 直接 return（不约束），
+     * 实际效果与不设相同。删除以消除歧义。
+     */
     LF_Chassis_SetCommand(left_cmd, right_cmd);
-    g_lf_config.max_motor_delta = saved_max_motor_delta;
 }
 
 static void set_reorient_spin_command(void)
@@ -2067,6 +2157,9 @@ static void start_fixed_90_turn(uint32_t now_ms, int8_t dir, uint8_t event)
     if (!g_lf_config.fixed_turn_enable || dir == 0) {
         return;
     }
+
+    /* 确认执行：推进路线阶段机。只有真正启动转弯后才消费事件。 */
+    route_script_commit();
 
     reset_lead_phase();
     LF_Control_ResetPid(&s_app.pid);
@@ -2301,6 +2394,7 @@ static void process_running(uint32_t now_ms, float dt_s)
     float error;
 
     LF_Sensor_ReadFrame(&s_app.last_frame);
+    route_refresh_digital_cache();  /* D帧每帧刷新一次，后续 route_lane_on/off_now 读缓存 */
 
     /* 路段检测 + 连续弯方向追踪（在仲裁前执行，供 handle_line_lost 使用） */
     if (g_lf_config.segment_control_enable) {
@@ -2690,8 +2784,8 @@ static bool try_start_fixed_turn_from_current(uint32_t now_ms)
     if (!g_lf_config.fixed_turn_enable) {
         return false;
     }
-    if (route_script_try_match(now_ms, &dir, &event) && dir != 0) {
-        start_fixed_90_turn(now_ms, dir, event);
+    if (route_script_peek(now_ms, &dir, &event) && dir != 0) {
+        start_fixed_90_turn(now_ms, dir, event);  /* 内部会调 route_script_commit() */
         return true;
     }
     if (!fixed_turn_cooldown_active(now_ms)) {
@@ -2715,6 +2809,7 @@ static void process_recovery(uint32_t now_ms)
     }
 
     LF_Sensor_ReadFrame(&s_app.last_frame);
+    route_refresh_digital_cache();  /* RECOVERING 中也刷新 D帧，供固定转弯检测 */
     if (try_start_fixed_turn_from_current(now_ms)) {
         return;
     }
