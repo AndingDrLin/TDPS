@@ -250,7 +250,7 @@ static int8_t detect_right_angle_turn_side(const LF_SensorFrame *frame);
  * - 切换后至少保持 segment_hold_ticks 帧防止抖动
  * - 保持期内除非丢线，否则不切换
  */
-static void detect_segment_type(uint32_t now_ms)
+static void detect_segment_type(void)
 {
     const LF_SensorFrame *frame = &s_app.last_frame;
     int32_t abs_pos;
@@ -330,7 +330,6 @@ static void update_curve_direction_history(void)
 {
     int8_t current_sign = 0;
     int8_t prev_sign;
-    uint8_t prev_index;
     uint8_t window = g_lf_config.seg_curve_direction_window;
 
     /* 保护：窗口至少为 4，防止除零和数组溢出 */
@@ -352,9 +351,6 @@ static void update_curve_direction_history(void)
     s_app.position_sign_history[s_app.sign_history_index] = current_sign;
 
     /* 检查是否发生了方向切换（当前帧方向 vs 上一帧方向） */
-    prev_index = (s_app.sign_history_index == 0U)
-                 ? (uint8_t)(window - 1U)
-                 : (uint8_t)(s_app.sign_history_index - 1U);
     if (current_sign != 0 && prev_sign != 0 && current_sign != prev_sign) {
         if (s_app.direction_switch_count < UINT8_MAX) {
             s_app.direction_switch_count += 1U;
@@ -992,7 +988,8 @@ static bool frame_looks_like_fork(const LF_SensorFrame *frame)
     uint16_t threshold;
     int32_t max_abs_position;
 
-    if (frame == NULL || !frame->line_detected || frame->signal_sum < g_lf_config.fork_detect_min_sum) {
+    if (frame == NULL || !frame->line_detected || frame_is_straight_noise(frame) ||
+        frame->signal_sum < g_lf_config.fork_detect_min_sum) {
         return false;
     }
 
@@ -1387,6 +1384,8 @@ static void process_curve_arc(void)
     int16_t correction;
     int16_t left_cmd;
     int16_t right_cmd;
+    int16_t saved_max_motor_delta = g_lf_config.max_motor_delta;
+    bool override_motor_delta = g_lf_config.curve_arc_max_motor_delta > 0;
 
     reset_lead_phase();
 
@@ -1400,7 +1399,13 @@ static void process_curve_arc(void)
     LF_Control_ComputeMotorCmd(speed, correction, &left_cmd, &right_cmd);
     left_cmd = limit_degraded_speed(left_cmd);
     right_cmd = limit_degraded_speed(right_cmd);
+    if (override_motor_delta) {
+        g_lf_config.max_motor_delta = g_lf_config.curve_arc_max_motor_delta;
+    }
     LF_Chassis_SetCommand(left_cmd, right_cmd);
+    if (override_motor_delta) {
+        g_lf_config.max_motor_delta = saved_max_motor_delta;
+    }
     s_app.current_target_speed = speed;
 }
 
@@ -1490,7 +1495,6 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
 
     {
         int8_t strong_curve_side = detect_side_wide_curve_arc_side(&s_app.last_frame);
-        int8_t curve_side = detect_curve_arc_side(&s_app.last_frame);
         int8_t right_angle_side = detect_right_angle_turn_side(&s_app.last_frame);
         bool lead_active = (s_app.lead_phase != (uint8_t)LF_LEAD_PHASE_IDLE) ||
                            frame_is_lead_event(&s_app.last_frame);
@@ -1512,28 +1516,48 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
                 s_app.reorient_last_finish_ms > 0U &&
                 (uint32_t)(now_ms - s_app.reorient_last_finish_ms) < g_lf_config.reorient_cooldown_ms;
 
-            /* 直角弯触发：position超过门限 + 不是在持续同向偏移（排除S弯/U弯跟随） */
-            if (g_lf_config.reorient_enable && !reorient_cooling && right_angle_side != 0 &&
+            {
+                uint8_t right_angle_confirm_ticks = g_lf_config.right_angle_confirm_ticks;
+                if (right_angle_confirm_ticks == 0U) {
+                    right_angle_confirm_ticks = 1U;
+                }
+
+                if (g_lf_config.reorient_enable && !reorient_cooling && right_angle_side != 0 &&
+                    abs_i32(s_app.last_frame.position) >= g_lf_config.reorient_position_threshold) {
+                    int8_t pos_sign = (s_app.last_frame.position > 0) ? 1 : -1;
+                    if (!position_is_consistently_drifting(pos_sign, 4U)) {
+                        if (s_app.right_angle_side == right_angle_side) {
+                            bump_counter(&s_app.right_angle_detect_count);
+                        } else {
+                            s_app.right_angle_side = right_angle_side;
+                            s_app.right_angle_detect_count = 1U;
+                        }
+                        if (s_app.right_angle_detect_count >= right_angle_confirm_ticks) {
+                            s_app.reorient_spin_dir = right_angle_side;
+                            d.action = LF_RUN_ACTION_REORIENT;
+                            return d;
+                        }
+                    } else {
+                        s_app.right_angle_detect_count = 0U;
+                        s_app.right_angle_side = 0;
+                    }
+                } else {
+                    s_app.right_angle_detect_count = 0U;
+                    s_app.right_angle_side = 0;
+                }
+            }
+            /* 带直角特征的宽线先经过 right_angle_confirm_ticks 确认。 */
+            if (g_lf_config.reorient_enable && !reorient_cooling && strong_curve_side != 0 &&
+                right_angle_side == 0 &&
                 abs_i32(s_app.last_frame.position) >= g_lf_config.reorient_position_threshold) {
                 int8_t pos_sign = (s_app.last_frame.position > 0) ? 1 : -1;
                 if (!position_is_consistently_drifting(pos_sign, 4U)) {
-                    s_app.reorient_spin_dir = right_angle_side;
+                    s_app.reorient_spin_dir = strong_curve_side;
                     d.action = LF_RUN_ACTION_REORIENT;
                     return d;
                 }
             }
-            /* 急弯触发：side_wide 检测 + position 超过门限 */
-            if (g_lf_config.reorient_enable && !reorient_cooling && strong_curve_side != 0 &&
-                abs_i32(s_app.last_frame.position) >= g_lf_config.reorient_position_threshold) {
-                s_app.reorient_spin_dir = strong_curve_side;
-                d.action = LF_RUN_ACTION_REORIENT;
-                return d;
-            }
         }
-        /* 进入 curve_arc 时临时提高 max_motor_delta，退出时恢复。 */
-        static int16_t saved_max_motor_delta = 0;
-        static bool curve_arc_limit_saved = false;
-
         if (curve_allowed) {
             int8_t curve_side = detect_curve_arc_side(&s_app.last_frame);
             uint8_t confirm_ticks = g_lf_config.curve_arc_confirm_ticks;
@@ -1567,11 +1591,6 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
             }
 
             if (s_app.curve_arc_side != 0 && s_app.curve_arc_count >= confirm_ticks) {
-                if (!curve_arc_limit_saved) {
-                    saved_max_motor_delta = g_lf_config.max_motor_delta;
-                    g_lf_config.max_motor_delta = g_lf_config.curve_arc_max_motor_delta;
-                    curve_arc_limit_saved = true;
-                }
                 d.action = LF_RUN_ACTION_CURVE_ARC;
                 return d;
             }
@@ -1581,10 +1600,6 @@ static LF_RunDecision arbitrate_running_action(uint32_t now_ms)
             s_app.curve_arc_side = 0;
         }
 
-        if (curve_arc_limit_saved && s_app.curve_arc_side == 0) {
-            g_lf_config.max_motor_delta = saved_max_motor_delta;
-            curve_arc_limit_saved = false;
-        }
     }
 
     if (!d.start_guard_active && s_app.lead_phase != (uint8_t)LF_LEAD_PHASE_IDLE) {
@@ -1628,6 +1643,8 @@ static void start_reorient(uint32_t now_ms)
     s_app.curve_arc_side = 0;
     s_app.reorient_start_ms = now_ms;
     s_app.reorient_confirm_count = 0U;
+    s_app.right_angle_detect_count = 0U;
+    s_app.right_angle_side = 0;
     s_app.reorient_retry_count = 0U;
     s_app.reorient_retry_reverse = false;
     s_app.reorient_backtrack_active = false;
@@ -1828,7 +1845,7 @@ static void process_running(uint32_t now_ms, float dt_s)
 
     /* 路段检测 + 连续弯方向追踪（在仲裁前执行，供 handle_line_lost 使用） */
     if (g_lf_config.segment_control_enable) {
-        detect_segment_type(now_ms);
+        detect_segment_type();
         update_curve_direction_history();
     }
 
