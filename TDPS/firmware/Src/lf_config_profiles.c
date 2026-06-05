@@ -188,6 +188,20 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.reorient_max_retries       = 2U;
     g_lf_config.reorient_cooldown_ms       = 1500U;  /* reorient完成后1.5秒冷却，防U弯振荡 */
 
+    /* 固定路线脚本默认开启：第一次全亮按 T 口右转，后面两次全亮十字路口直行。 */
+    g_lf_config.route_script_enable = true;
+    g_lf_config.route_event_confirm_ticks = 1U;
+    g_lf_config.route_event_cooldown_ms = 0U;
+
+    /* 固定 90°原地旋转默认开启，所有直角和 T 口直接原地旋转，不再走差速巡线。 */
+    g_lf_config.fixed_turn_enable = true;
+    g_lf_config.fixed_turn_spin_speed = 200;
+    g_lf_config.fixed_turn_stop_ms = 0U;
+    g_lf_config.fixed_turn_90_ms_left = 720U;
+    g_lf_config.fixed_turn_90_ms_right = 720U;
+    g_lf_config.fixed_turn_settle_ms = 80U;
+    g_lf_config.fixed_turn_cooldown_ms = 600U;
+
     g_lf_config.radar_enable         = false;
     g_lf_config.obstacle_avoid_enable = false;
     g_lf_config.fork_detect_min_sum = 2800U;
@@ -198,18 +212,4 @@ void LF_Config_ApplyDebugProfile(void)
     g_lf_config.fork_detect_max_abs_position = 420;
     g_lf_config.fork_detect_confirm_ticks = 3U;
     g_lf_config.fork_enable          = false;
-}
-
-void LF_Config_ApplyCompetitionProfile(void)
-{
-    LF_Config_ApplyDebugProfile();
-
-    g_lf_config.base_speed = 300;
-    g_lf_config.adaptive_slow_speed = 200;
-    g_lf_config.max_correction = 400;
-    g_lf_config.max_motor_cmd = 900;
-    g_lf_config.auto_start_delay_ms = 800U;
-    g_lf_config.sensor_fast_calibration = false;
-    g_lf_config.fork_enable = true;
-    g_lf_config.recover_timeout_ms = 1100U;
 }

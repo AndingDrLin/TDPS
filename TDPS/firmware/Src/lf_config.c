@@ -248,4 +248,18 @@ LF_Config g_lf_config = {
     .reorient_backtrack_ms = 400U,
     .reorient_max_retries = 2U,
     .reorient_cooldown_ms = 1500U,         /* reorient完成后1.5秒冷却 */
+
+    /* 固定路线脚本：debug profile 可打开，用赛道顺序区分 T 口和十字路口。 */
+    .route_script_enable = false,
+    .route_event_confirm_ticks = 1U,
+    .route_event_cooldown_ms = 600U,
+
+    /* 固定 90°原地旋转：debug 里默认打开，T口全亮或直角 1~2 暗直接触发。 */
+    .fixed_turn_enable = false,
+    .fixed_turn_spin_speed = 200,
+    .fixed_turn_stop_ms = 0U,
+    .fixed_turn_90_ms_left = 720U,
+    .fixed_turn_90_ms_right = 720U,
+    .fixed_turn_settle_ms = 80U,
+    .fixed_turn_cooldown_ms = 600U,
 };

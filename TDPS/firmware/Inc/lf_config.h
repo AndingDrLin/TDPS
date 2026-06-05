@@ -339,12 +339,25 @@ typedef struct {
     uint16_t reorient_backtrack_ms;          /* 倒车时间（默认400） */
     uint8_t reorient_max_retries;            /* 最大重试次数（默认2） */
     uint16_t reorient_cooldown_ms;           /* reorient完成后的冷却期（默认1500ms），防止U弯振荡 */
+
+    /* 固定路线脚本：按赛道顺序区分第一次全亮 T 口和后续十字路口。 */
+    bool route_script_enable;
+    uint8_t route_event_confirm_ticks;
+    uint16_t route_event_cooldown_ms;
+
+    /* 固定 90°原地旋转：检测到 T 口全亮或一侧 1~2 暗的直角时立即触发，不再依赖差速巡线。 */
+    bool fixed_turn_enable;
+    int16_t fixed_turn_spin_speed;
+    uint16_t fixed_turn_stop_ms;
+    uint16_t fixed_turn_90_ms_left;
+    uint16_t fixed_turn_90_ms_right;
+    uint16_t fixed_turn_settle_ms;
+    uint16_t fixed_turn_cooldown_ms;
 } LF_Config;
 
 /* 全局可变参数实例。可在 main 中直接修改，或通过 lf_config_profiles 预设覆盖。 */
 extern LF_Config g_lf_config;
 
 void LF_Config_ApplyDebugProfile(void);
-void LF_Config_ApplyCompetitionProfile(void);
 
 #endif /* LF_CONFIG_H */
