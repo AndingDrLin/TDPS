@@ -421,6 +421,24 @@ static void set_left_right_angle_ch1_to_ch6_on_ch7_ch8_dark(void)
     LF_PlatformStub_SetLineSensorRaw(raw);
 }
 
+static void set_right_right_angle_ch3_to_ch8_on_ch1_dark(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {900U, 3300U, 3300U, 3300U, 3300U, 3300U, 3300U, 3300U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
+static void set_all_on_line(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {3300U, 3300U, 3300U, 3300U, 3300U, 3300U, 3300U, 3300U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
+static void set_right_t_side_full_line(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {900U, 900U, 900U, 3300U, 3300U, 3300U, 3300U, 3300U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
 static void set_left_right_angle_filtered_residue(void)
 {
     const uint16_t all_on[LF_SENSOR_COUNT] = {3300U, 3300U, 3300U, 3300U, 3300U, 3300U, 3300U, 3300U};
@@ -457,6 +475,18 @@ static void set_left_side_wide_curve_arc_line(void)
     LF_PlatformStub_SetLineSensorRaw(raw);
 }
 
+static void set_left_right_angle_inverse_ch8_on_middle_dark(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {900U, 900U, 900U, 900U, 900U, 900U, 900U, 3300U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
+static void set_all_dark_line(void)
+{
+    const uint16_t raw[LF_SENSOR_COUNT] = {900U, 900U, 900U, 900U, 900U, 900U, 900U, 900U};
+    LF_PlatformStub_SetLineSensorRaw(raw);
+}
+
 static int init_app_to_running_with_start_guard(bool start_guard_enable)
 {
     LF_Platform_BoardInit();
@@ -471,6 +501,8 @@ static int init_app_to_running_with_start_guard(bool start_guard_enable)
     g_lf_config.sensor_fast_calibration = true;
     g_lf_config.obstacle_avoid_enable = true;
     g_lf_config.fork_enable = true;
+    g_lf_config.route_script_enable = false;
+    g_lf_config.fixed_turn_enable = true;
     g_lf_config.start_straight_guard_enable = start_guard_enable;
     (void)Wireless_Hooks_Init();
     LF_App_Init();
@@ -1033,6 +1065,7 @@ static int test_left_right_angle_reorient_accepts_ch8_dark(void)
     g_lf_config.obstacle_avoid_enable = false;
     g_lf_config.lead_compensation_enable = false;
     g_lf_config.curve_arc_enable = true;
+    g_lf_config.fixed_turn_enable = false;
     g_lf_config.reorient_enable = true;
     g_lf_config.right_angle_confirm_ticks = 1U;
     g_lf_config.reorient_approach_ms = 0U;
@@ -1066,6 +1099,7 @@ static int test_left_right_angle_reorient_accepts_ch7_ch8_dark(void)
     g_lf_config.obstacle_avoid_enable = false;
     g_lf_config.lead_compensation_enable = false;
     g_lf_config.curve_arc_enable = true;
+    g_lf_config.fixed_turn_enable = false;
     g_lf_config.reorient_enable = true;
     g_lf_config.right_angle_confirm_ticks = 1U;
     g_lf_config.reorient_approach_ms = 0U;
@@ -1099,6 +1133,7 @@ static int test_left_right_angle_uses_current_sample_not_filtered_residue(void)
     g_lf_config.obstacle_avoid_enable = false;
     g_lf_config.lead_compensation_enable = false;
     g_lf_config.curve_arc_enable = true;
+    g_lf_config.fixed_turn_enable = false;
     g_lf_config.reorient_enable = true;
     g_lf_config.right_angle_confirm_ticks = 1U;
     g_lf_config.reorient_approach_ms = 0U;
@@ -1122,6 +1157,313 @@ static int test_left_right_angle_uses_current_sample_not_filtered_residue(void)
                             "left right-angle triggers from current sample despite median/filter residue");
     failures += expect_true(ctx->reorient_spin_dir == -1,
                             "filtered-residue left right-angle spins left");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_fixed_turn_overrides_existing_right_angle_reorient(void)
+{
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.route_script_enable = false;
+    g_lf_config.fixed_turn_enable = true;
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.lead_compensation_enable = false;
+    g_lf_config.curve_arc_enable = true;
+    g_lf_config.reorient_enable = true;
+    g_lf_config.right_angle_confirm_ticks = 1U;
+    g_lf_config.reorient_approach_ms = 0U;
+    g_lf_config.reorient_stop_ms = 0U;
+    g_lf_config.sensor_filter_alpha = 1.0f;
+
+    set_left_right_angle_ch1_to_ch6_on_ch8_dark();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_FIXED_TURN_SPIN,
+                            "fixed turn overrides existing low-success right-angle reorient");
+    failures += expect_true(ctx->fixed_turn_dir == -1,
+                            "left right-angle enters fixed left spin");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_fixed_turn_accepts_inverse_led_polarity_right_angle(void)
+{
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.route_script_enable = false;
+    g_lf_config.fixed_turn_enable = true;
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.lead_compensation_enable = false;
+    g_lf_config.reorient_enable = false;
+    g_lf_config.sensor_filter_alpha = 1.0f;
+
+    set_left_right_angle_inverse_ch8_on_middle_dark();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_FIXED_TURN_SPIN,
+                            "inverse LED polarity left right-angle starts fixed turn");
+    failures += expect_true(ctx->fixed_turn_dir == -1,
+                            "inverse LED polarity right-angle turns left");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_route_all_dark_t_turns_right_as_all_on(void)
+{
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.route_script_enable = true;
+    g_lf_config.fixed_turn_enable = true;
+    g_lf_config.fixed_turn_90_ms_right = 60U;
+    g_lf_config.fixed_turn_settle_ms = 10U;
+    g_lf_config.route_event_confirm_ticks = 1U;
+    g_lf_config.route_event_cooldown_ms = 0U;
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.reorient_enable = false;
+    g_lf_config.sensor_filter_alpha = 1.0f;
+
+    ((LF_AppContext *)LF_App_GetContext())->route_phase = (uint8_t)LF_ROUTE_PHASE_WAIT_FIRST_T_RIGHT;
+    set_all_dark_line();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_FIXED_TURN_SPIN,
+                            "inverse LED polarity all-on T starts fixed right turn");
+    failures += expect_true(ctx->fixed_turn_dir == +1,
+                            "inverse LED polarity all-on T turns right");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_route_all_on_t_turns_right_without_arm_delay(void)
+{
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.route_script_enable = true;
+    g_lf_config.fixed_turn_enable = true;
+    g_lf_config.fixed_turn_90_ms_right = 60U;
+    g_lf_config.fixed_turn_settle_ms = 10U;
+    g_lf_config.route_event_confirm_ticks = 1U;
+    g_lf_config.route_event_cooldown_ms = 0U;
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.reorient_enable = false;
+    g_lf_config.sensor_filter_alpha = 1.0f;
+
+    set_all_on_line();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_FIXED_TURN_SPIN,
+                            "all-on T starts fixed right turn without arm delay");
+    failures += expect_true(ctx->fixed_turn_dir == +1,
+                            "all-on T turns clockwise/right");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_fixed_turn_right_runs_full_duration_even_when_center_seen(void)
+{
+    const LF_AppContext *ctx;
+    int16_t left;
+    int16_t right;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.route_script_enable = true;
+    g_lf_config.fixed_turn_enable = true;
+    g_lf_config.fixed_turn_spin_speed = 180;
+    g_lf_config.fixed_turn_90_ms_right = 120U;
+    g_lf_config.fixed_turn_settle_ms = 20U;
+    g_lf_config.route_event_confirm_ticks = 1U;
+    g_lf_config.route_event_cooldown_ms = 0U;
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.lead_compensation_enable = false;
+    g_lf_config.reorient_enable = false;
+    g_lf_config.sensor_filter_alpha = 1.0f;
+
+    /* 测试直接定位到首个 T 口阶段，验证固定动作本身不会被中线提前结束。 */
+    ((LF_AppContext *)LF_App_GetContext())->route_phase = (uint8_t)LF_ROUTE_PHASE_WAIT_FIRST_T_RIGHT;
+    set_all_on_line();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    LF_DebugMonitor_GetLastMotorCommand(&left, &right);
+    failures += expect_true(ctx->state == LF_APP_STATE_FIXED_TURN_SPIN,
+                            "all-on first T starts fixed right turn");
+    failures += expect_true(ctx->fixed_turn_dir == +1, "fixed first T turn direction is right");
+    failures += expect_true(left == (int16_t)(-right) && left > 0,
+                            "fixed right turn uses clockwise opposite spin");
+
+    set_center_line();
+    run_app_for(60U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_FIXED_TURN_SPIN,
+                            "fixed turn ignores center line before duration elapses");
+
+    run_app_for(100U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_RUNNING,
+                            "fixed turn returns RUNNING after duration and settle");
+    failures += expect_true(ctx->route_phase == (uint8_t)LF_ROUTE_PHASE_COUNT_TWO_CROSSES,
+                            "fixed first T completion enters cross-count phase");
+    failures += expect_true(ctx->reason == LF_APP_REASON_FIXED_TURN_DONE,
+                            "fixed turn completion records reason");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_route_initial_right_angle_uses_detected_right_direction(void)
+{
+    const LF_AppContext *ctx;
+    int16_t left;
+    int16_t right;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.route_script_enable = true;
+    g_lf_config.fixed_turn_enable = true;
+    g_lf_config.fixed_turn_spin_speed = 180;
+    g_lf_config.fixed_turn_90_ms_right = 60U;
+    g_lf_config.fixed_turn_settle_ms = 10U;
+    g_lf_config.route_event_confirm_ticks = 1U;
+    g_lf_config.route_event_cooldown_ms = 0U;
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.reorient_enable = false;
+    g_lf_config.sensor_filter_alpha = 1.0f;
+
+    ((LF_AppContext *)LF_App_GetContext())->route_phase = (uint8_t)LF_ROUTE_PHASE_WAIT_INITIAL_RIGHT_ANGLE;
+    set_right_right_angle_ch3_to_ch8_on_ch1_dark();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    LF_DebugMonitor_GetLastMotorCommand(&left, &right);
+    failures += expect_true(ctx->state == LF_APP_STATE_FIXED_TURN_SPIN,
+                            "route initial right-angle starts fixed turn");
+    failures += expect_true(ctx->fixed_turn_dir == +1,
+                            "route initial right-angle keeps detected right direction");
+    failures += expect_true(left == (int16_t)(-right) && left > 0,
+                            "route initial right-angle spins clockwise");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_route_counts_two_all_on_crosses_then_next_left_turn(void)
+{
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.route_script_enable = true;
+    g_lf_config.fixed_turn_enable = true;
+    g_lf_config.fixed_turn_spin_speed = 180;
+    g_lf_config.fixed_turn_90_ms_left = 60U;
+    g_lf_config.fixed_turn_settle_ms = 10U;
+    g_lf_config.route_event_confirm_ticks = 1U;
+    g_lf_config.route_event_cooldown_ms = 0U;
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.reorient_enable = false;
+    g_lf_config.sensor_filter_alpha = 1.0f;
+
+    ((LF_AppContext *)LF_App_GetContext())->route_phase = (uint8_t)LF_ROUTE_PHASE_COUNT_TWO_CROSSES;
+    ((LF_AppContext *)LF_App_GetContext())->route_cross_armed = true;
+    set_all_on_line();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_RUNNING,
+                            "first all-on cross keeps driving straight");
+    failures += expect_true(ctx->route_cross_count == 1U,
+                            "first all-on cross increments route counter");
+    failures += expect_true(ctx->route_phase == (uint8_t)LF_ROUTE_PHASE_COUNT_TWO_CROSSES,
+                            "route waits for second all-on cross");
+
+    set_center_line();
+    run_app_step_after(10U);
+    set_all_on_line();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_RUNNING,
+                            "second all-on cross also keeps driving straight");
+    failures += expect_true(ctx->route_cross_count == 2U,
+                            "second all-on cross increments route counter");
+    failures += expect_true(ctx->route_phase == (uint8_t)LF_ROUTE_PHASE_WAIT_NEXT_LEFT_RIGHT_ANGLE,
+                            "after two crosses route waits for next left right-angle");
+
+    set_center_line();
+    run_app_step_after(10U);
+    set_left_right_angle_ch1_to_ch6_on_ch8_dark();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_FIXED_TURN_SPIN,
+                            "next left right-angle starts fixed turn after two crosses");
+    failures += expect_true(ctx->fixed_turn_dir == -1,
+                            "next right-angle turns left");
+    failures += expect_true(ctx->route_phase == (uint8_t)LF_ROUTE_PHASE_DONE,
+                            "route script completes after next left right-angle");
+    LF_PlatformStub_ClearLineSensorRaw();
+    return failures;
+}
+
+static int test_route_final_t_right_side_full_starts_right_turn(void)
+{
+    const LF_AppContext *ctx;
+    int failures = 0;
+
+    if (init_app_to_running()) {
+        return 1;
+    }
+
+    g_lf_config.route_script_enable = true;
+    g_lf_config.fixed_turn_enable = true;
+    g_lf_config.fixed_turn_90_ms_right = 60U;
+    g_lf_config.fixed_turn_settle_ms = 10U;
+    g_lf_config.route_event_confirm_ticks = 1U;
+    g_lf_config.route_event_cooldown_ms = 0U;
+    g_lf_config.fork_enable = false;
+    g_lf_config.obstacle_avoid_enable = false;
+    g_lf_config.reorient_enable = false;
+    g_lf_config.sensor_filter_alpha = 1.0f;
+
+    ((LF_AppContext *)LF_App_GetContext())->route_phase = (uint8_t)LF_ROUTE_PHASE_WAIT_FINAL_T_RIGHT;
+    set_right_t_side_full_line();
+    run_app_step_after(10U);
+    ctx = LF_App_GetContext();
+    failures += expect_true(ctx->state == LF_APP_STATE_FIXED_TURN_SPIN,
+                            "right-side-full final T starts fixed turn");
+    failures += expect_true(ctx->fixed_turn_dir == +1,
+                            "right-side-full final T turns right");
     LF_PlatformStub_ClearLineSensorRaw();
     return failures;
 }
@@ -1458,6 +1800,10 @@ int main(void)
     failures += test_left_right_angle_reorient_accepts_ch8_dark();
     failures += test_left_right_angle_reorient_accepts_ch7_ch8_dark();
     failures += test_left_right_angle_uses_current_sample_not_filtered_residue();
+    failures += test_fixed_turn_overrides_existing_right_angle_reorient();
+    failures += test_route_all_on_t_turns_right_without_arm_delay();
+    failures += test_fixed_turn_right_runs_full_duration_even_when_center_seen();
+    failures += test_route_counts_two_all_on_crosses_then_next_left_turn();
     failures += test_biased_wide_noise_does_not_start_lead_event();
     failures += test_lead_event_advances_before_turning();
     failures += test_lead_event_without_entry_direction_does_not_random_turn();
