@@ -28,6 +28,9 @@ typedef enum {
     LF_APP_STATE_REORIENT_APPROACH,   /* 直角弯：低速前进靠近弯点后再旋转 */
     LF_APP_STATE_REORIENT_SPIN,
     LF_APP_STATE_REORIENT_CONFIRM,
+    LF_APP_STATE_FIXED_TURN_STOP,
+    LF_APP_STATE_FIXED_TURN_SPIN,
+    LF_APP_STATE_FIXED_TURN_SETTLE,
     LF_APP_STATE_STOPPED,
     LF_APP_STATE_FAULT
 } LF_AppState;
@@ -43,6 +46,17 @@ typedef enum {
     LF_START_STRAIGHT_GUARD_ACTIVE,
     LF_START_STRAIGHT_GUARD_RELEASED,
 } LF_StartStraightGuardPhase;
+
+typedef enum {
+    LF_ROUTE_PHASE_WAIT_ARM_AFTER_CURVES = 0,
+    LF_ROUTE_PHASE_WAIT_INITIAL_RIGHT_ANGLE,
+    LF_ROUTE_PHASE_WAIT_FIRST_T_RIGHT,
+    LF_ROUTE_PHASE_WAIT_LEFT_RIGHT_ANGLE,
+    LF_ROUTE_PHASE_COUNT_TWO_CROSSES,
+    LF_ROUTE_PHASE_WAIT_NEXT_LEFT_RIGHT_ANGLE,
+    LF_ROUTE_PHASE_WAIT_FINAL_T_RIGHT,
+    LF_ROUTE_PHASE_DONE,
+} LF_RoutePhase;
 
 typedef enum {
     LF_APP_REASON_NONE = 0,
@@ -71,6 +85,8 @@ typedef enum {
     LF_APP_REASON_REORIENT_STARTED,
     LF_APP_REASON_REORIENT_ALIGNED,
     LF_APP_REASON_REORIENT_TIMEOUT,
+    LF_APP_REASON_FIXED_TURN_STARTED,
+    LF_APP_REASON_FIXED_TURN_DONE,
     LF_APP_REASON_FAULT_FALLBACK,
 } LF_AppReason;
 
@@ -163,6 +179,21 @@ typedef struct {
     uint32_t reorient_backtrack_start_ms;
     bool reorient_backtrack_active;
     uint32_t reorient_last_finish_ms;    /* 上次 reorient 完成时间戳，用于冷却 */
+
+    /* 固定 90°动作：仅由路线脚本显式触发，不替换普通直线/U弯/连续弯逻辑。 */
+    uint32_t fixed_turn_start_ms;
+    uint32_t fixed_turn_phase_start_ms;
+    int8_t fixed_turn_dir;
+    uint8_t fixed_turn_event;
+
+    /* 固定路线脚本：默认关闭，开启后按阶段识别 T/十字/直角路况。 */
+    uint8_t route_phase;
+    uint8_t route_cross_count;
+    uint8_t route_event_confirm_count;
+    bool route_cross_armed;
+    bool route_curve_seen;
+    uint32_t route_last_event_ms;
+    uint8_t route_stable_after_curve_count;
 } LF_AppContext;
 
 /* 应用层初始化。 */
