@@ -10,6 +10,35 @@
 - 当前巡线使用 **6 参数简化 PD + kff 架构**（`TDPS_SIMPLE_CONTROL=1`）。6 个核心参数：`kp`, `kd`, `kff`, `base_speed`, `min_speed`, `max_correction`。死区/软区/积分/速度缩放/变化率限幅均已关闭。如需回到旧 62 参数架构，将 `TDPS_SIMPLE_CONTROL` 改为 0。
 - 当前实车入口默认使用 `LF_Config_ApplyDebugProfile()`；除非用户明确要求 competition，否则不要切换到 `LF_Config_ApplyCompetitionProfile()`。
 
+## 巡线传感器 D帧协议（重要）
+
+Yahboom 8-LP UART 模式使用 ASCII 协议，命令 `$0,1,1#` 同时请求模拟帧和数字帧：
+
+- **模拟 A帧**：`$Ax1:xxx,x2:xxx,...,x8:xxx#`，xxx = 0~4095
+- **数字 D帧**：`$Dx1:x,x2:x,...,x8:x#`，x = 0 或 1
+
+**D帧极性（实测）**：
+- `0` = 检测到黑线 = 传感器 LED 灯亮 = **"亮"**
+- `1` = 未检测到 = 传感器 LED 灯灭 = **"灭"**
+
+这是最容易踩的坑：D帧的 `0` 才是"亮"，不是 `1`。硬路线脚本的 `route_lane_on_now()` 和 `route_lane_off_now()` 必须遵守这个极性。
+
+## 赛道固定路线脚本
+
+赛道顺序：直角左弯 → 直行 → T字路口右弯 → 直角左弯 → 直行过两个十字路口 → 直角左弯。
+
+硬事件检测只用 D帧数字值（`route_lane_on_now`/`route_lane_off_now`），不依赖模拟 A帧、`instant_norm`、`line_detected` 等：
+
+- **全亮（T口/十字）**：8路 D帧全为 `0`。
+- **左直角**：右侧外侧（通道8 = index 7）D帧 `1`（灭），通道 1~6（index 0~5）D帧 `0`（亮）；或左侧外侧（通道1 = index 0）D帧 `1`（灭），通道 3~8（index 2~7）D帧 `0`（亮）。
+- 两种缺口统一按左直角处理，原地左转 90°。
+
+路线阶段机（`route_script_try_match`）不走事件冷却，只通过"离开后重新武装"防重复触发。
+
+固定 90°动作参数：`fixed_turn_spin_speed=200`，`fixed_turn_90_ms_left/right=720ms`，`fixed_turn_settle_ms=80ms`。
+
+当前问题：直角处电机抽动后丢线、T口有趋势但不旋转。疑似 `set_opposite_spin_command()` 或 `max_motor_delta`/`motor_deadband` 与原地旋转命令冲突。
+
 ## 常用离线构建
 
 在 `TDPS/` 下运行：

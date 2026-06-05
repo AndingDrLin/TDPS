@@ -39,9 +39,21 @@
 - 默认 debug profile 使用低速保守巡线参数并关闭岔路识别；只有明确切换 competition profile 时才启用比赛参数。
 - 当前实车几何为传感器阵列中心到左右驱动轮轴线中点约 22 cm、左右轮距约 16 cm；`lead_advance_ticks` 仍是时间近似，需要在实车上按 T 字、直角、圆形入口和 U 型顶点重新标定。
 
+## 已知问题
+
+- 赛道固定路线脚本：直角左弯→T口右弯→直角左弯→两个十字直行→直角左弯。
+  - 硬事件检测基于 D帧（`$Dx1:x,...,x8:x#`），D帧极性：`0`=黑线=LED亮，`1`=白底=LED灭。
+  - `route_lane_on_now(index)` 返回 `digital[index] == 0U`（LED亮时返回true）。
+  - T口/十字：8路全亮 → `frame_looks_like_all_on_cross()`。
+  - 左直角：外侧第8通道灭，1~6通道亮；或第1通道灭，3~8通道亮。
+  - 路线阶段机不走冷却，重复触发由"离开后重新武装"逻辑防抖。
+  - **当前问题**：直角弯处车停下、电机抽动后丢线，没有正确执行原地旋转；T口有右转趋势但也没有正确执行固定旋转。疑似原地旋转指令输出或电机差速限制问题。
+- 当前实车几何为传感器阵列中心到左右驱动轮轴线中点约 22 cm、左右轮距约 16 cm；`lead_advance_ticks` 仍是时间近似，需要在实车上按 T 字、直角、圆形入口和 U 型顶点重新标定。
+
 ## 下一步建议
 
-1. 用当前 debug profile 参数（`kp=0.25, kd=1.20, kff=0.0008, base=280, min=60, max_correction=300`）上板验证简化 PD+kff 架构。
-2. 按 `docs/tuning.md` 的参数台账记录每次实车测试，重点关注 `base_speed/kp/kd/kff` 和 `lead_advance_ticks/lead_turn_delta`。
-3. 明确左右分叉路线的障碍检测方案，避免只用前向雷达做无法区分左右侧的决策。
-4. 将每次上板测试的日期、场地、电池电压、debug 参数和现象写入实验记录。
+1. 修复原地旋转执行问题：检查 `fixed_turn_spin_speed=200` 与 `max_motor_delta=420`/`motor_deadband=120` 的配合，确认 `set_opposite_spin_command()` 能正确输出两轮反向命令。
+2. 用 Keil Watch 确认：`s_stats.digital_frame_count` 是否持续增长、`uart_digital[0..7]` 在直角/T口灯型变化时的值。
+3. 按 `docs/tuning.md` 的参数台账记录每次实车测试，重点关注 `base_speed/kp/kd/kff` 和 `lead_advance_ticks/lead_turn_delta`。
+4. 明确左右分叉路线的障碍检测方案，避免只用前向雷达做无法区分左右侧的决策。
+5. 将每次上板测试的日期、场地、电池电压、debug 参数和现象写入实验记录。
