@@ -455,11 +455,6 @@
               <FilePath>../Src/lf_debug_monitor.c</FilePath>
             </File>
             <File>
-              <FileName>lf_dgus_screen.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../Src/lf_dgus_screen.c</FilePath>
-            </File>
-            <File>
               <FileName>lf_future_hooks.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Src/lf_future_hooks.c</FilePath>
@@ -485,11 +480,6 @@
               <FilePath>../Src/lf_radar_uart.c</FilePath>
             </File>
             <File>
-              <FileName>lf_run_log.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../Src/lf_run_log.c</FilePath>
-            </File>
-            <File>
               <FileName>lf_sensor.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Src/lf_sensor.c</FilePath>
@@ -503,11 +493,6 @@
               <FileName>tdps_uart_callbacks.c</FileName>
               <FileType>1</FileType>
               <FilePath>../Src/tdps_uart_callbacks.c</FilePath>
-            </File>
-            <File>
-              <FileName>lf_watch_debug.c</FileName>
-              <FileType>1</FileType>
-              <FilePath>../Src/lf_watch_debug.c</FilePath>
             </File>
           </Files>
         </Group>
