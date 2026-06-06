@@ -1,3 +1,14 @@
+/**
+ * @file lf_app.h
+ * @brief 巡线应用层状态机
+ *
+ * 状态流转：
+ *   WAIT_START → CALIBRATING → RUNNING
+ *   RUNNING ⇄ RECOVERING
+ *   RUNNING → AVOID_* → RUNNING
+ *   RUNNING → FIXED_TURN_* → RUNNING
+ *   RUNNING → REORIENT_* → RUNNING
+ */
 #ifndef LF_APP_H
 #define LF_APP_H
 
@@ -9,6 +20,7 @@
 #include "lf_radar.h"
 #include "lf_sensor.h"
 
+/** 应用主状态 */
 typedef enum {
     LF_APP_STATE_BOOT = 0,
     LF_APP_STATE_WAIT_START,
@@ -16,196 +28,131 @@ typedef enum {
     LF_APP_STATE_RUNNING,
     LF_APP_STATE_RECOVERING,
     LF_APP_STATE_AVOID_PREP,
-    LF_APP_STATE_AVOID_TURN_OUT,
     LF_APP_STATE_AVOID_BYPASS,
-    LF_APP_STATE_AVOID_TURN_IN,
     LF_APP_STATE_AVOID_REACQUIRE,
-    LF_APP_STATE_FORK_SAMPLE,
-    LF_APP_STATE_FORK_COMMIT_LEFT,
-    LF_APP_STATE_FORK_COMMIT_RIGHT,
-    LF_APP_STATE_FORK_REACQUIRE,
-    LF_APP_STATE_REORIENT_STOP,
-    LF_APP_STATE_REORIENT_APPROACH,   /* 直角弯：低速前进靠近弯点后再旋转 */
-    LF_APP_STATE_REORIENT_SPIN,
-    LF_APP_STATE_REORIENT_CONFIRM,
     LF_APP_STATE_FIXED_TURN_STOP,
     LF_APP_STATE_FIXED_TURN_SPIN,
     LF_APP_STATE_FIXED_TURN_SETTLE,
+    LF_APP_STATE_REORIENT_STOP,
+    LF_APP_STATE_REORIENT_SPIN,
+    LF_APP_STATE_REORIENT_CONFIRM,
     LF_APP_STATE_STOPPED,
-    LF_APP_STATE_FAULT
+    LF_APP_STATE_FAULT,
 } LF_AppState;
 
+/** 固定路线阶段 */
 typedef enum {
-    LF_LEAD_PHASE_IDLE = 0,
-    LF_LEAD_PHASE_ADVANCE,
-    LF_LEAD_PHASE_TURN_HOLD,
-} LF_LeadPhase;
-
-typedef enum {
-    LF_START_STRAIGHT_GUARD_OFF = 0,
-    LF_START_STRAIGHT_GUARD_ACTIVE,
-    LF_START_STRAIGHT_GUARD_RELEASED,
-} LF_StartStraightGuardPhase;
-
-typedef enum {
-    LF_ROUTE_PHASE_WAIT_ARM_AFTER_CURVES = 0,
-    LF_ROUTE_PHASE_WAIT_INITIAL_RIGHT_ANGLE,
-    LF_ROUTE_PHASE_WAIT_FIRST_T_RIGHT,
-    LF_ROUTE_PHASE_WAIT_LEFT_RIGHT_ANGLE,
-    LF_ROUTE_PHASE_COUNT_TWO_CROSSES,
-    LF_ROUTE_PHASE_WAIT_NEXT_LEFT_RIGHT_ANGLE,
-    LF_ROUTE_PHASE_WAIT_FINAL_T_RIGHT,
+    LF_ROUTE_PHASE_WAIT_ARM = 0,       /**< S 弯后第一个 T 口 → 右转 */
+    LF_ROUTE_PHASE_T_RIGHT,            /**< 兼容旧阶段：T 口 → 右转 */
+    LF_ROUTE_PHASE_LEFT_1,             /**< 左直角 → 左转 */
+    LF_ROUTE_PHASE_CROSS,              /**< 十字 ×2 → 直行 */
+    LF_ROUTE_PHASE_LEFT_2,             /**< 左直角 → 左转 */
+    LF_ROUTE_PHASE_RIGHT_1,            /**< 右直角 → 右转 */
+    LF_ROUTE_PHASE_RIGHT_STRAIGHT,     /**< 右直角 → 直行 */
+    LF_ROUTE_PHASE_RIGHT_2,            /**< 右直角 → 右转 */
+    LF_ROUTE_PHASE_T_LEFT,             /**< T 口 → 左转 */
+    LF_ROUTE_PHASE_LEFT_3,             /**< 左直角 → 左转 */
     LF_ROUTE_PHASE_DONE,
 } LF_RoutePhase;
 
+/** 固定转弯事件，仅用于调试观察 */
 typedef enum {
-    LF_APP_REASON_NONE = 0,
-    LF_APP_REASON_WAIT_START,
-    LF_APP_REASON_CALIBRATION_STARTED,
-    LF_APP_REASON_CALIBRATION_FAILED,
-    LF_APP_REASON_CALIBRATION_DEGRADED,
-    LF_APP_REASON_CALIBRATION_DONE,
-    LF_APP_REASON_LINE_LOST,
-    LF_APP_REASON_LINE_RECOVERED,
-    LF_APP_REASON_RECOVERY_TIMEOUT,
-    LF_APP_REASON_RADAR_BLOCK,
-    LF_APP_REASON_RADAR_CLEAR,
-    LF_APP_REASON_AVOID_STARTED,
-    LF_APP_REASON_AVOID_RETRY,
-    LF_APP_REASON_AVOID_FAILED,
-    LF_APP_REASON_AVOID_COMPLETED,
-    LF_APP_REASON_FORK_DETECTED,
-    LF_APP_REASON_FORK_LEFT_BLOCKED,
-    LF_APP_REASON_FORK_LEFT_CLEAR,
-    LF_APP_REASON_FORK_RADAR_STALE,
-    LF_APP_REASON_FORK_FALLBACK_LEFT,
-    LF_APP_REASON_FORK_FALLBACK_RIGHT,
-    LF_APP_REASON_FORK_COMPLETED,
-    LF_APP_REASON_FORK_FAILED,
-    LF_APP_REASON_REORIENT_STARTED,
-    LF_APP_REASON_REORIENT_ALIGNED,
-    LF_APP_REASON_REORIENT_TIMEOUT,
-    LF_APP_REASON_FIXED_TURN_STARTED,
-    LF_APP_REASON_FIXED_TURN_DONE,
-    LF_APP_REASON_FAULT_FALLBACK,
-} LF_AppReason;
+    LF_ROUTE_EVENT_NONE = 0,
+    LF_ROUTE_EVENT_FIRST_T_RIGHT,
+    LF_ROUTE_EVENT_LEFT_RIGHT_ANGLE,
+    LF_ROUTE_EVENT_RIGHT_RIGHT_ANGLE,
+    LF_ROUTE_EVENT_T_LEFT,
+} LF_RouteEvent;
 
+/** 丢线恢复阶段 */
+typedef enum {
+    LF_RECOVER_FORWARD = 0,
+    LF_RECOVER_BACKTRACK,
+    LF_RECOVER_SWEEP_LEFT,
+    LF_RECOVER_SWEEP_RIGHT,
+    LF_RECOVER_CONFIRM,
+} LF_RecoverPhase;
+
+/**
+ * @brief 应用层上下文
+ *
+ * 字段只保留状态机真正需要的运行数据。Keil Watch 可直接观察本结构体，
+ * 不再散落大量全局调试变量。
+ */
 typedef struct {
+    /* 基本状态 */
     LF_AppState state;
     uint32_t boot_ms;
-    uint32_t last_step_us; /* DWT 微秒时间戳，替代毫秒级 last_step_ms，dt_s 精度提升 1000 倍。 */
+    uint32_t last_step_us;
     uint32_t wait_start_line_since_ms;
     uint32_t calib_start_ms;
-    uint32_t recover_start_ms;
-    uint32_t avoid_state_start_ms;
-    int8_t last_seen_dir; /* -1 左侧，+1 右侧。 */
-    int8_t avoid_dir;
-    uint8_t avoid_attempts;
+    uint32_t run_start_ms;
+    bool calibration_ok;
+    bool calibration_degraded;
+    bool run_finalized;
+
+    /* 巡线控制 */
     LF_PIDState pid;
     LF_SensorFrame last_frame;
+    int16_t current_target_speed;
+    int8_t last_seen_dir;
+    int8_t trusted_line_dir;
+    int32_t last_trusted_position;
+    bool trusted_line_valid;
+    uint8_t line_lost_count;
+
+    /* 雷达快照 */
     LF_RadarObstacleState obstacle_state;
     uint16_t obstacle_distance_mm;
-    uint32_t radar_parse_error_count;
     bool radar_has_target;
     bool radar_frame_valid;
-    uint8_t radar_target_state;
-    LF_RadarFrameType radar_frame_type;
     uint32_t radar_frame_count;
     uint32_t radar_last_update_ms;
     uint32_t radar_frame_age_ms;
-    LF_AppReason reason;
-    bool calibration_ok;
-    bool calibration_degraded;
+
+    /* 丢线恢复 */
+    uint32_t recover_start_ms;
+    uint32_t recover_phase_start_ms;
     uint8_t recover_phase;
     uint8_t recover_confirm_count;
-    uint32_t recover_phase_start_ms;
-    uint8_t avoid_confirm_count;
-    uint32_t fork_state_start_ms;
-    uint8_t fork_detect_count;
-    uint8_t fork_block_count;
-    uint8_t fork_valid_sample_count;
-    uint32_t fork_last_sample_frame_count;
-    int8_t fork_decision;
-    uint16_t fork_min_distance_mm;
-    bool fork_radar_stale;
-    uint8_t fork_reacquire_count;
-    bool run_finalized;
     uint16_t recovery_count;
-    uint8_t line_lost_count;
-    uint8_t straight_stable_count;
-    uint8_t curve_prepare_count;
-    uint8_t interference_count;
-    uint16_t interference_hold_count;
-    uint8_t lead_phase;
-    uint8_t lead_event_count;
-    uint8_t lead_phase_ticks;
-    uint8_t lead_entry_memory_count;
-    int8_t lead_entry_dir;
-    uint8_t straight_noise_count;
-    uint8_t start_straight_guard_phase;
-    uint8_t start_straight_release_count;
-    uint32_t run_start_ms;
-    uint8_t edge_realign_count;
-    int8_t edge_realign_side;
-    uint8_t curve_arc_count;
-    uint8_t curve_arc_release_count;
-    int8_t curve_arc_side;
-    uint32_t reorient_start_ms;
-    int8_t reorient_spin_dir;
-    uint8_t reorient_confirm_count;
-    int8_t last_strong_curve_side;
-    int32_t last_curve_position;
-    int32_t last_trusted_position;
-    int8_t trusted_line_dir;
-    bool trusted_line_valid;
-    int16_t current_target_speed;
 
-    /* 路段检测 */
-    LF_SegmentType segment_type;
-    LF_SegmentType segment_candidate;
-    uint8_t segment_candidate_count;
-    uint8_t segment_hold_count;
+    /* 避障 */
+    int8_t avoid_dir;
+    uint32_t avoid_state_start_ms;
+    uint8_t avoid_confirm_count;
 
-    /* 连续弯检测（方向切换环形缓冲） */
-    int8_t position_sign_history[20];
-    uint8_t sign_history_index;
-    uint8_t direction_switch_count;
-
-    /* 直角弯增强 */
-    uint8_t right_angle_detect_count;
-    int8_t right_angle_side;
-    uint8_t reorient_retry_count;
-    bool reorient_retry_reverse;
-    uint32_t reorient_backtrack_start_ms;
-    bool reorient_backtrack_active;
-    uint32_t reorient_last_finish_ms;    /* 上次 reorient 完成时间戳，用于冷却 */
-
-    /* 固定 90°动作：仅由路线脚本显式触发，不替换普通直线/U弯/连续弯逻辑。 */
-    uint32_t fixed_turn_start_ms;
+    /* 固定 90° 转弯 */
     uint32_t fixed_turn_phase_start_ms;
     int8_t fixed_turn_dir;
     uint8_t fixed_turn_event;
+    uint32_t route_last_event_ms;
 
-    /* 固定路线脚本：默认关闭，开启后按阶段识别 T/十字/直角路况。 */
+    /* 直角弯兜底旋转 */
+    int8_t reorient_spin_dir;
+    uint32_t reorient_start_ms;
+    uint32_t reorient_last_finish_ms;
+    uint8_t reorient_confirm_count;
+
+    /* 固定路线脚本 */
     uint8_t route_phase;
     uint8_t route_cross_count;
     uint8_t route_event_confirm_count;
     bool route_cross_armed;
-    bool route_curve_seen;
-    uint32_t route_last_event_ms;
-    uint8_t route_stable_after_curve_count;
+
+    /* 分段控制 */
+    LF_SegmentType segment_type;
+    LF_SegmentType segment_candidate;
+    uint8_t segment_candidate_count;
+    uint8_t segment_hold_count;
+    int8_t position_sign_history[20];
+    uint8_t sign_history_index;
+    uint8_t direction_switch_count;
 } LF_AppContext;
 
-/* 应用层初始化。 */
 void LF_App_Init(void);
-
-/* 应用层周期执行（建议在 while(1) 中持续调用）。 */
 void LF_App_RunStep(void);
-
-/* 外部事件：通知经过检查点，内部转发到预留 hook。 */
 void LF_App_NotifyCheckpoint(uint32_t checkpoint_id);
-
-/* 外部查询当前状态。 */
 const LF_AppContext *LF_App_GetContext(void);
 
 #endif /* LF_APP_H */

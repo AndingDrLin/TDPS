@@ -39,6 +39,7 @@ void LF_PlatformStub_RadarInject(const uint8_t *data, uint16_t len);
 void LF_PlatformStub_RadarClear(void);
 void LF_PlatformStub_SetLineSensorRaw(const uint16_t raw[LF_SENSOR_COUNT]);
 void LF_PlatformStub_ClearLineSensorRaw(void);
+void LF_PlatformStub_SetDigitalFrame(const uint8_t digital[LF_SENSOR_COUNT]);
 const char *LF_PlatformStub_GetLastDebugLine(void);
 #endif
 

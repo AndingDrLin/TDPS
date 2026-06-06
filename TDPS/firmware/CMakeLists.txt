@@ -13,13 +13,13 @@ set(TDPS_CORE_SOURCES
     Src/lf_app.c
     Src/lf_chassis.c
     Src/lf_config.c
+    Src/lf_config_profiles.c
     Src/lf_control.c
     Src/lf_debug_monitor.c
-    Src/lf_dgus_screen.c
     Src/lf_future_hooks.c
+    Src/lf_led_blink.c
     Src/lf_radar.c
     Src/lf_sensor.c
-    Src/lf_watch_debug.c
     Src/wireless_hooks.c
     Src/wl_app.c
     Src/wl_config.c
@@ -47,10 +47,37 @@ if(TDPS_DEBUG_MONITOR)
 endif()
 
 if(TDPS_TARGET_MCU)
+    target_include_directories(tdps_core PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/Core/Inc
+        ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32F4xx_HAL_Driver/Inc
+        ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/STM32F4xx_HAL_Driver/Inc/Legacy
+        ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Device/ST/STM32F4xx/Include
+        ${CMAKE_CURRENT_SOURCE_DIR}/Drivers/CMSIS/Include
+    )
     target_sources(tdps_core PRIVATE
+        Core/Src/stm32f4xx_hal_msp.c
+        Core/Src/stm32f4xx_it.c
+        Core/Src/system_stm32f4xx.c
+        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal.c
+        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_adc.c
+        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_adc_ex.c
+        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_cortex.c
+        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_dma.c
+        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_exti.c
+        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash.c
+        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_flash_ex.c
+        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_gpio.c
+        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pwr.c
+        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_pwr_ex.c
+        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rcc.c
+        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_rcc_ex.c
+        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim.c
+        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_tim_ex.c
+        Drivers/STM32F4xx_HAL_Driver/Src/stm32f4xx_hal_uart.c
         Src/lf_board_stm32f4.c
         Src/lf_platform_stm32f4_hal.c
         Src/lf_radar_uart.c
+        Src/lf_sensor_uart.c
         Src/wl_platform_stm32f4.c
         Src/tdps_uart_callbacks.c
     )

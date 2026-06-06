@@ -23,6 +23,8 @@ static uint16_t s_radar_tail = 0U;
 static bool s_line_override_enabled = false;
 static uint16_t s_line_override[LF_SENSOR_COUNT];
 static char s_debug_last_line[512];
+static uint8_t s_stub_digital[LF_SENSOR_COUNT];
+static bool s_stub_digital_valid = false;
 
 void LF_Platform_BoardInit(void)
 {
@@ -30,6 +32,8 @@ void LF_Platform_BoardInit(void)
     s_radar_head = 0U;
     s_radar_tail = 0U;
     s_line_override_enabled = false;
+    s_stub_digital_valid = false;
+    memset(s_stub_digital, 0, sizeof(s_stub_digital));
     s_debug_last_line[0] = '\0';
 }
 
@@ -177,5 +181,72 @@ const char *LF_PlatformStub_GetLastDebugLine(void)
 {
     return s_debug_last_line;
 }
+
+/* ============================================================
+ * 传感器 UART stub：PC 测试环境下替代 lf_sensor_uart.c。
+ * 提供可注入的 D帧数字缓存，供 route_script_peek / T口检测使用。
+ * ============================================================ */
+#include "lf_sensor_uart.h"
+
+void LF_PlatformStub_SetDigitalFrame(const uint8_t digital[LF_SENSOR_COUNT])
+{
+    uint32_t i;
+    if (digital == NULL) return;
+    for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
+        s_stub_digital[i] = digital[i];
+    }
+    s_stub_digital_valid = true;
+}
+
+void LF_SensorUart_Init(void *huart)
+{
+    (void)huart;
+    s_stub_digital_valid = false;
+}
+
+bool LF_SensorUart_GetDigitalFrame(uint8_t out_values[LF_SENSOR_COUNT])
+{
+    uint32_t i;
+    if (out_values == NULL || !s_stub_digital_valid) {
+        return false;
+    }
+    for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
+        out_values[i] = s_stub_digital[i];
+    }
+    return true;
+}
+
+bool LF_SensorUart_GetAnalogFrame(uint16_t out_values[LF_SENSOR_COUNT])
+{
+    (void)out_values;
+    return false;
+}
+
+bool LF_SensorUart_GetFrame(uint8_t out_values[LF_SENSOR_COUNT])
+{
+    (void)out_values;
+    return false;
+}
+
+void LF_SensorUart_GetStats(LF_SensorUartStats *out_stats)
+{
+    if (out_stats != NULL) {
+        memset(out_stats, 0, sizeof(*out_stats));
+    }
+}
+
+void LF_SensorUart_GetLastAsciiFrame(char out_frame[LF_SENSOR_UART_MAX_FRAME_LEN])
+{
+    if (out_frame != NULL) {
+        out_frame[0] = '\0';
+    }
+}
+
+uint32_t LF_SensorUart_GetValidFrameCount(void) { return 0U; }
+uint32_t LF_SensorUart_GetErrorCount(void) { return 0U; }
+HAL_StatusTypeDef LF_SensorUart_SendCommand(const char *cmd) { (void)cmd; return HAL_OK; }
+void LF_SensorUart_OnByte(void *huart, uint8_t byte) { (void)huart; (void)byte; }
+void LF_SensorUart_RecordUartError(void) {}
+void LF_SensorUart_OnTxComplete(void) {}
 
 #endif /* LF_USE_STM32F4_HAL_PORT */

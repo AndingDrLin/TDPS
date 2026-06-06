@@ -1,363 +1,189 @@
+/**
+ * @file lf_config.h
+ * @brief 巡线小车参数集中管理
+ *
+ * 所有现场可调参数统一收敛到 LF_Config 结构体中，便于实验记录和版本管理。
+ * 建议每次仅调整 1~2 个参数，并在实验日志中记录"参数 → 结果"映射。
+ */
 #ifndef LF_CONFIG_H
 #define LF_CONFIG_H
 
 #include <stdbool.h>
 #include <stdint.h>
 
-/*
- * 巡线一期参数集中管理文件
- * 说明：
- * 1. 所有需要现场调参的量都收敛在 LF_Config 中，便于实验记录和版本管理。
- * 2. 建议每次只调整 1~2 个参数，并在实验日志中记录“参数 -> 结果”映射。
- */
+/* 传感器通道数（Yahboom 8-LP 巡线模块） */
+#define LF_SENSOR_COUNT  (8U)
 
-#define LF_SENSOR_COUNT (8U)
+/* ==================== 枚举定义 ==================== */
 
+/** 传感器输入模式 */
 typedef enum {
-    /* 直接采集每路模拟量（ADC）。 */
-    LF_SENSOR_INPUT_ANALOG_ADC = 0,
-
-    /* 8 路 GPIO 高低电平（Yahboom 8-LP 的 10pin IO 模式）。 */
-    LF_SENSOR_INPUT_DIGITAL_GPIO,
-
-    /* 串口协议读取（Yahboom 8-LP 的 4pin UART 模式，后续扩展）。 */
-    LF_SENSOR_INPUT_UART_PROTOCOL,
-
-    /* I2C 协议读取（Yahboom 8-LP 的 4pin I2C 模式，后续扩展）。 */
-    LF_SENSOR_INPUT_I2C_PROTOCOL,
+    LF_SENSOR_INPUT_ANALOG_ADC = 0,     /**< ADC 模拟量采集 */
+    LF_SENSOR_INPUT_DIGITAL_GPIO,       /**< GPIO 高低电平 */
+    LF_SENSOR_INPUT_UART_PROTOCOL,      /**< 串口协议（Yahboom 4pin UART） */
+    LF_SENSOR_INPUT_I2C_PROTOCOL,       /**< I2C 协议（预留） */
 } LF_SensorInputMode;
 
-/*
- * 路段类型：用于分段控制，根据传感器模式 + 时序特征判断当前路段。
- * 每帧由 detect_segment_type() 更新，供参数切换和策略选择使用。
+/**
+ * @brief 路段类型
+ *
+ * 由 detect_segment_type() 每帧更新，供分段参数切换和策略选择使用。
+ * 优先级：丢线 > 宽线/路口 > 急弯 > 缓弯 > 直道。
  */
 typedef enum {
-    LF_SEGMENT_STRAIGHT = 0,      /* 直道：2-3通道活跃，|pos|小且稳定 */
-    LF_SEGMENT_GENTLE_CURVE,      /* 缓弯：position逐渐偏移，一侧活跃递增 */
-    LF_SEGMENT_TIGHT_CURVE,       /* 急弯/连续弯：position大幅偏移，active>=4 */
-    LF_SEGMENT_WIDE_LINE,         /* 宽线/路口/直角弯入口：大面积亮 */
-    LF_SEGMENT_FORK,              /* 岔路口：两侧均有信号 */
-    LF_SEGMENT_LOST,              /* 丢线中 */
+    LF_SEGMENT_STRAIGHT = 0,      /**< 直道：2~3 通道活跃，|pos| 小且稳定 */
+    LF_SEGMENT_GENTLE_CURVE,      /**< 缓弯：position 渐偏，一侧活跃递增 */
+    LF_SEGMENT_TIGHT_CURVE,       /**< 急弯/连续弯：position 大偏移 */
+    LF_SEGMENT_WIDE_LINE,         /**< 宽线/路口/直角入口：大面积亮 */
+    LF_SEGMENT_LOST,              /**< 丢线 */
 } LF_SegmentType;
 
+/* ==================== 参数结构体 ==================== */
+
+/**
+ * @brief 巡线参数集合
+ *
+ * 参数分组：
+ * - 启动与标定：上电等待和校准流程
+ * - 传感器：滤波、标定、极性、阈值、权重
+ * - 巡线控制：PD + kff 核心参数
+ * - 电机：死区、限幅
+ * - 丢线恢复：自救参数
+ * - 雷达避障：触发阈值和绕行参数
+ * - 直角弯：原地旋转参数
+ * - 路线脚本：固定赛道导航
+ * - 固定转弯：90° 原地旋转
+ * - 分段控制：路段类型切换
+ */
 typedef struct {
-    /* 主循环节拍（ms）。建议保持固定周期执行控制算法。 */
-    uint16_t control_period_ms;
+    /* ==================== 启动与标定 ==================== */
 
-    /* 自动开始延时（ms）。0 表示禁用固定倒计时启动。 */
-    uint32_t auto_start_delay_ms;
+    uint16_t control_period_ms;            /**< 主循环节拍（ms），建议固定 10 */
+    uint32_t auto_start_delay_ms;          /**< 自动启动延时（ms），0 = 禁用倒计时 */
+    uint32_t start_min_boot_delay_ms;      /**< 无按钮启动：最小上电等待（ms） */
+    uint32_t start_line_hold_ms;           /**< 无按钮启动：检测到线持续时长（ms） */
+    uint32_t calibration_duration_ms;      /**< 光照标定持续时间（ms） */
+    uint16_t calibration_switch_interval_ms; /**< 标定阶段转向切换周期（ms） */
+    int16_t  calibration_spin_speed;       /**< 标定阶段原地转向速度 */
+    bool     sensor_fast_calibration;      /**< 快速标定：跳过旋转，用固定 min/max */
 
-    /* 无按钮启动：上电安全等待后，检测到有效线持续一段时间再进入标定。 */
-    uint32_t start_min_boot_delay_ms;
-    uint32_t start_line_hold_ms;
-    bool start_straight_guard_enable;
-    uint32_t start_straight_guard_ms;
-    int16_t start_straight_guard_speed;
-    int16_t start_straight_guard_max_correction;
-    uint8_t start_straight_guard_active_count;
-    uint8_t start_straight_guard_release_ticks;
-    uint8_t start_straight_guard_release_active_count;
-    int16_t start_straight_guard_release_error;
+    /* ==================== 传感器 ==================== */
 
-    /* 光照标定持续时间（ms）。 */
-    uint32_t calibration_duration_ms;
+    LF_SensorInputMode sensor_input_mode;  /**< 传感器输入模式 */
+    bool     sensor_invert_polarity;       /**< 模拟量极性翻转（黑线值更小时置 true） */
+    uint16_t sensor_digital_threshold;     /**< GPIO 数字模式阈值 */
+    bool     sensor_digital_active_high;   /**< GPIO 有效电平：true = 高电平有效 */
+    bool     sensor_use_dynamic_calibration; /**< 是否启用动态标定 */
+    bool     sensor_allow_degraded_calibration; /**< 允许降级标定运行 */
+    uint8_t  sensor_min_valid_count;       /**< 降级标定最少有效通道数 */
+    uint16_t sensor_calibration_min_delta; /**< 标定最小动态范围 */
+    int16_t  sensor_degraded_max_speed;    /**< 标定降级时限速 */
+    float    sensor_filter_alpha;          /**< IIR 低通系数（0~1，越大越灵敏） */
+    bool     sensor_edge_noise_reject_enable; /**< 边缘噪声抑制（端点异常亮时清零） */
+    uint16_t sensor_edge_noise_neighbor_threshold; /**< 边缘噪声邻居阈值 */
+    int16_t  sensor_weights[LF_SENSOR_COUNT]; /**< 传感器横向权重（左负右正） */
 
-    /* 标定阶段左右转向切换周期（ms）。用于让传感器尽量扫过黑/白区域。 */
-    uint16_t calibration_switch_interval_ms;
+    /* ==================== 巡线检测 ==================== */
 
-    /* 标定阶段原地转向速度（-1000~1000）。 */
-    int16_t calibration_spin_speed;
+    uint16_t line_detect_min_sum;          /**< 在线最小信号总量 */
+    uint16_t line_detect_min_peak;         /**< 在线最小峰值 */
+    uint16_t line_detect_min_contrast;     /**< 在线最小对比度 */
+    uint8_t  line_lost_grace_ticks;        /**< 丢线宽容帧数（保持方向滑行） */
+    uint16_t edge_hint_threshold;          /**< 半区强度差方向提示阈值 */
 
-    /* 低通滤波系数（0~1）。值越大越灵敏，值越小越平滑。 */
-    float sensor_filter_alpha;
+    /* ==================== 巡线控制（PD + kff） ==================== */
 
-    /* 传感器输入模式（支持 8-LP 的 GPIO/UART/I2C 三种通信接口）。 */
-    LF_SensorInputMode sensor_input_mode;
+    float    kp;                           /**< 比例增益 */
+    float    kd;                           /**< 微分增益 */
+    float    kff;                          /**< 曲率前馈增益（kff * derivative * speed） */
+    int16_t  base_speed;                   /**< 基础前进速度 */
+    int16_t  min_speed;                    /**< 弯道最低速度 */
+    int16_t  max_correction;               /**< PD 输出限幅 */
+    int8_t   steering_dir_sign;            /**< 转向符号：+1 正常，-1 倒三轮底盘 */
+    float    derivative_filter_alpha;      /**< D 项一阶低通系数 */
+    int16_t  max_output_delta_per_tick;    /**< 单拍修正变化上限（防急转） */
+    int16_t  max_motor_cmd;                /**< 电机命令绝对值上限 */
+    int16_t  max_motor_delta;              /**< 左右轮最大差速限制 */
+    int16_t  motor_deadband;               /**< 电机最小起转补偿（非零时生效） */
 
-    /* 模拟量极性翻转（当“黑线原始值更小”时可置 true）。 */
-    bool sensor_invert_polarity;
+    /* ==================== 丢线恢复 ==================== */
 
-    /* GPIO 数字模式阈值（raw >= threshold 视为高电平）。 */
-    uint16_t sensor_digital_threshold;
+    int16_t  recover_forward_speed;        /**< 恢复阶段前进速度 */
+    int16_t  recover_backtrack_speed;      /**< 恢复阶段后退速度 */
+    uint16_t recover_forward_ms;           /**< 前冲持续时间（ms） */
+    uint16_t recover_backtrack_ms;         /**< 后退持续时间（ms） */
+    int16_t  recover_sweep_speed;          /**< 左右扫描速度 */
+    uint16_t recover_sweep_ms;             /**< 单侧扫描时间（ms） */
+    uint32_t recover_timeout_ms;           /**< 恢复总超时（ms），超时停车 */
 
-    /* GPIO 数字模式下“在线”有效电平：true=高电平有效，false=低电平有效。 */
-    bool sensor_digital_active_high;
+    /* ==================== 雷达避障 ==================== */
 
-    /* 是否启用动态标定（数字模式建议关闭）。 */
-    bool sensor_use_dynamic_calibration;
+    bool     radar_enable;                 /**< 启用雷达模块 */
+    uint32_t radar_uart_baudrate;          /**< 雷达串口波特率 */
+    uint16_t radar_trigger_distance_mm;    /**< 避障触发距离（mm） */
+    uint16_t radar_release_distance_mm;    /**< 避障解除距离（mm） */
+    uint8_t  radar_debounce_frames;        /**< 雷达状态去抖帧数 */
+    uint16_t radar_frame_timeout_ms;       /**< 雷达数据帧超时（ms） */
+    bool     obstacle_avoid_enable;        /**< 启用避障动作 */
+    int8_t   obstacle_preferred_side;      /**< 避障优先方向：-1 左，0 自动，+1 右 */
+    uint16_t obstacle_stop_ms;             /**< 避障停车确认时间（ms） */
+    uint16_t obstacle_bypass_ms;           /**< 绕行持续时间（ms） */
+    uint16_t obstacle_reacquire_timeout_ms; /**< 绕行后重新找线超时（ms） */
+    int16_t  obstacle_turn_speed;          /**< 避障转向速度 */
+    int16_t  obstacle_bypass_speed;        /**< 绕行直行速度 */
 
-    /* 标定降级：少量通道异常时允许限速运行。 */
-    bool sensor_allow_degraded_calibration;
-    uint8_t sensor_min_valid_count;
-    uint16_t sensor_calibration_min_delta;
-    int16_t sensor_degraded_max_speed;
+    /* ==================== 直角弯（原地旋转对准） ==================== */
 
-    /* 判定“在线上”的最小强度和。 */
-    uint16_t line_detect_min_sum;
-    uint16_t line_detect_min_peak;
-    uint16_t line_detect_min_contrast;
-    uint8_t line_lost_grace_ticks;
+    bool     reorient_enable;              /**< 启用直角弯原地旋转 */
+    int16_t  reorient_spin_speed;          /**< 原地旋转速度 */
+    uint16_t reorient_timeout_ms;          /**< 旋转超时（ms） */
+    int16_t  reorient_position_threshold;  /**< 触发旋转的最小位置偏移 */
+    uint16_t reorient_cooldown_ms;         /**< 旋转完成后冷却期（ms），防 U 弯振荡 */
+    uint8_t  reorient_confirm_ticks;       /**< 中间传感器对准确认帧数 */
 
-    /* 左右半区强度差超过该阈值时，更新丢线恢复方向。 */
-    uint16_t edge_hint_threshold;
-    bool sensor_edge_noise_reject_enable;
-    uint16_t sensor_edge_noise_neighbor_threshold;
+    /* ==================== 路线脚本 ==================== */
 
-    /* 传感器横向权重。左负右正。 */
-    int16_t sensor_weights[LF_SENSOR_COUNT];
+    bool     route_script_enable;          /**< 启用路线脚本（固定赛道导航） */
+    uint8_t  route_event_confirm_ticks;    /**< 路口事件确认帧数 */
+    uint16_t route_event_cooldown_ms;      /**< 路口事件冷却时间（ms） */
 
-    /* 巡线 PID 参数。 */
-    float kp;
-    float ki;
-    float kd;
+    /* ==================== 固定 90° 转弯 ==================== */
 
-    /* 基础速度（-1000~1000）。 */
-    int16_t base_speed;
+    bool     fixed_turn_enable;            /**< 启用固定 90° 原地旋转 */
+    int16_t  fixed_turn_spin_speed;        /**< 固定转弯旋转速度 */
+    uint16_t fixed_turn_stop_ms;           /**< 转弯前停车等待（ms） */
+    uint16_t fixed_turn_90_ms_left;        /**< 左转 90° 持续时间（ms） */
+    uint16_t fixed_turn_90_ms_right;       /**< 右转 90° 持续时间（ms） */
+    uint16_t fixed_turn_settle_ms;         /**< 转弯后稳定时间（ms） */
+    uint16_t fixed_turn_cooldown_ms;       /**< 转弯冷却期（ms） */
 
-    /* 弯道最低速度（简化控制用）。 */
-    int16_t min_speed;
+    /* ==================== 分段控制 ==================== */
 
-    /* 曲率前馈增益（简化控制用）。 */
-    float kff;
-    int8_t steering_dir_sign;
+    bool     segment_control_enable;       /**< 启用分段参数切换 */
+    uint8_t  segment_confirm_ticks;        /**< 路段切换确认帧数 */
+    uint8_t  segment_hold_ticks;           /**< 路段最少保持帧数（防止抖动） */
 
-    /* PID 输出限幅，避免急剧打角。 */
-    int16_t max_correction;
-    int16_t control_error_deadband;
-    int16_t control_error_soft_zone;
-    int16_t adaptive_slow_speed;
-    int16_t adaptive_error_threshold;
-    float adaptive_confidence_threshold;
-    int16_t sharp_turn_speed;
+    /* 直道参数 */
+    float    seg_kp_straight;
+    float    seg_kd_straight;
+    float    seg_kff_straight;
+    int16_t  seg_base_speed_straight;
+    int16_t  seg_min_speed_straight;
+    int16_t  seg_max_correction_straight;
 
-    bool straight_boost_enable;
-    bool curve_prepare_enable;
-    bool line_stability_enable;
-    bool stable_direction_enable;
-    int16_t straight_boost_speed;
-    int16_t straight_error_threshold;
-    int16_t straight_delta_threshold;
-    float straight_confidence_min;
-    uint8_t straight_confirm_ticks;
-    int16_t curve_prepare_speed;
-    int16_t curve_prepare_error_threshold;
-    int16_t curve_prepare_delta_threshold;
-    uint8_t curve_prepare_confirm_ticks;
-    uint8_t interference_active_count_threshold;
-    int16_t interference_position_jump_threshold;
-    uint16_t interference_hold_ticks;
-    float direction_update_confidence_min;
-    bool lead_compensation_enable;
-    uint8_t lead_event_active_count_threshold;
-    uint16_t lead_event_min_sum;
-    int16_t lead_event_center_error_threshold;
-    int16_t lead_event_entry_error_threshold;
-    uint8_t lead_event_confirm_ticks;
-    uint8_t lead_advance_ticks;
-    int16_t lead_advance_speed;
-    uint8_t lead_turn_hold_ticks;
-    int16_t lead_turn_speed;
-    int16_t lead_turn_delta;
-    uint8_t lead_entry_memory_ticks;
-    bool straight_noise_reject_enable;
-    uint8_t straight_noise_confirm_ticks;
-    uint8_t straight_noise_active_count_threshold;
-    uint16_t straight_noise_max_sum;
-    int16_t straight_noise_max_position_error;
-    int16_t straight_noise_max_position_delta;
-
-    int16_t line_hold_speed;
-    int16_t line_hold_turn_speed;
-    bool edge_realign_enable;
-    int8_t edge_realign_dir_sign;
-    int16_t edge_realign_speed;
-    int16_t edge_realign_delta;
-    uint8_t edge_realign_confirm_ticks;
-    bool curve_arc_enable;
-    int16_t curve_arc_speed;
-    int16_t curve_arc_delta;
-    int16_t curve_arc_max_motor_delta;
-    uint8_t curve_arc_confirm_ticks;
-    uint8_t curve_arc_release_ticks;
-
-    /* 原地旋转对准：检测到急弯/直角弯时停车→原地转→对准中间传感器→恢复巡线。 */
-    bool reorient_enable;
-    int16_t reorient_spin_speed;
-    uint8_t reorient_confirm_ticks;
-    uint16_t reorient_timeout_ms;
-    int16_t reorient_position_threshold;
-    uint16_t reorient_stop_ms;             /* 停车等待时间（默认1000ms），车身静止稳定后再旋转 */
-    uint16_t reorient_min_spin_ms;         /* 原地旋转最短持续时间，避免直角入口中间通道仍亮时立即确认 */
-
-    float derivative_filter_alpha;
-    float integral_limit;
-    /*
-     * 积分分离 + 变速积分：
-     * |error| > sep+soft → 积分指数衰减（防弯道记忆出弯过冲）
-     * sep < |error| ≤ sep+soft → 积分速率线性降速（平滑过渡）
-     * |error| ≤ sep → 全速积分（直线稳态修正）
-     */
-    float integral_separation_threshold;
-    float integral_soft_zone;
-    /*
-     * PID 输出变化率限幅：单拍最大跳变量，防止传感器跳变导致急转。
-     * 100Hz 控制频率下，80 意味着每秒最多变化 8000 单位 ≈ 全量程的 8 倍/s。
-     */
-    int16_t max_output_delta_per_tick;
-
-    /* 电机命令绝对值上限。 */
-    int16_t max_motor_cmd;
-    int16_t max_motor_delta;
-
-    /* 电机最小起转补偿（非零命令时生效）。 */
-    int16_t motor_deadband;
-
-    /* 丢线恢复参数。 */
-    int16_t recover_turn_speed;
-    int16_t recover_backtrack_speed;
-    uint16_t recover_backtrack_ms;
-    int16_t recover_sweep_start_speed;
-    int16_t recover_sweep_max_speed;
-    uint16_t recover_confirm_ticks;
-    float recover_confidence_min;
-    uint32_t recover_timeout_ms;
-
-    /* 雷达串口参数与避障阈值（HLK-LD2410S，默认值待实机确认）。 */
-    bool radar_enable;
-    uint32_t radar_uart_baudrate;
-    uint16_t radar_trigger_distance_mm;
-    uint16_t radar_release_distance_mm;
-    uint8_t radar_debounce_frames;
-    uint16_t radar_frame_timeout_ms;
-
-    /* 避障减速速度（WARN 状态下生效）。 */
-    int16_t obstacle_warn_speed;
-    bool obstacle_avoid_enable;
-    int8_t obstacle_preferred_side;
-    uint8_t obstacle_max_attempts;
-    uint16_t obstacle_confirm_ms;
-    uint16_t obstacle_stop_ms;
-    uint16_t obstacle_turn_out_ms;
-    uint16_t obstacle_turn_out_min_ms;
-    uint16_t obstacle_bypass_ms;
-    uint16_t obstacle_bypass_min_ms;
-    uint16_t obstacle_turn_in_ms;
-    uint16_t obstacle_turn_in_min_ms;
-    uint16_t obstacle_reacquire_timeout_ms;
-    uint16_t obstacle_safe_distance_mm;
-    uint16_t obstacle_line_reacquire_min_sum;
-    uint8_t obstacle_reacquire_confirm_ticks;
-    int16_t obstacle_turn_speed;
-    int16_t obstacle_bypass_inner_speed;
-    int16_t obstacle_bypass_outer_speed;
-    uint16_t obstacle_emergency_distance_mm;
-
-    /* 岔路决策：左侧斜装雷达只在岔路窗口内解释为左支路占用检测。 */
-    bool fork_enable;
-    uint16_t fork_detect_min_sum;
-    uint16_t fork_sensor_active_threshold;
-    uint8_t fork_detect_min_active_sensors;
-    uint16_t fork_left_min_sum;
-    uint16_t fork_right_min_sum;
-    int32_t fork_detect_max_abs_position;
-    uint8_t fork_detect_confirm_ticks;
-    uint16_t fork_sample_ms;
-    uint16_t fork_radar_max_age_ms;
-    uint16_t fork_radar_min_distance_mm;
-    uint16_t fork_radar_block_distance_mm;
-    uint8_t fork_radar_block_confirm_frames;
-    uint8_t fork_radar_valid_min_samples;
-    int8_t fork_fallback_branch;
-    int16_t fork_sample_speed;
-    int16_t fork_commit_speed;
-    int16_t fork_commit_turn_speed;
-    uint16_t fork_commit_min_ms;
-    uint16_t fork_commit_ms;
-    uint16_t fork_reacquire_timeout_ms;
-    uint16_t fork_line_reacquire_min_sum;
-    uint8_t fork_reacquire_confirm_ticks;
-    uint16_t fork_cooldown_ms;
-
-    /* 无旋转快速标定：跳过原地旋转，用固定 min/max。适合无按钮独立运行。 */
-    bool sensor_fast_calibration;
-
-    /* ===== 分段控制 ===== */
-    bool segment_control_enable;
-
-    /* 路段检测 */
-    uint8_t segment_confirm_ticks;     /* 路段切换确认帧数（默认3） */
-    uint8_t segment_hold_ticks;        /* 路段最少保持帧数（默认8，防抖动） */
-    uint8_t segment_history_len;       /* 时序历史长度（用于连续弯检测，默认20） */
-
-    /* 分段参数：每种路段独立的 PD+kff 参数集 */
-    float seg_kp_straight;
-    float seg_kd_straight;
-    float seg_kff_straight;
-    int16_t seg_base_speed_straight;
-    int16_t seg_min_speed_straight;
-    int16_t seg_max_correction_straight;
-
-    float seg_kp_gentle_curve;
-    float seg_kd_gentle_curve;
-    float seg_kff_gentle_curve;
-    int16_t seg_base_speed_gentle_curve;
-    int16_t seg_min_speed_gentle_curve;
-    int16_t seg_max_correction_gentle_curve;
-
-    float seg_kp_tight_curve;
-    float seg_kd_tight_curve;
-    float seg_kff_tight_curve;
-    int16_t seg_base_speed_tight_curve;
-    int16_t seg_min_speed_tight_curve;
-    int16_t seg_max_correction_tight_curve;
-
-    float seg_kp_wide_line;
-    float seg_kd_wide_line;
-    float seg_kff_wide_line;
-    int16_t seg_base_speed_wide_line;
-    int16_t seg_min_speed_wide_line;
-    int16_t seg_max_correction_wide_line;
-
-    float seg_kp_fork;
-    float seg_kd_fork;
-    float seg_kff_fork;
-    int16_t seg_base_speed_fork;
-    int16_t seg_min_speed_fork;
-    int16_t seg_max_correction_fork;
-
-    /* 连续弯 */
-    uint8_t seg_curve_direction_window;      /* 方向切换检测窗口帧数（默认20） */
-    uint8_t seg_curve_direction_switch_min;   /* 最小方向切换次数（默认2） */
-    uint8_t seg_curve_grace_ticks_extra;      /* 连续弯额外宽容帧数（默认4，加到 line_lost_grace_ticks） */
-
-    /* 直角转弯增强 */
-    uint8_t right_angle_confirm_ticks;       /* 直角弯确认帧数（默认2） */
-    int16_t reorient_approach_speed;         /* 直角弯靠近弯点速度（默认80） */
-    uint16_t reorient_approach_ms;           /* 直角弯靠近弯点时间（默认100） */
-    bool reorient_backtrack_enable;          /* 旋转超时后倒车重试（默认true） */
-    int16_t reorient_backtrack_speed;        /* 倒车速度（默认120） */
-    uint16_t reorient_backtrack_ms;          /* 倒车时间（默认400） */
-    uint8_t reorient_max_retries;            /* 最大重试次数（默认2） */
-    uint16_t reorient_cooldown_ms;           /* reorient完成后的冷却期（默认1500ms），防止U弯振荡 */
-
-    /* 固定路线脚本：按赛道顺序区分第一次全亮 T 口和后续十字路口。 */
-    bool route_script_enable;
-    uint8_t route_event_confirm_ticks;
-    uint16_t route_event_cooldown_ms;
-
-    /* 固定 90°原地旋转：检测到 T 口全亮或一侧 1~2 暗的直角时立即触发，不再依赖差速巡线。 */
-    bool fixed_turn_enable;
-    int16_t fixed_turn_spin_speed;
-    uint16_t fixed_turn_stop_ms;
-    uint16_t fixed_turn_90_ms_left;
-    uint16_t fixed_turn_90_ms_right;
-    uint16_t fixed_turn_settle_ms;
-    uint16_t fixed_turn_cooldown_ms;
+    /* 弯道参数（缓弯/急弯共用，通过 IIR 平滑过渡） */
+    float    seg_kp_curve;
+    float    seg_kd_curve;
+    float    seg_kff_curve;
+    int16_t  seg_base_speed_curve;
+    int16_t  seg_min_speed_curve;
+    int16_t  seg_max_correction_curve;
 } LF_Config;
 
-/* 全局可变参数实例。可在 main 中直接修改，或通过 lf_config_profiles 预设覆盖。 */
+/* 全局可变参数实例。可在 main 中直接修改，或通过 LF_Config_ApplyDebugProfile 预设覆盖。 */
 extern LF_Config g_lf_config;
 
+/** 应用调试配置（保守低速参数，适合首次调试和安全验证） */
 void LF_Config_ApplyDebugProfile(void);
 
 #endif /* LF_CONFIG_H */

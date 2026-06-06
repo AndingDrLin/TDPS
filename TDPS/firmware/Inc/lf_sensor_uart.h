@@ -8,6 +8,12 @@
 
 #ifdef LF_USE_STM32F4_HAL_PORT
 #include "stm32f4xx_hal.h"
+#else
+typedef void UART_HandleTypeDef;
+typedef int HAL_StatusTypeDef;
+#ifndef HAL_OK
+#define HAL_OK 0
+#endif
 #endif
 
 #define LF_SENSOR_UART_BAUDRATE          115200U
