@@ -8,7 +8,7 @@ reports/notebook/outputs/
 
 # Local reference packages are indexed by README only
 docs_reference/**
-firmware_hal/
+TDPS_HAL_PID_IT_Final
 !docs_reference/
 !docs_reference/README.md
 
