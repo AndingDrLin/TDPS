@@ -140,7 +140,7 @@ stateDiagram-v2
 |------|---------|----------|
 | gcc | PC stub tests & simulator | Yes (for testing) |
 | CMake 3.20+ | Build system | Optional (gcc manual build works too) |
-| arm-none-eabi-gaa | MCU cross-compilation | For flashing to hardware |
+| arm-none-eabi-gcc | MCU cross-compilation | For flashing to hardware |
 | Keil MDK | Board-level SWD debug | Optional |
 
 ### Build & Test (PC)
