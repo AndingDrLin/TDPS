@@ -55,17 +55,22 @@ gcc -std=c11 -Wall -Wextra -Werror \
   -I"${LF_COMMON_DIR}/harness" \
   -I"${LF_SUITE_DIR}" \
   "${FW_ROOT}/Src/lf_app.c" \
+  "${FW_ROOT}/Src/lf_app_util.c" \
+  "${FW_ROOT}/Src/lf_app_sensor.c" \
+  "${FW_ROOT}/Src/lf_app_route.c" \
+  "${FW_ROOT}/Src/lf_app_segment.c" \
+  "${FW_ROOT}/Src/lf_app_avoid.c" \
   "${FW_ROOT}/Src/lf_chassis.c" \
   "${LF_SUITE_DIR}/lf_sim_config_override.c" \
   "${FW_ROOT}/Src/lf_config_profiles.c" \
   "${FW_ROOT}/Src/lf_control.c" \
   "${FW_ROOT}/Src/lf_debug_monitor.c" \
-  "${FW_ROOT}/Src/lf_dgus_screen.c" \
   "${FW_ROOT}/Src/lf_sensor.c" \
+  "${FW_ROOT}/Src/lf_ultrasonic.c" \
+  "${FW_ROOT}/Src/lf_ultrasonic_stub.c" \
   "${FW_ROOT}/Src/lf_radar.c" \
   "${FW_ROOT}/Src/lf_future_hooks.c" \
   "${FW_ROOT}/Src/lf_led_blink.c" \
-  "${FW_ROOT}/Src/lf_run_log.c" \
   "${FW_ROOT}/Src/wireless_hooks.c" \
   "${FW_ROOT}/Src/wl_app.c" \
   "${FW_ROOT}/Src/wl_lora.c" \

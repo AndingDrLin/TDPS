@@ -1,12 +1,13 @@
 /**
  * @file lf_config.c
- * @brief 巡线参数默认值
+ * @brief Default line-following parameters.
  */
 #include "lf_config.h"
 
 /*
- * 默认值偏保守，适合 PC stub 和首次上板。
- * main.c 会调用 LF_Config_ApplyDebugProfile() 覆盖为当前实车调试参数。
+ * Defaults are conservative, suitable for PC stubs and first board bring-up.
+ * main.c calls LF_Config_ApplyDebugProfile() to override with current
+ * real-car debug parameters.
  */
 LF_Config g_lf_config = {
     .control_period_ms = 10U,
@@ -64,7 +65,7 @@ LF_Config g_lf_config = {
     .radar_trigger_distance_mm = 450U,
     .radar_release_distance_mm = 650U,
     .radar_debounce_frames = 3U,
-    .radar_frame_timeout_ms = 300U,
+    .radar_frame_timeout_ms = 800U,
     .obstacle_avoid_enable = true,
     .obstacle_preferred_side = 0,
     .obstacle_stop_ms = 120U,
@@ -109,4 +110,11 @@ LF_Config g_lf_config = {
     .seg_base_speed_curve = 120,
     .seg_min_speed_curve = 50,
     .seg_max_correction_curve = 400,
+
+    .ultrasonic_enable = false,
+    .ultrasonic_threshold_mm = 300U,
+    .ultrasonic_hold_ms = 3000U,
+    .ultrasonic_lora_checkpoint_id = 99U,
+    .ultrasonic_measure_interval_ms = 80U,
+    .ultrasonic_cooldown_ms = 5000U,
 };

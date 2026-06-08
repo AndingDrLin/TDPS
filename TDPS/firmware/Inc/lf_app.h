@@ -1,13 +1,13 @@
 /**
  * @file lf_app.h
- * @brief 巡线应用层状态机
+ * @brief Line-following application state machine.
  *
- * 状态流转：
- *   WAIT_START → CALIBRATING → RUNNING
- *   RUNNING ⇄ RECOVERING
- *   RUNNING → AVOID_* → RUNNING
- *   RUNNING → FIXED_TURN_* → RUNNING
- *   RUNNING → REORIENT_* → RUNNING
+ * State transitions:
+ *   WAIT_START -> CALIBRATING -> RUNNING
+ *   RUNNING <-> RECOVERING
+ *   RUNNING -> AVOID_* -> RUNNING
+ *   RUNNING -> FIXED_TURN_* -> RUNNING
+ *   RUNNING -> REORIENT_* -> RUNNING
  */
 #ifndef LF_APP_H
 #define LF_APP_H
@@ -20,7 +20,7 @@
 #include "lf_radar.h"
 #include "lf_sensor.h"
 
-/** 应用主状态 */
+/** Application main state. */
 typedef enum {
     LF_APP_STATE_BOOT = 0,
     LF_APP_STATE_WAIT_START,
@@ -36,26 +36,27 @@ typedef enum {
     LF_APP_STATE_REORIENT_STOP,
     LF_APP_STATE_REORIENT_SPIN,
     LF_APP_STATE_REORIENT_CONFIRM,
+    LF_APP_STATE_ULTRASONIC_HOLD,
     LF_APP_STATE_STOPPED,
     LF_APP_STATE_FAULT,
 } LF_AppState;
 
-/** 固定路线阶段 */
+/** Fixed-route phase for the competition course. */
 typedef enum {
-    LF_ROUTE_PHASE_WAIT_ARM = 0,       /**< S 弯后第一个 T 口 → 右转 */
-    LF_ROUTE_PHASE_T_RIGHT,            /**< 兼容旧阶段：T 口 → 右转 */
-    LF_ROUTE_PHASE_LEFT_1,             /**< 左直角 → 左转 */
-    LF_ROUTE_PHASE_CROSS,              /**< 十字 ×2 → 直行 */
-    LF_ROUTE_PHASE_LEFT_2,             /**< 左直角 → 左转 */
-    LF_ROUTE_PHASE_RIGHT_1,            /**< 右直角 → 右转 */
-    LF_ROUTE_PHASE_RIGHT_STRAIGHT,     /**< 右直角 → 直行 */
-    LF_ROUTE_PHASE_RIGHT_2,            /**< 右直角 → 右转 */
-    LF_ROUTE_PHASE_T_LEFT,             /**< T 口 → 左转 */
-    LF_ROUTE_PHASE_LEFT_3,             /**< 左直角 → 左转 */
+    LF_ROUTE_PHASE_WAIT_ARM = 0,       /**< After S-curve, first T-intersection -> right */
+    LF_ROUTE_PHASE_T_RIGHT,            /**< Legacy: T-intersection -> right */
+    LF_ROUTE_PHASE_LEFT_1,             /**< Left right-angle -> left */
+    LF_ROUTE_PHASE_CROSS,              /**< Cross intersection x2 -> straight */
+    LF_ROUTE_PHASE_LEFT_2,             /**< Left right-angle -> left */
+    LF_ROUTE_PHASE_RIGHT_1,            /**< Right right-angle -> right */
+    LF_ROUTE_PHASE_RIGHT_STRAIGHT,     /**< Right right-angle -> straight */
+    LF_ROUTE_PHASE_RIGHT_2,            /**< Right right-angle -> right */
+    LF_ROUTE_PHASE_T_LEFT,             /**< T-intersection -> left */
+    LF_ROUTE_PHASE_LEFT_3,             /**< Left right-angle -> left */
     LF_ROUTE_PHASE_DONE,
 } LF_RoutePhase;
 
-/** 固定转弯事件，仅用于调试观察 */
+/** Fixed-turn event type (for debug/telemetry observation). */
 typedef enum {
     LF_ROUTE_EVENT_NONE = 0,
     LF_ROUTE_EVENT_FIRST_T_RIGHT,
@@ -64,7 +65,7 @@ typedef enum {
     LF_ROUTE_EVENT_T_LEFT,
 } LF_RouteEvent;
 
-/** 丢线恢复阶段 */
+/** Line-loss recovery phase. */
 typedef enum {
     LF_RECOVER_FORWARD = 0,
     LF_RECOVER_BACKTRACK,
@@ -74,13 +75,13 @@ typedef enum {
 } LF_RecoverPhase;
 
 /**
- * @brief 应用层上下文
+ * @brief Application-layer context.
  *
- * 字段只保留状态机真正需要的运行数据。Keil Watch 可直接观察本结构体，
- * 不再散落大量全局调试变量。
+ * Contains all runtime state for the line-following state machine.
+ * Keil Watch can observe this struct directly for debugging.
  */
 typedef struct {
-    /* 基本状态 */
+    /* Basic state */
     LF_AppState state;
     uint32_t boot_ms;
     uint32_t last_step_us;
@@ -91,7 +92,7 @@ typedef struct {
     bool calibration_degraded;
     bool run_finalized;
 
-    /* 巡线控制 */
+    /* Line-following control */
     LF_PIDState pid;
     LF_SensorFrame last_frame;
     int16_t current_target_speed;
@@ -101,7 +102,7 @@ typedef struct {
     bool trusted_line_valid;
     uint8_t line_lost_count;
 
-    /* 雷达快照 */
+    /* Radar snapshot */
     LF_RadarObstacleState obstacle_state;
     uint16_t obstacle_distance_mm;
     bool radar_has_target;
@@ -110,37 +111,37 @@ typedef struct {
     uint32_t radar_last_update_ms;
     uint32_t radar_frame_age_ms;
 
-    /* 丢线恢复 */
+    /* Line-loss recovery */
     uint32_t recover_start_ms;
     uint32_t recover_phase_start_ms;
     uint8_t recover_phase;
     uint8_t recover_confirm_count;
     uint16_t recovery_count;
 
-    /* 避障 */
+    /* Obstacle avoidance */
     int8_t avoid_dir;
     uint32_t avoid_state_start_ms;
     uint8_t avoid_confirm_count;
 
-    /* 固定 90° 转弯 */
+    /* Fixed 90-degree turn */
     uint32_t fixed_turn_phase_start_ms;
     int8_t fixed_turn_dir;
     uint8_t fixed_turn_event;
     uint32_t route_last_event_ms;
 
-    /* 直角弯兜底旋转 */
+    /* Right-angle reorientation spin */
     int8_t reorient_spin_dir;
     uint32_t reorient_start_ms;
     uint32_t reorient_last_finish_ms;
     uint8_t reorient_confirm_count;
 
-    /* 固定路线脚本 */
+    /* Fixed-route script */
     uint8_t route_phase;
     uint8_t route_cross_count;
     uint8_t route_event_confirm_count;
     bool route_cross_armed;
 
-    /* 分段控制 */
+    /* Segment control */
     LF_SegmentType segment_type;
     LF_SegmentType segment_candidate;
     uint8_t segment_candidate_count;
@@ -148,6 +149,11 @@ typedef struct {
     int8_t position_sign_history[20];
     uint8_t sign_history_index;
     uint8_t direction_switch_count;
+
+    /* Ultrasonic overhead obstacle hold */
+    uint32_t ultrasonic_hold_start_ms;
+    bool ultrasonic_lora_sent;
+    uint32_t ultrasonic_cooldown_until_ms;
 } LF_AppContext;
 
 void LF_App_Init(void);

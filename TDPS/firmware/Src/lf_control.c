@@ -1,6 +1,12 @@
 /**
  * @file lf_control.c
- * @brief 巡线 PD + 曲率前馈控制器
+ * @brief Line-following PD + curvature-feedforward controller.
+ *
+ * Core formula:
+ *   correction = kp * error + kd * derivative + kff * derivative * speed
+ *
+ * Uses backward-Euler differentiation with a first-order low-pass filter
+ * on the derivative term to suppress sensor noise amplification.
  */
 #include "lf_control.h"
 
@@ -20,6 +26,19 @@ void LF_Control_ResetPid(LF_PIDState *pid)
     pid->initialized = 0U;
 }
 
+/**
+ * @brief Core PD + kff computation shared by both UpdatePD variants.
+ *
+ * @param error          Position error (positive = line to the right).
+ * @param dt_s           Time delta in seconds.
+ * @param speed          Current motor speed (for feedforward scaling).
+ * @param pid            PID state to read/write.
+ * @param kp             Proportional gain.
+ * @param kd             Derivative gain.
+ * @param kff            Curvature feedforward gain.
+ * @param max_correction Maximum absolute correction output.
+ * @return Clamped correction value in [-max_correction, +max_correction].
+ */
 static int16_t update_pd_core(float error,
                               float dt_s,
                               int16_t speed,
@@ -38,6 +57,7 @@ static int16_t update_pd_core(float error,
     if (pid == 0 || dt_s <= 0.0f || max_correction <= 0) {
         return 0;
     }
+    if (dt_s < 0.001f) { dt_s = 0.001f; }
 
     alpha = g_lf_config.derivative_filter_alpha;
     if (alpha < 0.0f) {
@@ -53,7 +73,8 @@ static int16_t update_pd_core(float error,
         pid->initialized = 1U;
     }
 
-    /* 后向欧拉微分 + 一阶低通：抑制传感器噪声被 D 项放大。 */
+    /* Backward-Euler derivative + first-order low-pass:
+     * suppresses sensor noise from being amplified by the D term. */
     raw_derivative = (error - pid->prev_error) / dt_s;
     derivative = alpha * pid->filtered_derivative + (1.0f - alpha) * raw_derivative;
     pid->filtered_derivative = derivative;
@@ -67,7 +88,8 @@ static int16_t update_pd_core(float error,
                                   (int16_t)(-max_correction),
                                   max_correction);
 
-    /* 单拍输出变化率限幅：防止一帧异常传感器导致车身猛打方向。 */
+    /* Per-tick output rate limiter: prevents a single bad sensor frame
+     * from causing an abrupt steering correction. */
     max_delta = g_lf_config.max_output_delta_per_tick;
     if (max_delta > 0) {
         float delta = output - pid->prev_output;

@@ -11,6 +11,11 @@ option(TDPS_DEBUG_MONITOR "Enable periodic debug monitor" OFF)
 
 set(TDPS_CORE_SOURCES
     Src/lf_app.c
+    Src/lf_app_util.c
+    Src/lf_app_sensor.c
+    Src/lf_app_route.c
+    Src/lf_app_segment.c
+    Src/lf_app_avoid.c
     Src/lf_chassis.c
     Src/lf_config.c
     Src/lf_config_profiles.c
@@ -20,6 +25,7 @@ set(TDPS_CORE_SOURCES
     Src/lf_led_blink.c
     Src/lf_radar.c
     Src/lf_sensor.c
+    Src/lf_ultrasonic.c
     Src/wireless_hooks.c
     Src/wl_app.c
     Src/wl_config.c
@@ -78,6 +84,7 @@ if(TDPS_TARGET_MCU)
         Src/lf_platform_stm32f4_hal.c
         Src/lf_radar_uart.c
         Src/lf_sensor_uart.c
+        Src/lf_ultrasonic_stm32f4.c
         Src/wl_platform_stm32f4.c
         Src/tdps_uart_callbacks.c
     )
@@ -93,6 +100,7 @@ if(TDPS_TARGET_MCU)
 else()
     target_sources(tdps_core PRIVATE
         Src/lf_platform_stub.c
+        Src/lf_ultrasonic_stub.c
         Src/wl_platform_stub.c
     )
 

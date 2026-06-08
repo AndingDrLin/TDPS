@@ -173,4 +173,11 @@ LF_Config g_lf_config = {
     .fork_reacquire_confirm_ticks = 3U,
     .fork_cooldown_ms = 1200U,
     .sensor_fast_calibration = false,
+
+    .ultrasonic_enable = false,
+    .ultrasonic_threshold_mm = 300U,
+    .ultrasonic_hold_ms = 3000U,
+    .ultrasonic_lora_checkpoint_id = 99U,
+    .ultrasonic_measure_interval_ms = 80U,
+    .ultrasonic_cooldown_ms = 5000U,
 };
