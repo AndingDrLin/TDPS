@@ -1,3 +1,8 @@
+/**
+ * @file lf_platform_stub.c
+ * @brief PC stub platform implementation (for offline testing and compilation).
+ */
+
 #ifndef LF_USE_STM32F4_HAL_PORT
 
 #include "lf_platform.h"
@@ -9,9 +14,10 @@
 #include "lf_debug_monitor.h"
 
 /*
- * Stub 平台实现：
- * 1. 方便在没有 MCU HAL 的环境下做静态编译/语法检查。
- * 2. 实际上板时请启用 LF_USE_STM32F4_HAL_PORT 并使用 HAL 端口文件。
+ * Stub platform implementation:
+ * 1. Enables static compilation / syntax checking without MCU HAL.
+ * 2. For real board use, enable LF_USE_STM32F4_HAL_PORT and use the HAL
+ *    port file instead.
  */
 
 #define LF_STUB_RADAR_BUFFER_SIZE (256U)
@@ -75,7 +81,7 @@ void LF_Platform_ReadLineSensorRaw(uint16_t out_raw[LF_SENSOR_COUNT])
         }
 
         if (LF_SENSOR_COUNT >= 8U) {
-            /* 默认模拟中间两路“在线”。 */
+            /* Default simulation: middle two channels “on line”. */
             out_raw[3] = active_high ? 4095U : 0U;
             out_raw[4] = active_high ? 4095U : 0U;
         }
@@ -183,8 +189,9 @@ const char *LF_PlatformStub_GetLastDebugLine(void)
 }
 
 /* ============================================================
- * 传感器 UART stub：PC 测试环境下替代 lf_sensor_uart.c。
- * 提供可注入的 D帧数字缓存，供 route_script_peek / T口检测使用。
+ * Sensor UART stub: replaces lf_sensor_uart.c in PC test environments.
+ * Provides an injectable D-frame digital buffer for route_script_peek /
+ * T-junction detection.
  * ============================================================ */
 #include "lf_sensor_uart.h"
 

@@ -1,24 +1,39 @@
+/**
+ * @file lf_future_hooks.h
+ * @brief Reserved hooks for future peripheral integration.
+ *
+ * Default weak implementations are provided in lf_future_hooks.c.
+ * Override by defining a non-weak function with the same signature
+ * in another .c file (e.g., wireless_hooks.c).
+ */
 #ifndef LF_FUTURE_HOOKS_H
 #define LF_FUTURE_HOOKS_H
 
 #include <stdbool.h>
 #include <stdint.h>
 
-/*
- * 后续功能预留钩子：
- * 1. 当前版本不实现 LoRa/雷达，但保留统一事件接口。
- * 2. 后续接入时，只需要在对应钩子里增加逻辑，主巡线流程不改。
- */
-
+/** @brief Called when sensor calibration begins. */
 void LF_Hook_OnCalibrationBegin(void);
+
+/**
+ * @brief Called when sensor calibration completes.
+ * @param success true if calibration succeeded.
+ */
 void LF_Hook_OnCalibrationComplete(bool success);
+
+/** @brief Called when the line is lost. */
 void LF_Hook_OnLineLost(void);
+
+/** @brief Called when the line is recovered after being lost. */
 void LF_Hook_OnLineRecovered(void);
 
-/* 预留：后续在路口/标记点触发 LoRa 发送。 */
+/**
+ * @brief Reserved: trigger LoRa send at intersections/waypoints.
+ * @param checkpoint_id Identifier of the checkpoint.
+ */
 void LF_Hook_OnReservedCheckpoint(uint32_t checkpoint_id);
 
-/* 预留：后续在障碍区前触发雷达决策。 */
+/** @brief Reserved: trigger radar decision before an obstacle zone. */
 void LF_Hook_OnReservedObstacleWindow(void);
 
 #endif /* LF_FUTURE_HOOKS_H */

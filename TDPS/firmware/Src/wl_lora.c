@@ -1,8 +1,8 @@
 /**
  * @file    wl_lora.c
- * @brief   EWM22A-900BWL22S LoRa 驱动层实现。
+ * @brief   EWM22A-900BWL22S LoRa driver layer implementation.
  *
- * 通过 AT 指令完成模块配置，通过 UART 完成数据发射。
+ * Configures the module via AT commands and transmits data via UART.
  */
 
 #include "wl_lora.h"
@@ -13,13 +13,13 @@
 #include <string.h>
 
 /* ------------------------------------------------------------------ */
-/*  内部常量                                                           */
+/*  Internal constants                                                 */
 /* ------------------------------------------------------------------ */
 
-/** AT 指令响应中表示成功的关键字。 */
+/** Success keyword in AT command responses. */
 #define AT_OK_TOKEN     "OK"
 
-/** 临时缓冲区大小（用于构造 AT 指令和读取响应）。 */
+/** Temporary buffer sizes (for constructing AT commands and reading responses). */
 #define CMD_BUF_SIZE    64
 #define RESP_BUF_SIZE   128
 #define DBG_BUF_SIZE    192
@@ -226,7 +226,7 @@ static bool service_schedule_retry(uint32_t now_ms, WL_LoRa_Status reason)
 }
 
 /* ------------------------------------------------------------------ */
-/*  等待 AUX 就绪                                                      */
+/*  Waiting for AUX ready                                              */
 /* ------------------------------------------------------------------ */
 
 bool WL_LoRa_WaitAUX(uint32_t timeout_ms)
@@ -248,7 +248,7 @@ bool WL_LoRa_IsReady(void)
 }
 
 /* ------------------------------------------------------------------ */
-/*  AT 指令收发                                                        */
+/*  AT command send/receive                                            */
 /* ------------------------------------------------------------------ */
 
 WL_LoRa_Status WL_LoRa_SendAT(const char *cmd,
@@ -256,13 +256,13 @@ WL_LoRa_Status WL_LoRa_SendAT(const char *cmd,
                               uint16_t resp_buf_len,
                               uint32_t timeout_ms)
 {
-    /* 清空接收缓冲区，避免残留数据干扰 */
+    /* Flush the receive buffer to avoid stale data interference */
     WL_Platform_UART_FlushRx();
 
-    /* 发送 AT 指令（EWM22A 的 AT 指令不带回车换行） */
+    /* Send AT command (EWM22A AT commands do not include CR/LF) */
     WL_Platform_UART_SendString(cmd);
 
-    /* 等待并收集响应 */
+    /* Wait and collect the response */
     char local_buf[RESP_BUF_SIZE];
     uint16_t pos = 0;
     uint32_t start = WL_Platform_GetMillis();
@@ -278,7 +278,7 @@ WL_LoRa_Status WL_LoRa_SendAT(const char *cmd,
                 local_buf[pos] = '\0';
             }
 
-            /* 检查是否已收到 AT_OK */
+            /* Check if AT_OK has been received */
             if (strstr(local_buf, AT_OK_TOKEN) != NULL) {
                 if (resp_buf != NULL && resp_buf_len > 0U) {
                     uint16_t copy_len = (pos < resp_buf_len) ? pos : (uint16_t)(resp_buf_len - 1U);
@@ -292,7 +292,7 @@ WL_LoRa_Status WL_LoRa_SendAT(const char *cmd,
                 return WL_LORA_OK;
             }
 
-            /* 检查是否有错误响应 */
+            /* Check for error responses */
             if (strstr(local_buf, "AT_PARAM_ERROR") != NULL ||
                 strstr(local_buf, "AT_ERROR") != NULL) {
                 char dbg[DBG_BUF_SIZE];
@@ -309,7 +309,7 @@ WL_LoRa_Status WL_LoRa_SendAT(const char *cmd,
         }
     }
 
-    /* 超时未收到有效响应 */
+    /* Timed out without a valid response */
     char dbg[DBG_BUF_SIZE];
     snprintf(dbg, sizeof(dbg), "[LoRa] AT timeout: %.48s\r\n", cmd);
     WL_Platform_DebugPrint(dbg);
@@ -317,7 +317,7 @@ WL_LoRa_Status WL_LoRa_SendAT(const char *cmd,
 }
 
 /* ------------------------------------------------------------------ */
-/*  内部辅助：发送一条 AT 指令并检查结果                                 */
+/*  Internal helper: send an AT command and check the result           */
 /* ------------------------------------------------------------------ */
 
 static WL_LoRa_Status _send_at_check(const char *cmd)
@@ -326,7 +326,7 @@ static WL_LoRa_Status _send_at_check(const char *cmd)
 }
 
 /* ------------------------------------------------------------------ */
-/*  模块初始化                                                         */
+/*  Module initialization                                              */
 /* ------------------------------------------------------------------ */
 
 WL_LoRa_Status WL_LoRa_Init(void)
@@ -344,14 +344,14 @@ WL_LoRa_Status WL_LoRa_Init(void)
     WL_Platform_ResetModule();
     WL_Platform_DelayMs(200U);
 
-    /* 1. 等待模块上电自检完成（AUX 拉高） */
+    /* 1. Wait for the module power-on self-test to complete (AUX goes high) */
     WL_Platform_DelayMs(g_wl_config.power_on_delay_ms);
     if (!WL_LoRa_WaitAUX(g_wl_config.at_response_timeout_ms)) {
         WL_Platform_DebugPrint("[LoRa] not ready\r\n");
         return WL_LORA_ERR_TIMEOUT;
     }
 
-    /* 2. 进入配置模式（模式 0） */
+    /* 2. Enter configuration mode (mode 0) */
     st = _send_at_check("AT+HMODE=0");
     if (st != WL_LORA_OK) {
         return st;
@@ -361,7 +361,7 @@ WL_LoRa_Status WL_LoRa_Init(void)
         return WL_LORA_ERR_TIMEOUT;
     }
 
-    /* 3. 同步已验证代码的配置指令顺序 */
+    /* 3. Match the verified configuration command sequence */
     st = _send_at_check("ATE0");
     if (st != WL_LORA_OK) {
         return st;
@@ -402,14 +402,14 @@ WL_LoRa_Status WL_LoRa_Init(void)
         return st;
     }
 
-    /* 5. 设置信道 */
+    /* 5. Set channel */
     snprintf(cmd, sizeof(cmd), "AT+CHANNEL=%u", (unsigned)g_wl_config.lora_channel);
     st = _send_at_check(cmd);
     if (st != WL_LORA_OK) {
         return st;
     }
 
-    /* 6. 设置网络 ID */
+    /* 6. Set network ID */
     snprintf(cmd, sizeof(cmd), "AT+NETID=%u", (unsigned)g_wl_config.lora_net_id);
     st = _send_at_check(cmd);
     if (st != WL_LORA_OK) {
@@ -442,7 +442,7 @@ WL_LoRa_Status WL_LoRa_Init(void)
         return st;
     }
 
-    /* 11. 切换到 UART/LoRa 透传模式（模式 1） */
+    /* 11. Switch to UART/LoRa transparent mode (mode 1) */
     st = _send_at_check("AT+HMODE=1");
     if (st != WL_LORA_OK) {
         return st;
@@ -457,7 +457,7 @@ WL_LoRa_Status WL_LoRa_Init(void)
 }
 
 /* ------------------------------------------------------------------ */
-/*  数据发送                                                           */
+/*  Data transmission                                                  */
 /* ------------------------------------------------------------------ */
 
 WL_LoRa_Status WL_LoRa_Send(const uint8_t *data, uint16_t len)

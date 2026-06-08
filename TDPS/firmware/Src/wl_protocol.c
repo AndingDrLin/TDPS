@@ -1,6 +1,6 @@
 /**
  * @file    wl_protocol.c
- * @brief   无线通信数据协议层实现 — 拱门报文打包。
+ * @brief   Wireless communication data protocol layer -- arch message packing.
  */
 
 #include "wl_protocol.h"
@@ -10,7 +10,7 @@
 #include <string.h>
 
 /* ------------------------------------------------------------------ */
-/*  报文构造                                                           */
+/*  Message construction                                               */
 /* ------------------------------------------------------------------ */
 
 uint16_t WL_Protocol_BuildCheckpointMsg(char *buf,

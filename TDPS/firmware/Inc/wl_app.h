@@ -1,9 +1,10 @@
 /**
  * @file    wl_app.h
- * @brief   无线通信应用层 — 状态机与对外接口。
+ * @brief   Wireless communication application layer -- state machine and public API.
  *
- * 管理比赛计时、检查点触发、报文发送的完整流程。
- * 巡线模块通过调用 WL_App_NotifyCheckpoint() 来触发无线发射。
+ * Manages the complete flow of race timing, checkpoint triggering, and
+ * message transmission. The line-following module triggers wireless
+ * transmission by calling WL_App_NotifyCheckpoint().
  */
 
 #ifndef WL_APP_H
@@ -13,78 +14,83 @@
 #include <stdint.h>
 
 /* ------------------------------------------------------------------ */
-/*  应用状态定义                                                       */
+/*  Application state definitions                                      */
 /* ------------------------------------------------------------------ */
 
 typedef enum {
-    WL_APP_STATE_IDLE = 0,      /**< 空闲，等待初始化或比赛开始 */
-    WL_APP_STATE_READY,         /**< LoRa 已初始化，等待比赛开始 */
-    WL_APP_STATE_RUNNING,       /**< 比赛进行中，计时器运行 */
-    WL_APP_STATE_FINISHED,      /**< 比赛结束 */
-    WL_APP_STATE_ERROR,         /**< 出错状态 */
+    WL_APP_STATE_IDLE = 0,      /**< Idle, waiting for initialization or race start */
+    WL_APP_STATE_READY,         /**< LoRa initialized, waiting for race start */
+    WL_APP_STATE_RUNNING,       /**< Race in progress, timer running */
+    WL_APP_STATE_FINISHED,      /**< Race finished */
+    WL_APP_STATE_ERROR,         /**< Error state */
 } WL_App_State;
 
+/** Diagnostic counters for checkpoint transmission. */
 typedef struct {
-    uint16_t checkpoint_enqueued_count;
-    uint16_t checkpoint_enqueue_fail_count;
-    uint16_t checkpoint_throttled_count;
-    uint32_t last_checkpoint_id;
+    uint16_t checkpoint_enqueued_count;     /**< Number of checkpoints successfully enqueued */
+    uint16_t checkpoint_enqueue_fail_count; /**< Number of checkpoint enqueue failures */
+    uint16_t checkpoint_throttled_count;    /**< Number of checkpoints throttled (dropped) */
+    uint32_t last_checkpoint_id;            /**< ID of the last checkpoint triggered */
 } WL_App_Diag;
 
 /* ------------------------------------------------------------------ */
-/*  初始化与主循环                                                     */
+/*  Initialization and main loop                                       */
 /* ------------------------------------------------------------------ */
 
 /**
- * 初始化无线通信应用层。
- * 内部调用 WL_Platform_Init() 和 WL_LoRa_Init()。
+ * @brief Initialize the wireless communication application layer.
  *
- * @return true = 成功，false = 初始化失败。
+ * Internally calls WL_Platform_Init() and WL_LoRa_Init().
+ *
+ * @return true on success, false on initialization failure.
  */
 bool WL_App_Init(void);
 
 /**
- * 应用层主循环 tick。
- * 在主 while(1) 循环中周期性调用，处理状态转换和待发报文。
+ * @brief Application layer main-loop tick.
+ *
+ * Call periodically from the main while(1) loop to process state
+ * transitions and pending messages.
  */
 void WL_App_Tick(void);
 
 /* ------------------------------------------------------------------ */
-/*  比赛计时控制                                                       */
+/*  Race timing control                                                */
 /* ------------------------------------------------------------------ */
 
-/** 开始比赛计时。 */
+/** @brief Start race timing. */
 void WL_App_StartRace(void);
 
-/** 停止比赛计时。 */
+/** @brief Stop race timing. */
 void WL_App_StopRace(void);
 
-/** 获取从比赛开始到现在经过的毫秒数。未开始时返回 0。 */
+/** @brief Get the elapsed milliseconds since race start. Returns 0 if not started. */
 uint32_t WL_App_GetElapsedMs(void);
 
 /* ------------------------------------------------------------------ */
-/*  检查点通知                                                         */
+/*  Checkpoint notification                                            */
 /* ------------------------------------------------------------------ */
 
 /**
- * 通知应用层：小车经过了某个检查点。
- * 内部会构造报文并通过 LoRa 发射。
+ * @brief Notify the application layer that the car has passed a checkpoint.
  *
- * @param checkpoint_id 检查点 ID（如 WL_CHECKPOINT_ARCH_2_1）。
+ * Internally constructs a message and transmits it via LoRa.
+ *
+ * @param checkpoint_id Checkpoint ID (e.g. WL_CHECKPOINT_ARCH_2_1).
  */
 void WL_App_NotifyCheckpoint(uint32_t checkpoint_id);
 
 /* ------------------------------------------------------------------ */
-/*  状态查询                                                           */
+/*  Status queries                                                     */
 /* ------------------------------------------------------------------ */
 
-/** 获取当前应用状态。 */
+/** @brief Get the current application state. */
 WL_App_State WL_App_GetState(void);
 
-/** 获取最近一次发射的状态文本（用于调试/显示）。 */
+/** @brief Get the last transmission status text (for debug/display). */
 const char *WL_App_GetLastStatusText(void);
 
-/** 获取 checkpoint 发送诊断计数。 */
+/** @brief Get checkpoint transmission diagnostic counters. */
 const WL_App_Diag *WL_App_GetDiag(void);
 
 #endif /* WL_APP_H */

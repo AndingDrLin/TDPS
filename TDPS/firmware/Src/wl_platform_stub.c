@@ -1,9 +1,10 @@
 /**
  * @file    wl_platform_stub.c
- * @brief   平台抽象层桩实现（用于离线测试 / PC 端编译）。
+ * @brief   Platform abstraction stub implementation (for offline testing / PC builds).
  *
- * 当未定义 WL_USE_STM32F4_HAL_PORT 和 WL_USE_POSIX_SERIAL_PORT 时编译此文件，
- * 提供 wl_platform.h 中所有接口的空实现或简单模拟。
+ * When neither WL_USE_STM32F4_HAL_PORT nor WL_USE_POSIX_SERIAL_PORT is
+ * defined, this file is compiled, providing empty implementations or simple
+ * simulations for all interfaces in wl_platform.h.
  */
 
 #if !defined(WL_USE_STM32F4_HAL_PORT) && !defined(WL_USE_POSIX_SERIAL_PORT)
@@ -15,27 +16,27 @@
 #include <string.h>
 
 /* ------------------------------------------------------------------ */
-/*  模拟毫秒计数器                                                     */
+/*  Simulated millisecond counter                                      */
 /* ------------------------------------------------------------------ */
 
 static uint32_t stub_millis = 0;
 
 /* ------------------------------------------------------------------ */
-/*  模拟 UART 接收缓冲区                                               */
+/*  Simulated UART receive buffer                                      */
 /* ------------------------------------------------------------------ */
 
 static uint8_t stub_rx_buf[WL_UART_RX_BUF_SIZE];
 static uint16_t stub_rx_len = 0;
 static uint16_t stub_rx_pos = 0;
 
-/* 是否自动注入 AT_OK 响应。 */
+/* Whether to auto-inject AT_OK responses. */
 static bool stub_auto_at_response = true;
 
-/* AUX 引脚模拟状态。 */
+/* AUX pin simulated state. */
 static bool stub_aux_ready = true;
 
 /* ------------------------------------------------------------------ */
-/*  最近一次 UART 发送缓存（供自动化测试断言）                          */
+/*  Last UART transmit cache (for automated test assertions)           */
 /* ------------------------------------------------------------------ */
 
 static uint8_t stub_last_tx_buf[WL_UART_TX_BUF_SIZE];
@@ -60,7 +61,7 @@ static void stub_compact_rx(void)
 }
 
 /* ------------------------------------------------------------------ */
-/*  PAL 接口桩实现                                                     */
+/*  PAL interface stub implementations                                 */
 /* ------------------------------------------------------------------ */
 
 void WL_Platform_Init(void)
@@ -124,7 +125,8 @@ void WL_Platform_UART_Send(const uint8_t *data, uint16_t len)
     printf("\n");
 #endif
 
-    /* 模拟 AT 指令响应：如果发送的是 "AT" 开头，自动填充 "AT_OK\r\n" */
+    /* Simulate AT command response: if the data starts with "AT",
+     * automatically inject "AT_OK\r\n" */
     if (stub_auto_at_response && len >= 2U && data[0] == 'A' && data[1] == 'T') {
         const char *resp = "AT_OK\r\n";
         uint16_t rlen = (uint16_t)strlen(resp);
@@ -175,7 +177,7 @@ void WL_Platform_DebugPrint(const char *msg)
 }
 
 /* ------------------------------------------------------------------ */
-/*  桩专用辅助函数（供测试代码调用）                                     */
+/*  Stub-specific helper functions (called by test code)               */
 /* ------------------------------------------------------------------ */
 
 void WL_Stub_AdvanceMillis(uint32_t ms)

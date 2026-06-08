@@ -17,6 +17,10 @@ static volatile uint16_t rx_tail = 0U;
 static volatile uint8_t rx_byte;
 static volatile bool s_debug_tx_busy = false;
 
+/**
+ * @brief Enable the UART peripheral clock for the given USART/UART instance.
+ * @param instance Pointer to the USART_TypeDef peripheral register block.
+ */
 static void enable_uart_clock(USART_TypeDef *instance)
 {
     if (instance == USART1) {
@@ -34,6 +38,7 @@ static void enable_uart_clock(USART_TypeDef *instance)
     }
 }
 
+/** @brief Enable the GPIO peripheral clock for the given port. */
 static void gpio_clock_enable(GPIO_TypeDef *port)
 {
     if (port == GPIOA) {
@@ -49,6 +54,7 @@ static void gpio_clock_enable(GPIO_TypeDef *port)
     }
 }
 
+/** @brief Start (or restart) a single-byte UART interrupt receive. */
 static void uart_rx_start(void)
 {
     if (HAL_UART_Receive_IT(&wl_huart, (uint8_t *)&rx_byte, 1U) != HAL_OK) {
@@ -57,6 +63,7 @@ static void uart_rx_start(void)
     }
 }
 
+/** @brief Configure TX and RX GPIO pins for the LoRa UART. */
 static void uart_gpio_init(void)
 {
     GPIO_InitTypeDef gpio = {0};
@@ -76,6 +83,7 @@ static void uart_gpio_init(void)
     HAL_GPIO_Init(WL_UART_RX_PORT, &gpio);
 }
 
+/** @brief Initialize the LoRa UART peripheral and enable RX interrupts if configured. */
 static void uart_init(void)
 {
     enable_uart_clock(WL_UART_INSTANCE);
@@ -98,6 +106,7 @@ static void uart_init(void)
     }
 }
 
+/** @brief Configure the AUX status GPIO pin as input with pull-up. */
 static void aux_gpio_init(void)
 {
     GPIO_InitTypeDef gpio = {0};
@@ -109,6 +118,7 @@ static void aux_gpio_init(void)
     HAL_GPIO_Init(WL_AUX_PORT, &gpio);
 }
 
+/** @brief Configure the RST GPIO pin and set it to the inactive (idle) level. */
 static void rst_gpio_init(void)
 {
     GPIO_InitTypeDef gpio = {0};
@@ -124,6 +134,7 @@ static void rst_gpio_init(void)
     HAL_GPIO_Init(WL_RST_PORT, &gpio);
 }
 
+/** @brief Configure the LINK status GPIO pin as input with pull-up. */
 static void link_gpio_init(void)
 {
     GPIO_InitTypeDef gpio = {0};
@@ -135,6 +146,7 @@ static void link_gpio_init(void)
     HAL_GPIO_Init(WL_LINK_PORT, &gpio);
 }
 
+/** @brief Configure the WAKE GPIO pin as output, set to active level. */
 static void wake_gpio_init(void)
 {
     GPIO_InitTypeDef gpio = {0};
@@ -149,6 +161,7 @@ static void wake_gpio_init(void)
     HAL_GPIO_Init(WL_WAKE_PORT, &gpio);
 }
 
+/** @brief Initialize the optional debug UART peripheral (if WL_ENABLE_DEBUG_UART is set). */
 static void debug_uart_init(void)
 {
 #if WL_ENABLE_DEBUG_UART
@@ -181,6 +194,12 @@ static void debug_uart_init(void)
 #endif
 }
 
+/**
+ * @brief HAL UART RX-complete callback.
+ *
+ * Stores the received byte into the circular ring buffer and restarts
+ * single-byte interrupt reception.
+ */
 void WL_Port_UartRxCpltCallback(UART_HandleTypeDef *huart)
 {
     if (huart != NULL && huart->Instance == WL_UART_INSTANCE) {
@@ -193,6 +212,9 @@ void WL_Port_UartRxCpltCallback(UART_HandleTypeDef *huart)
     }
 }
 
+/**
+ * @brief HAL UART error callback. Clears the overrun flag and restarts reception.
+ */
 void WL_Port_UartErrorCallback(UART_HandleTypeDef *huart)
 {
     if (huart != NULL && huart->Instance == WL_UART_INSTANCE) {
@@ -201,6 +223,9 @@ void WL_Port_UartErrorCallback(UART_HandleTypeDef *huart)
     }
 }
 
+/**
+ * @brief HAL UART TX-complete callback. Clears the debug TX busy flag.
+ */
 void WL_Port_UartTxCpltCallback(UART_HandleTypeDef *huart)
 {
 #if WL_ENABLE_DEBUG_UART
@@ -212,6 +237,9 @@ void WL_Port_UartTxCpltCallback(UART_HandleTypeDef *huart)
 #endif
 }
 
+/**
+ * @brief Initialize all wireless platform peripherals (GPIO, UART, debug UART).
+ */
 void WL_Platform_Init(void)
 {
     rx_head = 0U;
@@ -225,16 +253,26 @@ void WL_Platform_Init(void)
     debug_uart_init();
 }
 
+/** @brief Return the HAL monotonic millisecond tick. */
 uint32_t WL_Platform_GetMillis(void)
 {
     return HAL_GetTick();
 }
 
+/**
+ * @brief Blocking millisecond delay. Use only during initialization.
+ * @param ms Delay duration in milliseconds.
+ */
 void WL_Platform_DelayMs(uint32_t ms)
 {
     HAL_Delay(ms);
 }
 
+/**
+ * @brief Send a byte array via the LoRa module UART.
+ * @param data Pointer to the data to send.
+ * @param len  Number of bytes to send.
+ */
 void WL_Platform_UART_Send(const uint8_t *data, uint16_t len)
 {
     if (data == NULL || len == 0U) {
@@ -243,6 +281,10 @@ void WL_Platform_UART_Send(const uint8_t *data, uint16_t len)
     (void)HAL_UART_Transmit(&wl_huart, (uint8_t *)data, len, g_wl_config.tx_timeout_ms);
 }
 
+/**
+ * @brief Send a null-terminated string via the LoRa module UART.
+ * @param str Null-terminated string to send.
+ */
 void WL_Platform_UART_SendString(const char *str)
 {
     if (str == NULL) {
@@ -251,6 +293,12 @@ void WL_Platform_UART_SendString(const char *str)
     WL_Platform_UART_Send((const uint8_t *)str, (uint16_t)strlen(str));
 }
 
+/**
+ * @brief Read up to max_len bytes from the UART receive ring buffer.
+ * @param[out] buf     Destination buffer.
+ * @param      max_len Maximum number of bytes to read.
+ * @return     Number of bytes actually read (0 if no data available).
+ */
 uint16_t WL_Platform_UART_Receive(uint8_t *buf, uint16_t max_len)
 {
     uint16_t count = 0U;
@@ -266,16 +314,19 @@ uint16_t WL_Platform_UART_Receive(uint8_t *buf, uint16_t max_len)
     return count;
 }
 
+/** @brief Discard all pending data in the UART receive ring buffer. */
 void WL_Platform_UART_FlushRx(void)
 {
     rx_tail = rx_head;
 }
 
+/** @brief Read the AUX pin state. true = module idle/ready. */
 bool WL_Platform_ReadAUX(void)
 {
     return HAL_GPIO_ReadPin(WL_AUX_PORT, WL_AUX_PIN) == GPIO_PIN_SET;
 }
 
+/** @brief Perform a hardware reset pulse on the EWM22A module. */
 void WL_Platform_ResetModule(void)
 {
     GPIO_PinState idle_level = (WL_RST_ACTIVE_LEVEL == GPIO_PIN_SET) ? GPIO_PIN_RESET : GPIO_PIN_SET;
@@ -286,6 +337,13 @@ void WL_Platform_ResetModule(void)
     HAL_Delay(WL_RST_HIGH_TIME_MS);
 }
 
+/**
+ * @brief Asynchronous debug print via the optional debug UART.
+ *
+ * Drops the message if the previous transmission is still in progress.
+ *
+ * @param msg Null-terminated debug message string.
+ */
 void WL_Platform_DebugPrint(const char *msg)
 {
 #if WL_ENABLE_DEBUG_UART

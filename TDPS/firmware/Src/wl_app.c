@@ -1,6 +1,7 @@
 /**
  * @file    wl_app.c
- * @brief   无线通信应用层实现 — 状态机、计时、检查点报文发送。
+ * @brief   Wireless communication application layer -- state machine,
+ *          timing, and checkpoint message transmission.
  */
 
 #include "wl_app.h"
@@ -13,43 +14,44 @@
 #include <string.h>
 
 /* ------------------------------------------------------------------ */
-/*  内部状态变量                                                       */
+/*  Internal state variables                                           */
 /* ------------------------------------------------------------------ */
 
 static WL_App_State s_state = WL_APP_STATE_IDLE;
 
-/** 比赛开始时的毫秒时间戳。 */
+/** Millisecond timestamp when the race starts. */
 static uint32_t s_race_start_ms = 0;
 
-/** 比赛是否已启动。 */
+/** Whether the race has started. */
 static bool s_race_started = false;
 
-/** 上一次 LoRa 发射的时间戳（用于节流控制）。 */
+/** Timestamp of the last LoRa transmission (for throttling). */
 static uint32_t s_last_tx_ms = 0;
 
-/** 是否已经成功发送过至少一条检查点报文。 */
+/** Whether at least one checkpoint message has been sent successfully. */
 static bool s_has_tx = false;
 
-/** 最近一次状态上报时间戳。 */
+/** Timestamp of the most recent status report. */
 static uint32_t s_last_status_report_ms = 0;
 
-/** 上电定时检查点是否已经发送。 */
+/** Whether the power-on timed checkpoint has been sent. */
 static bool s_timed_checkpoint_sent = false;
 
-/** 最近一次操作的状态文本。 */
+/** Status text of the most recent operation. */
 static char s_status_text[64] = "IDLE";
 static WL_App_Diag s_diag;
 
 /* ------------------------------------------------------------------ */
-/*  内部辅助函数                                                       */
+/*  Internal helper functions                                          */
 /* ------------------------------------------------------------------ */
 
-/** 发送检查点报文（内部调用，包含节流逻辑）。 */
+/** Send a checkpoint message (internal call with throttling logic). */
 static void _send_checkpoint(uint32_t checkpoint_id)
 {
     uint32_t now = WL_Platform_GetMillis();
 
-    /* 节流：首包不节流；后续两次发射间隔不小于 WL_TX_MIN_INTERVAL_MS */
+    /* Throttle: first packet is not throttled; subsequent transmissions must
+     * be spaced by at least WL_TX_MIN_INTERVAL_MS */
     if (s_has_tx &&
         ((uint32_t)(now - s_last_tx_ms) < g_wl_config.tx_min_interval_ms)) {
         s_diag.checkpoint_throttled_count += 1U;
@@ -62,13 +64,13 @@ static void _send_checkpoint(uint32_t checkpoint_id)
         return;
     }
 
-    /* 计算已过时间 */
+    /* Calculate elapsed time */
     uint32_t elapsed = 0;
     if (s_race_started) {
         elapsed = (uint32_t)(now - s_race_start_ms);
     }
 
-    /* 构造报文 */
+    /* Build message */
     char msg[WL_MSG_MAX_LEN];
     uint16_t len = WL_Protocol_BuildCheckpointMsg(msg,
                                                    (uint16_t)sizeof(msg),
@@ -80,7 +82,7 @@ static void _send_checkpoint(uint32_t checkpoint_id)
         return;
     }
 
-    /* 通过 LoRa 发射 */
+    /* Transmit via LoRa */
     WL_LoRa_Status st = WL_LoRa_EnqueueString(msg);
 
     s_diag.last_checkpoint_id = checkpoint_id;
@@ -157,12 +159,12 @@ static void _send_periodic_status(void)
 }
 
 /* ------------------------------------------------------------------ */
-/*  公共接口实现                                                       */
+/*  Public interface implementation                                    */
 /* ------------------------------------------------------------------ */
 
 bool WL_App_Init(void)
 {
-    /* 初始化平台层 */
+    /* Initialize platform layer */
     WL_Platform_Init();
 
     s_state = WL_APP_STATE_IDLE;
@@ -175,7 +177,7 @@ bool WL_App_Init(void)
     memset(&s_diag, 0, sizeof(s_diag));
     snprintf(s_status_text, sizeof(s_status_text), "init");
 
-    /* 初始化 LoRa 模块 */
+    /* Initialize LoRa module */
     WL_LoRa_Status st = WL_LoRa_Init();
     if (st != WL_LORA_OK) {
         s_state = WL_APP_STATE_ERROR;

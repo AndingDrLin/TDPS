@@ -1,6 +1,6 @@
 /**
  * @file lf_debug_monitor.c
- * @brief 轻量级调试监控输出
+ * @brief Lightweight debug monitor output.
  */
 #include "lf_debug_monitor.h"
 
@@ -43,6 +43,10 @@ static int16_t s_last_right_cmd;
 
 volatile LF_WatchDebug g_lf_watch;
 
+/**
+ * @brief Update the Keil Watch debug snapshot from the current application context.
+ * @param ctx Pointer to the current application context (NULL-safe).
+ */
 void LF_WatchDebug_UpdateApp(const LF_AppContext *ctx)
 {
     uint32_t i;
@@ -96,6 +100,12 @@ void LF_WatchDebug_UpdateApp(const LF_AppContext *ctx)
 #endif
 }
 
+/**
+ * @brief Update the Keil Watch debug snapshot with motor command data.
+ * @param left_cmd    Left motor command.
+ * @param right_cmd   Right motor command.
+ * @param no_car_mode Non-zero if in no-car (bench) mode.
+ */
 void LF_WatchDebug_UpdateMotor(int16_t left_cmd, int16_t right_cmd, uint32_t no_car_mode)
 {
     g_lf_watch.left_cmd = left_cmd;
@@ -111,6 +121,7 @@ void LF_WatchDebug_UpdateMotor(int16_t left_cmd, int16_t right_cmd, uint32_t no_
 #endif
 }
 
+/** @brief Convert an LF_AppState enum to a human-readable string tag. */
 static const char *app_state_name(LF_AppState state)
 {
     switch (state) {
@@ -134,6 +145,7 @@ static const char *app_state_name(LF_AppState state)
     }
 }
 
+/** @brief Convert an LF_RadarObstacleState enum to a short string tag. */
 static const char *radar_state_name(LF_RadarObstacleState state)
 {
     switch (state) {
@@ -144,6 +156,7 @@ static const char *radar_state_name(LF_RadarObstacleState state)
     }
 }
 
+/** @brief Convert a WL_App_State enum to a short string tag. */
 static const char *wl_state_name(WL_App_State state)
 {
     switch (state) {
@@ -156,6 +169,9 @@ static const char *wl_state_name(WL_App_State state)
     }
 }
 
+/**
+ * @brief Initialize the debug monitor timer and motor command cache.
+ */
 void LF_DebugMonitor_Init(void)
 {
     s_last_report_ms = LF_Platform_GetMillis();
@@ -163,22 +179,40 @@ void LF_DebugMonitor_Init(void)
     s_last_right_cmd = 0;
 }
 
+/**
+ * @brief Check whether debug monitor output is enabled.
+ * @return true if enabled, false otherwise.
+ */
 bool LF_DebugMonitor_IsEnabled(void)
 {
     return g_lf_debug_monitor_config.enabled;
 }
 
+/**
+ * @brief Check whether no-car (bench) debug mode is active.
+ * @return true if no-car mode is enabled, false otherwise.
+ */
 bool LF_DebugMonitor_IsNoCarMode(void)
 {
     return g_lf_debug_monitor_config.no_car_mode;
 }
 
+/**
+ * @brief Cache the most recent motor commands for debug reporting.
+ * @param left_cmd  Last left motor command.
+ * @param right_cmd Last right motor command.
+ */
 void LF_DebugMonitor_OnMotorCommand(int16_t left_cmd, int16_t right_cmd)
 {
     s_last_left_cmd = left_cmd;
     s_last_right_cmd = right_cmd;
 }
 
+/**
+ * @brief Retrieve the most recently cached motor commands.
+ * @param[out] left_cmd  Receives the left motor command (may be NULL).
+ * @param[out] right_cmd Receives the right motor command (may be NULL).
+ */
 void LF_DebugMonitor_GetLastMotorCommand(int16_t *left_cmd, int16_t *right_cmd)
 {
     if (left_cmd != NULL) {
@@ -189,6 +223,13 @@ void LF_DebugMonitor_GetLastMotorCommand(int16_t *left_cmd, int16_t *right_cmd)
     }
 }
 
+/**
+ * @brief Periodic debug output tick.
+ *
+ * Emits a single-line diagnostic via LF_Platform_DebugPrint when the
+ * configured period has elapsed. Includes sensor, motor, radar, and
+ * wireless state in a compact tagged format.
+ */
 void LF_DebugMonitor_Tick(void)
 {
     static char line[512];

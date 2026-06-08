@@ -1,9 +1,10 @@
 /**
  * @file    wl_lora.h
- * @brief   EWM22A-900BWL22S LoRa 驱动层接口。
+ * @brief   EWM22A-900BWL22S LoRa driver layer interface.
  *
- * 封装 AT 指令交互、模块初始化、模式切换和数据发送，
- * 上层只需调用简洁的 API 即可完成 LoRa 通信。
+ * Wraps AT command interaction, module initialization, mode switching,
+ * and data transmission. The upper layer only needs to call the
+ * concise API to perform LoRa communication.
  */
 
 #ifndef WL_LORA_H
@@ -13,61 +14,65 @@
 #include <stdint.h>
 
 /* ------------------------------------------------------------------ */
-/*  返回值定义                                                         */
+/*  Return value definitions                                           */
 /* ------------------------------------------------------------------ */
 
 typedef enum {
-    WL_LORA_OK = 0,         /**< 操作成功 */
-    WL_LORA_ERR_TIMEOUT,    /**< 等待响应超时 */
-    WL_LORA_ERR_RESPONSE,   /**< 收到非预期响应 */
-    WL_LORA_ERR_BUSY,       /**< 模块忙碌（AUX 为低） */
-    WL_LORA_ERR_PARAM,      /**< 参数错误 */
+    WL_LORA_OK = 0,         /**< Operation succeeded */
+    WL_LORA_ERR_TIMEOUT,    /**< Response wait timed out */
+    WL_LORA_ERR_RESPONSE,   /**< Received an unexpected response */
+    WL_LORA_ERR_BUSY,       /**< Module busy (AUX is low) */
+    WL_LORA_ERR_PARAM,      /**< Parameter error */
 } WL_LoRa_Status;
 
+/** Asynchronous link status and diagnostic counters. */
 typedef struct {
-    uint16_t queue_depth;
-    uint16_t queue_dropped;
-    uint16_t retry_count;
-    uint16_t tx_success_count;
-    uint16_t tx_fail_count;
-    bool waiting_ack;
-    bool ack_enabled;
-    WL_LoRa_Status last_error;
+    uint16_t queue_depth;          /**< Current send queue depth */
+    uint16_t queue_dropped;        /**< Number of items dropped due to queue full */
+    uint16_t retry_count;          /**< Number of retries performed */
+    uint16_t tx_success_count;     /**< Number of successful transmissions */
+    uint16_t tx_fail_count;        /**< Number of failed transmissions */
+    bool waiting_ack;              /**< Whether currently waiting for an ACK */
+    bool ack_enabled;              /**< Whether ACK mode is enabled */
+    WL_LoRa_Status last_error;     /**< Last error code */
 } WL_LoRa_LinkStatus;
 
 /* ------------------------------------------------------------------ */
-/*  初始化与配置                                                       */
+/*  Initialization and configuration                                   */
 /* ------------------------------------------------------------------ */
 
 /**
- * 初始化 LoRa 模块。
- * 流程：等待 AUX 就绪 → 进入配置模式 → 设置地址/信道/网络ID/空中速率/
- *       发射功率/传输模式/密钥 → 切换到 UART/LoRa 工作模式。
+ * @brief Initialize the LoRa module.
  *
- * @return WL_LORA_OK 成功，其他值为错误码。
+ * Procedure: wait for AUX ready -> enter configuration mode -> set
+ * address/channel/Network ID/air data rate/tx power/transmission mode/
+ * key -> switch to UART/LoRa working mode.
+ *
+ * @return WL_LORA_OK on success, or an error code.
  */
 WL_LoRa_Status WL_LoRa_Init(void);
 
 /**
- * 等待 AUX 引脚变为高电平（模块就绪）。
+ * @brief Wait for the AUX pin to go high (module ready).
  *
- * @param timeout_ms  最大等待时间（毫秒）。
- * @return true = 就绪，false = 超时。
+ * @param timeout_ms Maximum wait time in milliseconds.
+ * @return true = ready, false = timed out.
  */
 bool WL_LoRa_WaitAUX(uint32_t timeout_ms);
 
 /* ------------------------------------------------------------------ */
-/*  AT 指令交互                                                        */
+/*  AT command interaction                                             */
 /* ------------------------------------------------------------------ */
 
 /**
- * 发送一条 AT 指令并等待响应。
+ * @brief Send an AT command and wait for the response.
  *
- * @param cmd          AT 指令字符串（不含换行符，例如 "AT+ADDR=0"）。
- * @param resp_buf     用于存放响应的缓冲区（可为 NULL 表示不关心响应内容）。
- * @param resp_buf_len 响应缓冲区长度。
- * @param timeout_ms   等待响应的超时时间（毫秒）。
- * @return WL_LORA_OK 收到 "AT_OK"，否则返回错误码。
+ * @param cmd          AT command string (without newline, e.g. "AT+ADDR=0").
+ * @param resp_buf     Buffer to store the response (may be NULL if the
+ *                     response content is not needed).
+ * @param resp_buf_len Length of the response buffer.
+ * @param timeout_ms   Response wait timeout in milliseconds.
+ * @return WL_LORA_OK if "AT_OK" is received, otherwise an error code.
  */
 WL_LoRa_Status WL_LoRa_SendAT(const char *cmd,
                                 char *resp_buf,
@@ -75,55 +80,81 @@ WL_LoRa_Status WL_LoRa_SendAT(const char *cmd,
                                 uint32_t timeout_ms);
 
 /* ------------------------------------------------------------------ */
-/*  数据发送                                                           */
+/*  Data transmission                                                  */
 /* ------------------------------------------------------------------ */
 
 /**
- * 通过 LoRa 工作模式发送一段数据。
- * Fixed Mode 下驱动会自动添加目标地址和目标信道头。
+ * @brief Send data via LoRa working mode.
  *
- * @param data  数据指针。
- * @param len   数据长度（字节），不超过 WL_TX_PAYLOAD_MAX。
- * @return WL_LORA_OK 成功，其他值为错误码。
+ * In Fixed Mode the driver automatically prepends the destination
+ * address and channel header.
+ *
+ * @param data  Pointer to the data.
+ * @param len   Data length in bytes, must not exceed WL_TX_PAYLOAD_MAX.
+ * @return WL_LORA_OK on success, or an error code.
  */
 WL_LoRa_Status WL_LoRa_Send(const uint8_t *data, uint16_t len);
 
 /**
- * 通过 LoRa 工作模式发送一个以 '\0' 结尾的字符串。
+ * @brief Send a null-terminated string via LoRa working mode.
  *
- * @param str  要发送的字符串。
- * @return WL_LORA_OK 成功，其他值为错误码。
+ * @param str  The string to send.
+ * @return WL_LORA_OK on success, or an error code.
  */
 WL_LoRa_Status WL_LoRa_SendString(const char *str);
 
 /* ------------------------------------------------------------------ */
-/*  异步发送服务（非阻塞主循环）                                        */
-/* ------------------------------------------------------------------ */
-
-/* 初始化异步发送服务状态（应在 WL_LoRa_Init 成功后调用）。 */
-void WL_LoRa_ServiceInit(void);
-
-/* 入队发送数据，实际发射由 WL_LoRa_Tick 在主循环中驱动。 */
-WL_LoRa_Status WL_LoRa_Enqueue(const uint8_t *data, uint16_t len);
-
-/* 入队发送字符串（不含 '\0'）。 */
-WL_LoRa_Status WL_LoRa_EnqueueString(const char *str);
-
-/* 非阻塞驱动发送、超时重试、可选 ACK。 */
-void WL_LoRa_Tick(void);
-
-/* 运行时开关 ACK 等待逻辑。 */
-void WL_LoRa_SetAckEnabled(bool enable);
-
-/* 查询异步服务状态。 */
-const WL_LoRa_LinkStatus *WL_LoRa_GetLinkStatus(void);
-
-/* ------------------------------------------------------------------ */
-/*  状态查询                                                           */
+/*  Asynchronous send service (non-blocking main loop)                 */
 /* ------------------------------------------------------------------ */
 
 /**
- * 查询模块是否处于就绪状态（AUX 为高）。
+ * @brief Initialize the async send service state.
+ *
+ * Should be called after WL_LoRa_Init() succeeds.
+ */
+void WL_LoRa_ServiceInit(void);
+
+/**
+ * @brief Enqueue data for transmission; actual send is driven by WL_LoRa_Tick().
+ * @param data  Pointer to the data.
+ * @param len   Data length in bytes.
+ * @return WL_LORA_OK on success, or an error code.
+ */
+WL_LoRa_Status WL_LoRa_Enqueue(const uint8_t *data, uint16_t len);
+
+/**
+ * @brief Enqueue a string for transmission (excluding null terminator).
+ * @param str  The string to send.
+ * @return WL_LORA_OK on success, or an error code.
+ */
+WL_LoRa_Status WL_LoRa_EnqueueString(const char *str);
+
+/**
+ * @brief Non-blocking tick driving transmission, timeout/retry, and optional ACK.
+ *
+ * Call periodically from the main while(1) loop.
+ */
+void WL_LoRa_Tick(void);
+
+/**
+ * @brief Enable or disable the ACK wait logic at runtime.
+ * @param enable true to enable, false to disable.
+ */
+void WL_LoRa_SetAckEnabled(bool enable);
+
+/**
+ * @brief Query the async service status.
+ * @return Pointer to the link status (read-only).
+ */
+const WL_LoRa_LinkStatus *WL_LoRa_GetLinkStatus(void);
+
+/* ------------------------------------------------------------------ */
+/*  Status queries                                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * @brief Check if the module is in a ready state (AUX is high).
+ * @return true if ready, false otherwise.
  */
 bool WL_LoRa_IsReady(void);
 

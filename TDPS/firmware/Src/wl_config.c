@@ -1,16 +1,16 @@
 /**
  * @file    wl_config.c
- * @brief   无线模块默认运行时配置实例。
+ * @brief   Default runtime configuration for the wireless module.
  */
 
 #include "wl_config.h"
 
 const WL_Config g_wl_config = {
-    /* 队伍信息 */
+    /* Team information */
     .team_number            = WL_TEAM_NUMBER,
     .team_name              = WL_TEAM_NAME,
 
-    /* LoRa 参数 */
+    /* LoRa parameters */
     .lora_addr              = WL_LORA_ADDR,
     .lora_channel           = WL_LORA_CHANNEL,
     .lora_net_id            = WL_LORA_NET_ID,
@@ -22,10 +22,10 @@ const WL_Config g_wl_config = {
     .lora_fixed_dest_addr   = WL_LORA_FIXED_DEST_ADDR,
     .lora_fixed_dest_channel = WL_LORA_FIXED_DEST_CHANNEL,
 
-    /* UART 参数 */
+    /* UART parameters */
     .uart_baudrate          = WL_UART_BAUDRATE,
 
-    /* 超时参数 */
+    /* Timeout parameters */
     .at_response_timeout_ms = WL_AT_RESPONSE_TIMEOUT_MS,
     .mode_switch_delay_ms   = WL_MODE_SWITCH_DELAY_MS,
     .power_on_delay_ms      = WL_POWER_ON_DELAY_MS,
@@ -38,11 +38,11 @@ const WL_Config g_wl_config = {
     .status_report_period_ms = WL_STATUS_REPORT_PERIOD_MS,
     .timed_checkpoint_delay_ms = WL_TIMED_CHECKPOINT_DELAY_MS,
 
-    /* 检查点 */
+    /* Checkpoints */
     .checkpoint_arch_2_1    = WL_CHECKPOINT_ARCH_2_1,
     .checkpoint_arch_2_2    = WL_CHECKPOINT_ARCH_2_2,
     .timed_checkpoint_id    = WL_TIMED_CHECKPOINT_ID,
 
-    /* 队列参数 */
+    /* Queue parameters */
     .tx_queue_size          = WL_TX_QUEUE_SIZE,
 };

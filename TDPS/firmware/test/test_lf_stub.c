@@ -1,9 +1,10 @@
 /**
  * @file test_lf_stub.c
- * @brief firmware PC stub 回归测试
+ * @brief Firmware PC stub regression tests for line-following core.
  *
- * 新版固件删除了补丁式状态，测试只覆盖保留的通用核心：
- * 传感器、雷达、PD 控制、启动标定、丢线恢复、路线脚本固定转弯。
+ * The updated firmware removed patch-style states; the tests only cover
+ * the retained general core: sensors, radar, PD control, startup
+ * calibration, line-loss recovery, and fixed-route scripted turns.
  */
 #include "lf_app.h"
 #include "lf_config.h"
@@ -72,7 +73,7 @@ static void set_digital_line(uint8_t mask)
     for (i = 0U; i < LF_SENSOR_COUNT; ++i) {
         if ((mask & (uint8_t)(1U << i)) != 0U) {
             raw[i] = 4095U;
-            digital[i] = 0U;   /* D帧：0 = 黑线 = 灯亮 */
+            digital[i] = 0U;   /* D-frame: 0 = black line = LED on */
         } else {
             raw[i] = 0U;
             digital[i] = 1U;
@@ -124,7 +125,7 @@ static void setup_basic_app(void)
     g_lf_config.motor_deadband = 0;
 
     LF_DebugMonitor_Init();
-    set_digital_line(0x18U);  /* 中间两路 */
+    set_digital_line(0x18U);  /* middle two channels */
     LF_App_Init();
     run_app_for(40U);
 }
@@ -186,7 +187,7 @@ static int test_sensor_weighted_position(void)
 
     LF_Sensor_Init();
     LF_Sensor_StartCalibration();
-    set_digital_line(0x30U);  /* ch4,ch5 */
+    set_digital_line(0x30U);  /* ch4, ch5 */
     LF_Sensor_ReadFrame(&frame);
 
     return expect_true(frame.line_detected, "sensor detects digital line") |
@@ -258,7 +259,7 @@ static int test_route_first_t_triggers_fixed_turn(void)
     g_lf_config.fixed_turn_settle_ms = 20U;
     g_lf_config.fixed_turn_cooldown_ms = 0U;
 
-    set_digital_line(0xFFU);  /* T口/全亮 */
+    set_digital_line(0xFFU);  /* T-junction / all channels lit */
     run_app_for(20U);
     ctx = LF_App_GetContext();
 

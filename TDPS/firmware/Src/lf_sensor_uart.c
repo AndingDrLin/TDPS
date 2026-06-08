@@ -1,3 +1,8 @@
+/**
+ * @file lf_sensor_uart.c
+ * @brief UART-based line sensor frame parser (Yahboom 8-LP protocol).
+ */
+
 #include "lf_sensor_uart.h"
 
 #include <stddef.h>
@@ -22,13 +27,13 @@ static uint8_t parse_uint16(const char **cursor, uint16_t max_value, uint16_t *o
     uint32_t value = 0U;
     uint8_t digits = 0U;
 
-    while (is_digit_char(**cursor)) {
+    while (is_digit_char(**cursor) && digits < 4U) {
         value = (value * 10U) + (uint32_t)(**cursor - '0');
         if (value > max_value) {
             value = max_value;
         }
         (*cursor)++;
-        digits = 1U;
+        digits++;
     }
 
     if (digits == 0U || out_value == NULL) {
@@ -191,9 +196,11 @@ void LF_SensorUart_RecordUartError(void)
 }
 
 /*
- * 中断发送模式：用 HAL_UART_Transmit_IT 替代阻塞发送，
- * 发送期间 s_tx_busy 为 true，完成回调中清除。
- * 若上一帧仍在发送则跳过本次命令（传感器命令是周期轮询的，丢一帧无影响）。
+ * Interrupt-driven transmit mode: use HAL_UART_Transmit_IT instead of
+ * blocking transmit. s_tx_busy is true while transmitting and cleared in
+ * the completion callback.
+ * If the previous frame is still being transmitted, skip the current command
+ * (sensor commands are polled periodically; missing one frame is harmless).
  */
 static volatile bool s_tx_busy = false;
 
@@ -214,7 +221,7 @@ HAL_StatusTypeDef LF_SensorUart_SendCommand(const char *cmd)
     return status;
 }
 
-/* 由 HAL_UART_TxCpltCallback 分发调用，清除发送忙标志。 */
+/* Called by HAL_UART_TxCpltCallback to clear the transmit busy flag. */
 void LF_SensorUart_OnTxComplete(void)
 {
     s_tx_busy = false;

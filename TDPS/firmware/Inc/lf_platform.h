@@ -1,3 +1,12 @@
+/**
+ * @file lf_platform.h
+ * @brief Platform Abstraction Layer (PAL) for the line-following module.
+ *
+ * Goals:
+ * 1. Keep business code independent of specific MCU peripheral details.
+ * 2. When switching to a different hardware platform, only this layer's
+ *    implementation needs to be replaced.
+ */
 #ifndef LF_PLATFORM_H
 #define LF_PLATFORM_H
 
@@ -6,31 +15,39 @@
 
 #include "lf_config.h"
 
-/*
- * 平台抽象层（PAL）
- * 目标：
- * 1. 让业务代码不依赖具体 MCU 外设细节。
- * 2. 后续切换硬件平台时，仅需替换本层实现。
- */
-
-/* 板级初始化：时钟、GPIO、PWM、ADC、DMA、串口等。 */
+/** @brief Board initialization: clocks, GPIO, PWM, ADC, DMA, UART, etc. */
 void LF_Platform_BoardInit(void);
 
-/* 读取单调递增毫秒计数。 */
+/** @brief Read the monotonically increasing millisecond counter. */
 uint32_t LF_Platform_GetMillis(void);
 
-/* 读取单调递增微秒计数（用于高精度 dt_s 计算）。 */
+/** @brief Read the monotonically increasing microsecond counter (used for high-precision dt_s calculation). */
 uint32_t LF_Platform_GetMicros(void);
 
-/* 毫秒级阻塞延时（仅用于初始化阶段，不建议在控制循环中调用）。 */
+/**
+ * @brief Blocking millisecond delay.
+ *
+ * Intended for initialization phase only; not recommended in the control loop.
+ *
+ * @param ms Delay duration in milliseconds.
+ */
 void LF_Platform_DelayMs(uint32_t ms);
 
-/* 读取巡线传感器原始值。范围由 ADC 分辨率决定（如 0~4095）。 */
+/**
+ * @brief Read raw line-sensor values.
+ *
+ * Range is determined by ADC resolution (e.g. 0-4095).
+ *
+ * @param[out] out_raw Array of LF_SENSOR_COUNT elements to receive the raw values.
+ */
 void LF_Platform_ReadLineSensorRaw(uint16_t out_raw[LF_SENSOR_COUNT]);
 
-/*
- * 非阻塞读取雷达串口缓存。
- * 返回实际读取字节数；无数据时返回 0。
+/**
+ * @brief Non-blocking read from the radar UART buffer.
+ *
+ * @param[out] out_buf Destination buffer.
+ * @param      max_len Maximum number of bytes to read.
+ * @return     Actual number of bytes read; 0 if no data available.
  */
 uint16_t LF_Platform_RadarRead(uint8_t *out_buf, uint16_t max_len);
 
@@ -43,16 +60,33 @@ void LF_PlatformStub_SetDigitalFrame(const uint8_t digital[LF_SENSOR_COUNT]);
 const char *LF_PlatformStub_GetLastDebugLine(void);
 #endif
 
-/* 写入电机命令（-1000~1000）。正负号表示方向，绝对值表示速度。 */
+/**
+ * @brief Write motor commands (-1000~1000).
+ *
+ * Sign indicates direction; absolute value indicates speed.
+ *
+ * @param left_cmd  Left wheel command.
+ * @param right_cmd Right wheel command.
+ */
 void LF_Platform_SetMotorCommand(int16_t left_cmd, int16_t right_cmd);
 
-/* 状态灯控制。 */
+/** @brief Status LED control.
+ *  @param on true to turn on, false to turn off.
+ */
 void LF_Platform_SetStatusLed(bool on);
 
-/* 启动键读取（按下返回 true）。 */
+/** @brief Read the start button state.
+ *  @return true if the button is pressed.
+ */
 bool LF_Platform_IsStartButtonPressed(void);
 
-/* 轻量调试输出。没有串口时可空实现。 */
+/**
+ * @brief Lightweight debug print.
+ *
+ * May be a no-op if no UART is available.
+ *
+ * @param msg Null-terminated message string.
+ */
 void LF_Platform_DebugPrint(const char *msg);
 
 #endif /* LF_PLATFORM_H */

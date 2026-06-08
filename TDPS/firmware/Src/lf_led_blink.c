@@ -1,3 +1,8 @@
+/**
+ * @file lf_led_blink.c
+ * @brief Status LED blinking pattern engine.
+ */
+
 #include "lf_led_blink.h"
 
 #include "lf_platform.h"
@@ -58,11 +63,13 @@ static struct {
     uint32_t pm_phase_start_ms;
 } s_led;
 
+/** @brief Apply a boolean state to the status LED. */
 static void apply_led(bool on)
 {
     LF_Platform_SetStatusLed(on);
 }
 
+/** @brief Begin a segment at the given index, setting the LED to its initial on/off state. */
 static void start_segment(uint8_t idx)
 {
     s_led.seg_idx = idx;
@@ -74,6 +81,9 @@ static void start_segment(uint8_t idx)
     }
 }
 
+/**
+ * @brief Initialize the LED blink engine to OFF state.
+ */
 void LF_LedBlink_Init(void)
 {
     s_led.pattern = LF_LED_OFF;
@@ -87,6 +97,13 @@ void LF_LedBlink_Init(void)
     apply_led(false);
 }
 
+/**
+ * @brief Request a new LED pattern, unless post-mortem mode is active.
+ *
+ * Post-mortem pattern takes priority and cannot be overridden by other patterns.
+ *
+ * @param pattern Desired LED blink pattern.
+ */
 void LF_LedBlink_SetPattern(LF_LedPattern pattern)
 {
     if (s_led.pattern == pattern) {
@@ -100,6 +117,12 @@ void LF_LedBlink_SetPattern(LF_LedPattern pattern)
     start_segment(0);
 }
 
+/**
+ * @brief Enter post-mortem mode and set numeric blink codes.
+ *
+ * @param reason_code  Blink count for the reason phase (1-255).
+ * @param stats_code   Blink count for the stats phase (0-15, 0 = skip).
+ */
 void LF_LedBlink_SetPostmortemCode(uint8_t reason_code, uint8_t stats_code)
 {
     s_led.pattern = LF_LED_POSTMORTEM;
@@ -111,6 +134,7 @@ void LF_LedBlink_SetPostmortemCode(uint8_t reason_code, uint8_t stats_code)
     apply_led(true);  /* start first blink */
 }
 
+/** @brief Advance the current normal-pattern segment on time expiry. */
 static void tick_normal(void)
 {
     uint8_t count = s_pattern_table[s_led.pattern].count;
@@ -135,6 +159,7 @@ static void tick_normal(void)
     }
 }
 
+/** @brief Advance the post-mortem blink state machine through its four phases. */
 static void tick_postmortem(void)
 {
     uint32_t now = LF_Platform_GetMillis();
@@ -203,6 +228,9 @@ static void tick_postmortem(void)
     }
 }
 
+/**
+ * @brief Non-blocking LED blink tick. Call every main-loop iteration.
+ */
 void LF_LedBlink_Tick(void)
 {
     if (s_led.pattern == LF_LED_POSTMORTEM) {

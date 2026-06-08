@@ -1,10 +1,10 @@
 /**
  * @file    wl_platform.h
- * @brief   无线模块平台抽象层（PAL）接口定义。
+ * @brief   Wireless module Platform Abstraction Layer (PAL) interface.
  *
- * 提供与硬件无关的 UART、GPIO 和定时接口。
- * 具体实现位于 wl_platform_stm32f4.c（真实硬件）或
- * wl_platform_stub.c（离线测试桩）。
+ * Provides hardware-independent UART, GPIO, and timing interfaces.
+ * Concrete implementations reside in wl_platform_stm32f4.c (real hardware)
+ * or wl_platform_stub.c (offline test stub).
  */
 
 #ifndef WL_PLATFORM_H
@@ -14,64 +14,90 @@
 #include <stdint.h>
 
 /* ------------------------------------------------------------------ */
-/*  板级初始化                                                         */
+/*  Board initialization                                               */
 /* ------------------------------------------------------------------ */
 
-/** 初始化时钟、GPIO、UART 及无线子系统所需的所有外设。
- *  启动时调用一次。 */
+/**
+ * @brief Initialize clocks, GPIO, UART, and all peripherals required by
+ *        the wireless subsystem. Called once at startup.
+ */
 void WL_Platform_Init(void);
 
 /* ------------------------------------------------------------------ */
-/*  计时功能                                                           */
+/*  Timing functions                                                   */
 /* ------------------------------------------------------------------ */
 
-/** 返回单调递增的毫秒计数器值。 */
+/** @brief Return the monotonically increasing millisecond counter value. */
 uint32_t WL_Platform_GetMillis(void);
 
-/** 毫秒级阻塞延时。仅建议在初始化阶段使用，控制循环中不要调用。 */
+/**
+ * @brief Blocking millisecond delay.
+ *
+ * Recommended for initialization phase only; do not call in the control loop.
+ *
+ * @param ms Delay duration in milliseconds.
+ */
 void WL_Platform_DelayMs(uint32_t ms);
 
 /* ------------------------------------------------------------------ */
-/*  UART — 与 LoRa 模块的串口通信                                      */
+/*  UART -- serial communication with the LoRa module                  */
 /* ------------------------------------------------------------------ */
 
-/** 通过 LoRa 模块所连接的 UART 发送字节数组。
- *  @param data  数据指针
- *  @param len   要发送的字节数
+/**
+ * @brief Send a byte array via the UART connected to the LoRa module.
+ * @param data  Pointer to the data.
+ * @param len   Number of bytes to send.
  */
 void WL_Platform_UART_Send(const uint8_t *data, uint16_t len);
 
-/** 通过 LoRa 模块 UART 发送以 '\0' 结尾的字符串。 */
+/** @brief Send a null-terminated string via the LoRa module UART.
+ *  @param str  The string to send.
+ */
 void WL_Platform_UART_SendString(const char *str);
 
-/** 尝试从 UART 接收缓冲区读取最多 max_len 个字节。
- *  @param buf      目标缓冲区
- *  @param max_len  最大读取字节数
- *  @return         实际读取的字节数（无数据则返回 0）
+/**
+ * @brief Attempt to read up to max_len bytes from the UART receive buffer.
+ * @param[out] buf      Destination buffer.
+ * @param      max_len  Maximum number of bytes to read.
+ * @return     Actual number of bytes read (0 if no data available).
  */
 uint16_t WL_Platform_UART_Receive(uint8_t *buf, uint16_t max_len);
 
-/** 清空 UART 接收缓冲区中所有待处理的数据。 */
+/** @brief Flush all pending data from the UART receive buffer. */
 void WL_Platform_UART_FlushRx(void);
 
 /* ------------------------------------------------------------------ */
-/*  GPIO — AUX 引脚                                                    */
+/*  GPIO -- AUX pin                                                    */
 /* ------------------------------------------------------------------ */
 
-/** 读取 EWM22A 模块的 AUX 输出引脚状态。
- *  高电平 = 模块空闲/就绪。
- *  低电平 = 模块忙碌（正在发射、自检等）。 */
+/**
+ * @brief Read the AUX output pin state of the EWM22A module.
+ *
+ * High = module idle/ready.
+ * Low  = module busy (transmitting, self-testing, etc.).
+ *
+ * @return true if AUX is high (ready), false if low (busy).
+ */
 bool WL_Platform_ReadAUX(void);
 
-/** 对 EWM22A 模块执行硬件复位；无 RST 接线的平台可空实现。 */
+/**
+ * @brief Perform a hardware reset of the EWM22A module.
+ *
+ * Platforms without RST wiring may provide an empty implementation.
+ */
 void WL_Platform_ResetModule(void);
 
 /* ------------------------------------------------------------------ */
-/*  调试输出                                                           */
+/*  Debug output                                                       */
 /* ------------------------------------------------------------------ */
 
-/** 轻量级调试打印（可路由到独立 UART 或 SWO）。
- *  允许空实现。 */
+/**
+ * @brief Lightweight debug print (may be routed to a separate UART or SWO).
+ *
+ * May be an empty implementation.
+ *
+ * @param msg Null-terminated debug message string.
+ */
 void WL_Platform_DebugPrint(const char *msg);
 
 #endif /* WL_PLATFORM_H */

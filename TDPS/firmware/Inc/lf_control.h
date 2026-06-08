@@ -1,6 +1,6 @@
 /**
  * @file lf_control.h
- * @brief 巡线 PD + 曲率前馈控制器
+ * @brief Line-following PD + curvature feedforward controller.
  */
 #ifndef LF_CONTROL_H
 #define LF_CONTROL_H
@@ -8,10 +8,11 @@
 #include <stdint.h>
 
 /**
- * @brief 控制器运行状态
+ * @brief Controller runtime state.
  *
- * 仅保留 PD 所需历史量。integral 字段保留为兼容调试观察，
- * 新控制路径不再使用积分，避免弯道积分记忆导致出弯过冲。
+ * Only the history quantities required by PD are kept. The integral field
+ * is retained for debugging compatibility; the new control path no longer
+ * uses integration to avoid integral windup causing overshoot on curve exit.
  */
 typedef struct {
     float integral;
@@ -21,17 +22,39 @@ typedef struct {
     uint8_t initialized;
 } LF_PIDState;
 
-/** 重置控制器状态 */
+/** @brief Reset the controller state.
+ *  @param[out] pid Pointer to the PID state to reset.
+ */
 void LF_Control_ResetPid(LF_PIDState *pid);
 
 /**
- * @brief PD + kff 更新
+ * @brief PD + kff update.
  *
  * correction = kp*error + kd*derivative + kff*derivative*speed
+ *
+ * @param error   Position error from the sensor.
+ * @param dt_s    Time delta in seconds.
+ * @param speed   Current base speed.
+ * @param[in,out] pid Pointer to the PID state.
+ * @return Motor correction value.
  */
 int16_t LF_Control_UpdatePD(float error, float dt_s, int16_t speed, LF_PIDState *pid);
 
-/** 与 LF_Control_UpdatePD 相同，但使用传入参数，供分段控制平滑切换参数集 */
+/**
+ * @brief Same as LF_Control_UpdatePD, but uses caller-supplied parameters.
+ *
+ * Used for per-segment smooth parameter set switching.
+ *
+ * @param error          Position error from the sensor.
+ * @param dt_s           Time delta in seconds.
+ * @param speed          Current base speed.
+ * @param[in,out] pid    Pointer to the PID state.
+ * @param kp             Proportional gain.
+ * @param kd             Derivative gain.
+ * @param kff            Curvature feedforward gain.
+ * @param max_correction Output clamp.
+ * @return Motor correction value.
+ */
 int16_t LF_Control_UpdatePDWithParams(float error,
                                       float dt_s,
                                       int16_t speed,
@@ -41,7 +64,14 @@ int16_t LF_Control_UpdatePDWithParams(float error,
                                       float kff,
                                       int16_t max_correction);
 
-/** 将基础速度和修正量合成为左右轮命令 */
+/**
+ * @brief Combine base speed and correction into left/right wheel commands.
+ *
+ * @param      base_speed Base forward speed.
+ * @param      correction PD correction value.
+ * @param[out] out_left   Pointer to the left wheel output command.
+ * @param[out] out_right  Pointer to the right wheel output command.
+ */
 void LF_Control_ComputeMotorCmd(int16_t base_speed,
                                 int16_t correction,
                                 int16_t *out_left,
