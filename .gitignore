@@ -73,19 +73,16 @@ EventRecorderStub.scvd
 !TDPS/firmware/**/*.ioc
 !TDPS/firmware/**/.mxproject
 
-# Generated report outputs
-reports/mid_reports/outputs/
-reports/notebook/outputs/
-reports/final_report/artifacts/
-reports/final_report/src/bare_jrnl_new_sample4.tex
-reports/final_report/src/New_IEEEtran_how-to.tex
+# Claude Code local state and guidance (not for version control)
+.claude/
+CLAUDE.md
 
 # Local reference packages are indexed by README only
 docs_reference/**
 !docs_reference/
 !docs_reference/README.md
 
-# Binary / non-code reference assets
+# Binary / non-code reference assets (except reports/, which is fully tracked)
 *.pdf
 *.docx
 *.pptx
@@ -103,6 +100,7 @@ docs_reference/**
 *.jpeg
 *.bmp
 *.gif
+!reports/**
 
 # Local archives or legacy ignored directories kept outside TDPS
 slides/
