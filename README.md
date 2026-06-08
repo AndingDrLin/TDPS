@@ -24,84 +24,58 @@ An embedded systems project implementing a competition-ready autonomous car that
 ## Architecture
 
 ```mermaid
-block-beta
-    columns 3
-
-    block:app:3
-        columns 3
-        A_TITLE["<b>Application Layer</b>"]:3
-        LF_APP["lf_app\n<i>state machine</i>"]
-        LF_MOD["lf_app_* modules\n<i>util / sensor / route\nsegment / avoid</i>"]
-        WL_APP["wl_app\n<i>race timing</i>"]
+graph TD
+    subgraph APP[" "]
+        direction LR
+        A1["<b>lf_app</b><br/>state machine"]
+        A2["<b>lf_app_*</b><br/>util·sensor·route<br/>segment·avoid"]
+        A3["<b>wl_app</b><br/>race timing"]
     end
 
-    space:3
-
-    block:algo:3
-        columns 3
-        B_TITLE["<b>Algorithm Layer</b>"]:3
-        LF_SENSOR["lf_sensor\n<i>8-ch IR</i>"]
-        LF_CTRL["lf_control\n<i>PD + kff</i>"]
-        LF_RADAR["lf_radar\n<i>LD2410S</i>"]
-        LF_US["lf_ultrasonic\n<i>HC-SR04</i>"]
-        LF_CHASSIS["lf_chassis\n<i>differential drive</i>"]
-        WL_LORA["wl_lora + wl_protocol\n<i>EWM22A async TX</i>"]
+    subgraph ALG[" "]
+        direction LR
+        B1["<b>lf_sensor</b><br/>8-ch IR"]
+        B2["<b>lf_control</b><br/>PD + kff"]
+        B3["<b>lf_radar</b><br/>LD2410S"]
+        B4["<b>lf_ultrasonic</b><br/>HC-SR04"]
+        B5["<b>lf_chassis</b><br/>diff drive"]
+        B6["<b>wl_lora</b><br/>EWM22A"]
     end
 
-    space:3
-
-    block:plat:3
-        columns 3
-        C_TITLE["<b>Platform Layer</b>"]:3
-        LF_PLAT["lf_platform"]
-        WL_PLAT["wl_platform"]
-        UART_CB["UART callbacks"]
+    subgraph PLAT[" "]
+        direction LR
+        C1["<b>lf_platform</b>"]
+        C2["<b>wl_platform</b>"]
+        C3["<b>UART callbacks</b>"]
     end
 
-    space:3
-
-    block:impl:3
-        columns 3
-        D_TITLE["<b>Implementations</b>"]:3
-        STM32["STM32 HAL\n<i>real hardware</i>"]
-        STUB["PC stub\n<i>test / sim</i>"]
-        POSIX["POSIX serial\n<i>utility</i>"]
+    subgraph EXT[" "]
+        direction LR
+        D1["<b>wireless_hooks</b>"]
+        D2["<b>lf_debug_monitor</b>"]
+        D3["<b>lf_led_blink</b>"]
     end
 
-    app --> algo
-    algo --> plat
-    plat --> impl
-
-    block:ext:3
-        columns 3
-        E_TITLE["<b>Extension Layer</b>"]:3
-        WH["wireless_hooks"]
-        DM["lf_debug_monitor"]
-        LED["lf_led_blink"]
-    end
-
-    ext --> app
+    APP -->|"data flow"| ALG
+    ALG -->|"HAL calls"| PLAT
+    EXT -.->|"tick hooks"| APP
 ```
 
 ### Control Algorithm
 
 ```mermaid
-flowchart TD
-    SF["<b>Sensor Frame</b>\n<i>8-channel IR values</i>"]
+graph TD
+    S["<b>Sensor Frame</b><br/>8-channel IR raw values"] --> W["Weighted Centroid<br/>position = Σw·v / Σv"]
+    S --> SEG["Segment Detector<br/>straight / curve / wide / lost"]
 
-    SF --> POS["Weighted Centroid\n<i>position = Σ(w·v) / Σv</i>"]
-    SF --> SEG["Segment Detector\n<i>straight / curve / wide / lost</i>"]
+    W --> ERR["Error<br/>e = position"]
+    W --> SP["Speed Profile<br/>v = base − base−min × |e| / 1750<br/><i>IIR α=0.4</i>"]
 
-    POS --> ERR["Error\ne = position"]
-    POS --> SPEED["Speed Profile\n<i>v = base − (base−min)·|e|/1750</i>\n<i>IIR smoothed, α = 0.4</i>"]
+    ERR --> PD{{"<b>PD + kff Controller</b><br/>correction = kp·e + kd·ė + kff·ė·v"}}
+    SP --> PD
+    SEG -->|"select params"| PD
 
-    ERR --> PD[("<b>PD + kff</b>\ncorrection =\nkp·e + kd·ė + kff·ė·v"]
-    SPEED --> PD
-    SEG --> PARAM["Per-Segment Params\n<i>kp, kd, kff, base_speed</i>"]
-    PARAM -.->|"<i>select</i>"| PD
-
-    PD --> CMD["Motor Command\n<i>left = speed + correction</i>\n<i>right = speed − correction</i>"]
-    CMD --> CHASSIS["<b>lf_chassis</b>\n<i>differential drive output</i>"]
+    PD --> MC["Motor Command<br/>left = v + correction<br/>right = v − correction"]
 ```
 
 ### State Machine
@@ -111,68 +85,44 @@ stateDiagram-v2
     direction LR
 
     [*] --> WAIT_START
+    WAIT_START --> CALIBRATING : button / line
+    CALIBRATING --> RUNNING : OK
+    CALIBRATING --> FAULT : failed
 
-    state "WAIT_START" as WS
-    state "CALIBRATING" as CAL
-    state "RUNNING" as RUN
-    state "FAULT" as FLT
-    state "STOPPED" as STOP
+    RUNNING --> RECOVERING : line lost
+    RUNNING --> AVOID : radar BLOCK
+    RUNNING --> US_HOLD : ultrasonic BLOCK
+    RUNNING --> FTURN : right-angle
+    RUNNING --> REORIENT : reorient
 
-    WS --> CAL: button / timeout / line
-    CAL --> RUN: calibration OK
-    CAL --> FLT: calibration failed
+    RECOVERING --> RUNNING : line found
+    RECOVERING --> STOPPED : timeout
 
-    state "Line Recovery" as REC_GROUP {
-        state "RECOVERING" as REC
-        REC --> REC: sweep phases
+    state AVOID {
+        PREP --> BYPASS
+        BYPASS --> REACQUIRE
     }
+    AVOID --> RUNNING : done
+    AVOID --> RECOVERING : timeout
 
-    state "Obstacle Avoidance" as AVOID_GROUP {
-        state "AVOID_PREP" as AP
-        state "AVOID_BYPASS" as AB
-        state "AVOID_REACQUIRE" as AR
-        AP --> AB: stop elapsed
-        AP --> RUN: obstacle cleared
-        AB --> AR: arc complete
-        AR --> RUN: line found
-        AR --> REC: timeout
+    US_HOLD --> RUNNING : hold done
+
+    state FTURN {
+        FT_STOP --> FT_SPIN
+        FT_SPIN --> FT_SETTLE
     }
+    FTURN --> RUNNING : done
 
-    state "Fixed Turn" as FT_GROUP {
-        state "FT_STOP" as FS
-        state "FT_SPIN" as FP
-        state "FT_SETTLE" as FT
-        FS --> FP: stop elapsed
-        FP --> FT: spin elapsed
-        FT --> RUN: settle done
+    state REORIENT {
+        RE_STOP --> RE_SPIN
+        RE_SPIN --> RE_CONFIRM
+        RE_CONFIRM --> RE_SPIN : lost
     }
+    REORIENT --> RUNNING : confirmed
+    REORIENT --> STOPPED : timeout
 
-    state "Reorient" as RE_GROUP {
-        state "RE_STOP" as RS
-        state "RE_SPIN" as RP
-        state "RE_CONFIRM" as RC
-        RS --> RP: 60ms
-        RP --> RC: aligned
-        RC --> RUN: confirmed
-        RC --> RP: lost
-        RP --> STOP: timeout
-    }
-
-    state "ULTRASONIC_HOLD" as UH
-
-    RUN --> REC: line lost
-    RUN --> AP: radar BLOCK
-    RUN --> UH: ultrasonic BLOCK
-    RUN --> FS: right-angle / route
-    RUN --> RS: reorient
-
-    REC --> RUN: line found
-    REC --> STOP: timeout
-
-    UH --> RUN: hold elapsed
-
-    FLT --> STOP
-    STOP --> [*]
+    FAULT --> STOPPED
+    STOPPED --> [*]
 ```
 
 ## Quick Start
