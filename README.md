@@ -23,85 +23,113 @@ An embedded systems project implementing a competition-ready autonomous car that
 
 ## Architecture
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                      Application Layer                        │
-│  lf_app (state machine + route script + segment control)     │
-│  lf_app_avoid (radar avoidance + fixed turns + reorient)     │
-│  wl_app (race timing + checkpoint reporting)                  │
-├──────────────────────────────────────────────────────────────┤
-│                      Algorithm Layer                          │
-│  lf_sensor (8-ch IR, calibration, weighted centroid)          │
-│  lf_control (PD + kff, derivative filter, rate limiter)      │
-│  lf_radar (LD2410S UART parser, CLEAR/WARN/BLOCK)            │
-│  lf_ultrasonic (HC-SR04 trigger/echo, overhead detection)    │
-│  lf_chassis (differential drive, motor delta limiter)         │
-│  wl_lora (EWM22A driver, async TX queue, AUX flow control)   │
-├──────────────────────────────────────────────────────────────┤
-│                      Platform Layer                           │
-│  lf_platform │ wl_platform │ UART callbacks                   │
-│  ┌────────────┐  ┌─────────────┐                              │
-│  │ STM32 HAL  │  │ STM32 HAL   │  ← real hardware             │
-│  │ PC stub    │  │ PC stub     │  ← test / simulation         │
-│  │ —          │  │ POSIX serial│  ← serial utility            │
-│  └────────────┘  └─────────────┘                              │
-├──────────────────────────────────────────────────────────────┤
-│  Extension: wireless_hooks, lf_debug_monitor, lf_led_blink   │
-└──────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph Application["Application Layer"]
+        LF_APP["lf_app<br/><i>state machine</i>"]
+        LF_APP_MOD["lf_app_util / lf_app_sensor / lf_app_route<br/>lf_app_segment / lf_app_avoid"]
+        WL_APP["wl_app<br/><i>race timing + checkpoint</i>"]
+        LF_APP --- LF_APP_MOD
+    end
+
+    subgraph Algorithm["Algorithm Layer"]
+        LF_SENSOR["lf_sensor<br/><i>8-ch IR, calibration</i>"]
+        LF_CTRL["lf_control<br/><i>PD + kff</i>"]
+        LF_RADAR["lf_radar<br/><i>LD2410S parser</i>"]
+        LF_US["lf_ultrasonic<br/><i>HC-SR04 driver</i>"]
+        LF_CHASSIS["lf_chassis<br/><i>differential drive</i>"]
+        WL_LORA["wl_lora<br/><i>EWM22A async TX</i>"]
+        WL_PROTO["wl_protocol<br/><i>checkpoint format</i>"]
+    end
+
+    subgraph Platform["Platform Layer"]
+        LF_PLAT["lf_platform"]
+        WL_PLAT["wl_platform"]
+        UART_CB["UART callbacks"]
+        subgraph Impl["Implementations"]
+            STM32["STM32 HAL<br/><i>real hardware</i>"]
+            STUB["PC stub<br/><i>test / sim</i>"]
+            POSIX["POSIX serial<br/><i>utility</i>"]
+        end
+    end
+
+    subgraph Extension["Extension Layer"]
+        WH["wireless_hooks"]
+        DM["lf_debug_monitor"]
+        LED["lf_led_blink"]
+    end
+
+    Application --> Algorithm
+    Algorithm --> Platform
+    Extension --> Application
+    Extension --> Algorithm
+
+    LF_SENSOR --> LF_APP
+    LF_CTRL --> LF_APP
+    LF_RADAR --> LF_APP
+    LF_US --> LF_APP
+    LF_CHASSIS --> LF_APP
+    WL_LORA --> WL_APP
+    WL_PROTO --> WL_APP
 ```
 
 ### Control Algorithm
 
-```
-                  ┌─────────────┐
-  sensor_error ──→│  Speed      │──→ base_speed
-  |error| ───────→│  Profile    │    (IIR smoothed)
-                  └──────┬──────┘
-                         │
-  error ────────────────→│ ┌───────────────────────┐
-  derivative ───────────→│+│ correction =           │──→ left_cmd, right_cmd
-  speed ────────────────→│ │   kp·e + kd·ė + kff·ė·v│
-                         │ └───────────────────────┘
-                         │
-                  ┌──────┴──────┐
-                  │  Segment    │──→ kp/kd/kff/base_speed per segment type
-                  │  Detector   │
-                  └─────────────┘
+```mermaid
+flowchart LR
+    ERROR["error<br/><i>sensor position</i>"] --> PD
+    DERIV["derivative<br/><i>filtered ė</i>"] --> PD
+    SPEED["speed<br/><i>IIR smoothed</i>"] --> PD
+
+    subgraph PD["PD + Feedforward"]
+        FORMULA["correction =<br/>kp·e + kd·ė + kff·ė·v"]
+    end
+
+    PD --> MOTOR["Motor Command<br/><i>left/right cmd</i>"]
+    SPEED_PROF["Speed Profile<br/><i>v = base - (base-min)·|e|/1750</i>"] --> SPEED
+
+    SEG["Segment Detector<br/><i>straight / curve / wide / lost</i>"] --> PARAM["Per-Segment Params<br/><i>kp, kd, kff, base_speed</i>"]
+    PARAM --> PD
+
+    SENSOR["Sensor Frame"] --> ERROR
+    SENSOR --> SEG
 ```
 
 ### State Machine
 
-```
-                    ┌──────────┐
-                    │   BOOT   │
-                    └────┬─────┘
-                         │ LF_App_Init()
-                    ┌────▼─────┐
-             ┌──────│WAIT_START│──────┐
-             │      └────┬─────┘      │
-             │   button/timeout/line   │
-             │           │             │
-        ┌────▼────┐ ┌────▼─────┐      │
-        │  FAULT  │ │CALIBRATE │      │
-        └─────────┘ └────┬─────┘      │
-                         │ done        │
-                    ┌────▼─────┐      │
-         ┌─────────│ RUNNING  │──────┘
-         │         └┬──┬──┬──┬┘
-         │    line  │  │  │  │ obstacle
-         │   lost   │  │  │  │ detected
-    ┌────▼────┐     │  │  │  │  ┌──────────┐
-    │RECOVERY │◄────┘  │  │  └─→│ AVOID_*  │
-    └────┬────┘        │  │     └────┬─────┘
-         │ found line  │  │          │ done
-         └─────────────┘  │     ┌────▼─────┐
-                          │     │ULTRASONIC│
-                    right │     │  _HOLD   │──→ stop → LoRa → wait → resume
-                    angle │     └──────────┘
-                          │
-                   ┌──────▼──────┐
-                   │FIXED_TURN_* │──→ stop → spin 90° → settle → resume
-                   └─────────────┘
+```mermaid
+stateDiagram-v2
+    [*] --> WAIT_START: LF_App_Init()
+    WAIT_START --> CALIBRATING: button / timeout / line detected
+    CALIBRATING --> RUNNING: calibration OK
+    CALIBRATING --> FAULT: calibration failed
+
+    RUNNING --> RECOVERING: line lost (grace ticks exceeded)
+    RUNNING --> AVOID_PREP: radar BLOCK detected
+    RUNNING --> ULTRASONIC_HOLD: ultrasonic BLOCK detected
+    RUNNING --> FIXED_TURN_STOP: right-angle / route script
+    RUNNING --> REORIENT_STOP: right-angle (no fixed turn)
+
+    RECOVERING --> RUNNING: line re-acquired
+    RECOVERING --> STOPPED: timeout / max recoveries
+
+    AVOID_PREP --> AVOID_BYPASS: stop duration elapsed
+    AVOID_PREP --> RUNNING: obstacle cleared
+    AVOID_BYPASS --> AVOID_REACQUIRE: bypass arc complete
+    AVOID_REACQUIRE --> RUNNING: line re-acquired
+    AVOID_REACQUIRE --> RECOVERING: reacquire timeout
+
+    ULTRASONIC_HOLD --> RUNNING: hold duration elapsed
+
+    FIXED_TURN_STOP --> FIXED_TURN_SPIN: stop duration elapsed
+    FIXED_TURN_SPIN --> FIXED_TURN_SETTLE: spin duration elapsed
+    FIXED_TURN_SETTLE --> RUNNING: settle complete
+
+    REORIENT_STOP --> REORIENT_SPIN: 60ms settle
+    REORIENT_SPIN --> REORIENT_CONFIRM: middle sensors aligned
+    REORIENT_SPIN --> STOPPED: timeout
+    REORIENT_CONFIRM --> RUNNING: confirmed N ticks
+    REORIENT_CONFIRM --> REORIENT_SPIN: alignment lost
 ```
 
 ## Quick Start
