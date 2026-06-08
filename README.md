@@ -24,112 +24,155 @@ An embedded systems project implementing a competition-ready autonomous car that
 ## Architecture
 
 ```mermaid
-graph TB
-    subgraph Application["Application Layer"]
-        LF_APP["lf_app<br/><i>state machine</i>"]
-        LF_APP_MOD["lf_app_util / lf_app_sensor / lf_app_route<br/>lf_app_segment / lf_app_avoid"]
-        WL_APP["wl_app<br/><i>race timing + checkpoint</i>"]
-        LF_APP --- LF_APP_MOD
+block-beta
+    columns 3
+
+    block:app:3
+        columns 3
+        A_TITLE["<b>Application Layer</b>"]:3
+        LF_APP["lf_app\n<i>state machine</i>"]
+        LF_MOD["lf_app_* modules\n<i>util / sensor / route\nsegment / avoid</i>"]
+        WL_APP["wl_app\n<i>race timing</i>"]
     end
 
-    subgraph Algorithm["Algorithm Layer"]
-        LF_SENSOR["lf_sensor<br/><i>8-ch IR, calibration</i>"]
-        LF_CTRL["lf_control<br/><i>PD + kff</i>"]
-        LF_RADAR["lf_radar<br/><i>LD2410S parser</i>"]
-        LF_US["lf_ultrasonic<br/><i>HC-SR04 driver</i>"]
-        LF_CHASSIS["lf_chassis<br/><i>differential drive</i>"]
-        WL_LORA["wl_lora<br/><i>EWM22A async TX</i>"]
-        WL_PROTO["wl_protocol<br/><i>checkpoint format</i>"]
+    space:3
+
+    block:algo:3
+        columns 3
+        B_TITLE["<b>Algorithm Layer</b>"]:3
+        LF_SENSOR["lf_sensor\n<i>8-ch IR</i>"]
+        LF_CTRL["lf_control\n<i>PD + kff</i>"]
+        LF_RADAR["lf_radar\n<i>LD2410S</i>"]
+        LF_US["lf_ultrasonic\n<i>HC-SR04</i>"]
+        LF_CHASSIS["lf_chassis\n<i>differential drive</i>"]
+        WL_LORA["wl_lora + wl_protocol\n<i>EWM22A async TX</i>"]
     end
 
-    subgraph Platform["Platform Layer"]
+    space:3
+
+    block:plat:3
+        columns 3
+        C_TITLE["<b>Platform Layer</b>"]:3
         LF_PLAT["lf_platform"]
         WL_PLAT["wl_platform"]
         UART_CB["UART callbacks"]
-        subgraph Impl["Implementations"]
-            STM32["STM32 HAL<br/><i>real hardware</i>"]
-            STUB["PC stub<br/><i>test / sim</i>"]
-            POSIX["POSIX serial<br/><i>utility</i>"]
-        end
     end
 
-    subgraph Extension["Extension Layer"]
+    space:3
+
+    block:impl:3
+        columns 3
+        D_TITLE["<b>Implementations</b>"]:3
+        STM32["STM32 HAL\n<i>real hardware</i>"]
+        STUB["PC stub\n<i>test / sim</i>"]
+        POSIX["POSIX serial\n<i>utility</i>"]
+    end
+
+    app --> algo
+    algo --> plat
+    plat --> impl
+
+    block:ext:3
+        columns 3
+        E_TITLE["<b>Extension Layer</b>"]:3
         WH["wireless_hooks"]
         DM["lf_debug_monitor"]
         LED["lf_led_blink"]
     end
 
-    Application --> Algorithm
-    Algorithm --> Platform
-    Extension --> Application
-    Extension --> Algorithm
-
-    LF_SENSOR --> LF_APP
-    LF_CTRL --> LF_APP
-    LF_RADAR --> LF_APP
-    LF_US --> LF_APP
-    LF_CHASSIS --> LF_APP
-    WL_LORA --> WL_APP
-    WL_PROTO --> WL_APP
+    ext --> app
 ```
 
 ### Control Algorithm
 
 ```mermaid
-flowchart LR
-    ERROR["error<br/><i>sensor position</i>"] --> PD
-    DERIV["derivative<br/><i>filtered ė</i>"] --> PD
-    SPEED["speed<br/><i>IIR smoothed</i>"] --> PD
+flowchart TD
+    SF["<b>Sensor Frame</b>\n<i>8-channel IR values</i>"]
 
-    subgraph PD["PD + Feedforward"]
-        FORMULA["correction =<br/>kp·e + kd·ė + kff·ė·v"]
-    end
+    SF --> POS["Weighted Centroid\n<i>position = Σ(w·v) / Σv</i>"]
+    SF --> SEG["Segment Detector\n<i>straight / curve / wide / lost</i>"]
 
-    PD --> MOTOR["Motor Command<br/><i>left/right cmd</i>"]
-    SPEED_PROF["Speed Profile<br/><i>v = base - (base-min)·|e|/1750</i>"] --> SPEED
+    POS --> ERR["Error\ne = position"]
+    POS --> SPEED["Speed Profile\n<i>v = base − (base−min)·|e|/1750</i>\n<i>IIR smoothed, α = 0.4</i>"]
 
-    SEG["Segment Detector<br/><i>straight / curve / wide / lost</i>"] --> PARAM["Per-Segment Params<br/><i>kp, kd, kff, base_speed</i>"]
-    PARAM --> PD
+    ERR --> PD[("<b>PD + kff</b>\ncorrection =\nkp·e + kd·ė + kff·ė·v"]
+    SPEED --> PD
+    SEG --> PARAM["Per-Segment Params\n<i>kp, kd, kff, base_speed</i>"]
+    PARAM -.->|"<i>select</i>"| PD
 
-    SENSOR["Sensor Frame"] --> ERROR
-    SENSOR --> SEG
+    PD --> CMD["Motor Command\n<i>left = speed + correction</i>\n<i>right = speed − correction</i>"]
+    CMD --> CHASSIS["<b>lf_chassis</b>\n<i>differential drive output</i>"]
 ```
 
 ### State Machine
 
 ```mermaid
 stateDiagram-v2
-    [*] --> WAIT_START: LF_App_Init()
-    WAIT_START --> CALIBRATING: button / timeout / line detected
-    CALIBRATING --> RUNNING: calibration OK
-    CALIBRATING --> FAULT: calibration failed
+    direction LR
 
-    RUNNING --> RECOVERING: line lost (grace ticks exceeded)
-    RUNNING --> AVOID_PREP: radar BLOCK detected
-    RUNNING --> ULTRASONIC_HOLD: ultrasonic BLOCK detected
-    RUNNING --> FIXED_TURN_STOP: right-angle / route script
-    RUNNING --> REORIENT_STOP: right-angle (no fixed turn)
+    [*] --> WAIT_START
 
-    RECOVERING --> RUNNING: line re-acquired
-    RECOVERING --> STOPPED: timeout / max recoveries
+    state "WAIT_START" as WS
+    state "CALIBRATING" as CAL
+    state "RUNNING" as RUN
+    state "FAULT" as FLT
+    state "STOPPED" as STOP
 
-    AVOID_PREP --> AVOID_BYPASS: stop duration elapsed
-    AVOID_PREP --> RUNNING: obstacle cleared
-    AVOID_BYPASS --> AVOID_REACQUIRE: bypass arc complete
-    AVOID_REACQUIRE --> RUNNING: line re-acquired
-    AVOID_REACQUIRE --> RECOVERING: reacquire timeout
+    WS --> CAL: button / timeout / line
+    CAL --> RUN: calibration OK
+    CAL --> FLT: calibration failed
 
-    ULTRASONIC_HOLD --> RUNNING: hold duration elapsed
+    state "Line Recovery" as REC_GROUP {
+        state "RECOVERING" as REC
+        REC --> REC: sweep phases
+    }
 
-    FIXED_TURN_STOP --> FIXED_TURN_SPIN: stop duration elapsed
-    FIXED_TURN_SPIN --> FIXED_TURN_SETTLE: spin duration elapsed
-    FIXED_TURN_SETTLE --> RUNNING: settle complete
+    state "Obstacle Avoidance" as AVOID_GROUP {
+        state "AVOID_PREP" as AP
+        state "AVOID_BYPASS" as AB
+        state "AVOID_REACQUIRE" as AR
+        AP --> AB: stop elapsed
+        AP --> RUN: obstacle cleared
+        AB --> AR: arc complete
+        AR --> RUN: line found
+        AR --> REC: timeout
+    }
 
-    REORIENT_STOP --> REORIENT_SPIN: 60ms settle
-    REORIENT_SPIN --> REORIENT_CONFIRM: middle sensors aligned
-    REORIENT_SPIN --> STOPPED: timeout
-    REORIENT_CONFIRM --> RUNNING: confirmed N ticks
-    REORIENT_CONFIRM --> REORIENT_SPIN: alignment lost
+    state "Fixed Turn" as FT_GROUP {
+        state "FT_STOP" as FS
+        state "FT_SPIN" as FP
+        state "FT_SETTLE" as FT
+        FS --> FP: stop elapsed
+        FP --> FT: spin elapsed
+        FT --> RUN: settle done
+    }
+
+    state "Reorient" as RE_GROUP {
+        state "RE_STOP" as RS
+        state "RE_SPIN" as RP
+        state "RE_CONFIRM" as RC
+        RS --> RP: 60ms
+        RP --> RC: aligned
+        RC --> RUN: confirmed
+        RC --> RP: lost
+        RP --> STOP: timeout
+    }
+
+    state "ULTRASONIC_HOLD" as UH
+
+    RUN --> REC: line lost
+    RUN --> AP: radar BLOCK
+    RUN --> UH: ultrasonic BLOCK
+    RUN --> FS: right-angle / route
+    RUN --> RS: reorient
+
+    REC --> RUN: line found
+    REC --> STOP: timeout
+
+    UH --> RUN: hold elapsed
+
+    FLT --> STOP
+    STOP --> [*]
 ```
 
 ## Quick Start
