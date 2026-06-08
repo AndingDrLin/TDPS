@@ -24,16 +24,16 @@ An embedded systems project implementing a competition-ready autonomous car that
 ## Architecture
 
 ```mermaid
-graph TD
-    subgraph APP[" "]
-        direction LR
+graph LR
+    subgraph APP["<b>Application</b>"]
+        direction TB
         A1["<b>lf_app</b><br/>state machine"]
-        A2["<b>lf_app_*</b><br/>util·sensor·route<br/>segment·avoid"]
+        A2["<b>lf_app_*</b><br/>util · sensor · route<br/>segment · avoid"]
         A3["<b>wl_app</b><br/>race timing"]
     end
 
-    subgraph ALG[" "]
-        direction LR
+    subgraph ALG["<b>Algorithm</b>"]
+        direction TB
         B1["<b>lf_sensor</b><br/>8-ch IR"]
         B2["<b>lf_control</b><br/>PD + kff"]
         B3["<b>lf_radar</b><br/>LD2410S"]
@@ -42,15 +42,15 @@ graph TD
         B6["<b>wl_lora</b><br/>EWM22A"]
     end
 
-    subgraph PLAT[" "]
-        direction LR
+    subgraph PLAT["<b>Platform</b>"]
+        direction TB
         C1["<b>lf_platform</b>"]
         C2["<b>wl_platform</b>"]
         C3["<b>UART callbacks</b>"]
     end
 
-    subgraph EXT[" "]
-        direction LR
+    subgraph EXT["<b>Extensions</b>"]
+        direction TB
         D1["<b>wireless_hooks</b>"]
         D2["<b>lf_debug_monitor</b>"]
         D3["<b>lf_led_blink</b>"]
