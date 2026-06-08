@@ -34,7 +34,7 @@ This folder contains the report engineering pipeline for TDPS.
 From repository root:
 
 ```bash
-python TDPS/reports/mid_reports/scripts/build_all.py
+python reports/mid_reports/scripts/build_all.py
 ```
 
 Or from this directory:

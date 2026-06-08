@@ -74,18 +74,16 @@ EventRecorderStub.scvd
 !TDPS/firmware/**/.mxproject
 
 # Generated report outputs
-TDPS/reports/mid_reports/outputs/
-TDPS/reports/notebook/outputs/
-TDPS/reports/final_report/artifacts/
-TDPS/reports/final_report/src/bare_jrnl_new_sample4.tex
-TDPS/reports/final_report/src/New_IEEEtran_how-to.tex
-mid_reports/outputs/
-notebook/outputs/
+reports/mid_reports/outputs/
+reports/notebook/outputs/
+reports/final_report/artifacts/
+reports/final_report/src/bare_jrnl_new_sample4.tex
+reports/final_report/src/New_IEEEtran_how-to.tex
 
 # Local reference packages are indexed by README only
-TDPS/docs_reference/**
-!TDPS/docs_reference/
-!TDPS/docs_reference/README.md
+docs_reference/**
+!docs_reference/
+!docs_reference/README.md
 
 # Binary / non-code reference assets
 *.pdf

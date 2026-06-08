@@ -5,7 +5,7 @@
 ## 目录结构
 
 ```
-TDPS/reports/final_report/
+reports/final_report/
 ├── artifacts/                     # 阶段性输出
 │   ├── stage_0_requirements/      # 报告要求 + 评分标准
 │   ├── stage_1_past_report/       # 往届报告分析
@@ -55,7 +55,7 @@ TDPS/reports/final_report/
 
 ### 本地（需 texlive）
 ```bash
-cd TDPS/reports/final_report/src
+cd reports/final_report/src
 pdflatex main.tex
 pdflatex main.tex  # 两次编译以解析交叉引用
 ```

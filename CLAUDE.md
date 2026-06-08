@@ -8,27 +8,22 @@ Always respond in Chinese (中文).
 
 ## Source of truth
 
-The repository root is a workspace wrapper. The main project lives under `TDPS/`, and commands below assume the current working directory is the outer repository root: `/Users/linyujia/Project/TDPS`.
-
-This root-level `CLAUDE.md` is the source of truth for Claude Code guidance. If `TDPS/CLAUDE.md` or older docs conflict with this file, follow this file and verify against current code before changing behavior. Do not create another Claude guidance file.
-
-If Claude Code is launched from the inner `TDPS/` directory, remove the leading `TDPS/` path component from commands in this file.
+Commands below assume the current working directory is the repository root.
 
 ## Repository layout
 
 - `TDPS/firmware/`: STM32F407VET6 firmware. Core logic is written so it can build both for STM32 HAL and for PC stub tests.
 - `TDPS/simulator/`: offline simulation and regression harness for line following, radar, wireless, and integrated scenarios.
 - `TDPS/tests/`: board-level and standalone peripheral tests.
-- `TDPS/agent_docs/`: project brief, hardware reference, current progress, and agent working notes. Read these before non-trivial firmware changes.
-- `TDPS/docs/`: design, line following, wireless, tuning, and testing documentation.
-- `TDPS/docs_reference/`: local index for hardware/vendor references; large PDFs, archives, tools, images, and PCB exports are intentionally not committed.
-- `TDPS/reports/`: report and experiment-record scripts.
+- `docs/`: design, line following, wireless, tuning, and testing documentation.
+- `docs_reference/`: local index for hardware/vendor references; large PDFs, archives, tools, images, and PCB exports are intentionally not committed.
+- `reports/`: report and experiment-record scripts.
 
 ## Naming conventions
 
 - Directories and new management files use `snake_case`.
 - Vendor reference files keep their original names to avoid path breakage.
-- Generated outputs go to `TDPS/firmware/build/`, `TDPS/simulator/artifacts/`, and `TDPS/reports/*/outputs/`; default is not committed.
+- Generated outputs go to `TDPS/firmware/build/`, `TDPS/simulator/artifacts/`, and `reports/*/outputs/`; default is not committed.
 
 ## Common commands
 
@@ -69,7 +64,7 @@ Use this as a quick smoke path when CMake is unavailable. If source files change
 mkdir -p TDPS/firmware/build/gcc
 
 gcc -ITDPS/firmware/Inc -ITDPS/firmware/common -ITDPS/firmware/platform \
-    TDPS/firmware/Src/{lf_app,lf_chassis,lf_config,lf_config_profiles,lf_control,lf_debug_monitor,lf_dgus_screen,lf_future_hooks,lf_radar,lf_sensor,lf_watch_debug,wireless_hooks,wl_app,wl_config,wl_lora,wl_protocol,lf_platform_stub,wl_platform_stub}.c \
+    TDPS/firmware/Src/{lf_app,lf_app_util,lf_app_sensor,lf_app_route,lf_app_segment,lf_app_avoid,lf_chassis,lf_config,lf_config_profiles,lf_control,lf_debug_monitor,lf_future_hooks,lf_led_blink,lf_radar,lf_sensor,wireless_hooks,wl_app,wl_config,wl_lora,wl_protocol,lf_platform_stub,wl_platform_stub}.c \
     TDPS/firmware/test/test_lf_stub.c -o TDPS/firmware/build/gcc/lf_test -lm
 ./TDPS/firmware/build/gcc/lf_test
 
@@ -117,7 +112,7 @@ python TDPS/simulator/scripts/run_line_follow_param_sweep.py --mode validate
 
 Sweep overrides are simulator-only unless explicitly written back to firmware config: `TDPS_SIM_KP`, `TDPS_SIM_KD`, `TDPS_SIM_KFF`, `TDPS_SIM_BASE_SPEED`, `TDPS_SIM_MIN_SPEED`, `TDPS_SIM_MAX_CORRECTION`.
 
-Some older testing docs still mention `TDPS-Simulator/`; current code is under `TDPS/simulator/`. If a script still assumes the old path, read `TDPS/agent_docs/03_agent_working_notes.md` and inspect the script before changing paths.
+Some older testing docs still mention `TDPS-Simulator/`; current code is under `TDPS/simulator/`. If a script still assumes the old path, inspect the script before changing paths.
 
 ### Wireless PC serial test
 
@@ -128,11 +123,11 @@ bash TDPS/simulator/scripts/run_wireless_pc_serial.sh
 ### Report scripts
 
 ```bash
-python TDPS/reports/mid_reports/scripts/build_all.py
-python TDPS/reports/notebook/scripts/build_all.py
+python reports/mid_reports/scripts/build_all.py
+python reports/notebook/scripts/build_all.py
 ```
 
-For the final report, run LaTeX from `TDPS/reports/final_report/src`:
+For the final report, run LaTeX from `reports/final_report/src`:
 
 ```bash
 pdflatex main.tex
@@ -147,8 +142,15 @@ Firmware layers:
 
 - Platform layer: `lf_platform_*`, `wl_platform_*`, UART callbacks, and board/HAL adapters isolate STM32 peripherals from portable logic. Two implementations exist: STM32F4 HAL for real hardware and stubs for PC testing.
 - Algorithm layer: `lf_sensor`, `lf_control`, `lf_chassis`, `lf_radar`, and related helpers process 8-channel line input, radar frames, and differential drive commands.
-- Application layer: `lf_app` owns the line-following state machine: `WAIT_START -> CALIBRATING -> RUNNING -> RECOVERING / AVOID_* / FORK_* / REORIENT_* -> STOPPED / FAULT`.
+- Application layer: `lf_app` owns the line-following state machine and is split into focused sub-modules: `lf_app_util` (timing/state transitions), `lf_app_sensor` (lane queries/right-angle detection), `lf_app_route` (fixed-route script), `lf_app_segment` (segment classification), `lf_app_avoid` (obstacle avoidance/fixed turns/reorientation). State: `WAIT_START -> CALIBRATING -> RUNNING -> RECOVERING / AVOID_* / ULTRASONIC_HOLD / REORIENT_* -> STOPPED / FAULT`.
 - Extension layer: `wireless_hooks`, `lf_future_hooks`, `wl_app`, `wl_lora`, debug monitor, run log, and LEDs integrate LoRa checkpoints, diagnostics, and radar obstacle states through non-blocking ticks.
+
+Ultrasonic overhead detection (`lf_ultrasonic.c`):
+- Uses HC-SR04 sensor (TRIG=PD3, ECHO=PD4) for overhead obstacle detection.
+- Non-blocking state machine: IDLE -> TRIGGERED -> ECHO_HIGH, with timeout protection.
+- When obstacle detected within threshold: ULTRASONIC_HOLD state stops car, sends LoRa checkpoint, waits configured duration, then resumes.
+- Config fields: `ultrasonic_enable`, `ultrasonic_threshold_mm`, `ultrasonic_hold_ms`, `ultrasonic_lora_checkpoint_id`, `ultrasonic_cooldown_ms`.
+- Platform abstraction: STM32 HAL (DWT cycle counter) and PC stub implementations.
 
 Important entry points and integration rules:
 
@@ -184,13 +186,13 @@ Segment types:
 - `LF_SEGMENT_FORK`: fork; reuses `frame_looks_like_fork()` conditions.
 - `LF_SEGMENT_LOST`: lost line.
 
-`detect_segment_type()` in `TDPS/firmware/Src/lf_app.c` uses sensor features plus temporal history, with confirmation and hold frames for hysteresis. Segment parameters use `seg_*` fields for per-segment `kp/kd/kff/base_speed/min_speed/max_correction`, with IIR smoothing during transitions.
+`LF_App_DetectSegmentType()` in `TDPS/firmware/Src/lf_app_segment.c` uses sensor features plus temporal history, with confirmation and hold frames for hysteresis. Segment parameters use `seg_*` fields for per-segment `kp/kd/kff/base_speed/min_speed/max_correction`, with IIR smoothing during transitions.
 
 Continuous curve handling tracks recent direction switches. Right-angle handling includes `LF_APP_STATE_REORIENT_APPROACH`, `REORIENT_SPIN`, confirm logic, and optional backtrack retry through `reorient_backtrack_enable` and `reorient_max_retries`.
 
 ## Geometry-sensitive logic
 
-Existing project docs have contained conflicting sensor-to-drive-axis distances, including approximately 4 cm and 22 cm. `TDPS/agent_docs/02_current_progress.md` currently records the geometry as aligned to the real car at about 22 cm sensor front distance and 16 cm wheel track, while an older root guidance snapshot described about 4 cm.
+Existing project docs have contained conflicting sensor-to-drive-axis distances, including approximately 4 cm and 22 cm. The geometry is currently aligned to the real car at about 22 cm sensor front distance and 16 cm wheel track.
 
 Before changing geometry-dependent logic such as `lead_advance_*`, `lead_compensation`, right-angle turns, U-turn apex handling, circular entries, or reorient timing, verify the latest hardware record, CAD/mechanical measurement, or board test notes. After verification, update affected docs and configs consistently instead of preserving both values.
 
@@ -204,11 +206,8 @@ Track/debug sensor configuration currently uses Yahboom 8-LP UART line sensor in
 
 Before changing firmware behavior, read:
 
-1. `TDPS/agent_docs/00_project_brief.md`
-2. `TDPS/agent_docs/01_hardware_reference.md`
-3. `TDPS/agent_docs/02_current_progress.md`
-4. `TDPS/agent_docs/03_agent_working_notes.md`
-5. Relevant design docs under `TDPS/docs/`, especially `basic_design.md`, `line_following.md`, `tuning.md`, and `wireless_comm.md`
+1. Relevant design docs under `docs/`, especially `basic_design.md`, `line_following.md`, `tuning.md`, and `wireless_comm.md`
+2. `docs/hardware.md` for hardware reference and pin mapping
 
 ## Wireless, radar, and checkpoint constraints
 
@@ -267,4 +266,4 @@ TDPS/tests/standalone/lora_module_test/MDK-ARM/lora_module_test.uvprojx
 
 ## Generated files and large references
 
-Do not commit generated outputs from `TDPS/firmware/build/`, `TDPS/simulator/artifacts/`, or `TDPS/reports/*/outputs/`. Do not add local vendor PDFs, archives, executables, images, PCB exports, or large tool packages from `TDPS/docs_reference/`; keep that directory as an index unless a small text summary is needed.
+Do not commit generated outputs from `TDPS/firmware/build/`, `TDPS/simulator/artifacts/`, or `reports/*/outputs/`. Do not add local vendor PDFs, archives, executables, images, PCB exports, or large tool packages from `docs_reference/`; keep that directory as an index unless a small text summary is needed.
