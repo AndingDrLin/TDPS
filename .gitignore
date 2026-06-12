@@ -100,7 +100,12 @@ docs_reference/**
 *.jpeg
 *.bmp
 *.gif
+# Re-include reports/ before the common ignore rules above take effect
 !reports/**
+# ... but still ignore junk files inside reports/
+reports/**/.DS_Store
+reports/**/__pycache__/
+reports/**/.venv/
 
 # Local archives or legacy ignored directories kept outside TDPS
 slides/
