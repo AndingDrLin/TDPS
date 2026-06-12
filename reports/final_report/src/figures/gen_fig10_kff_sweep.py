@@ -94,4 +94,4 @@ ax2.tick_params(labelsize=BODY_SIZE)
 for spine in ['top', 'right']:
     ax2.spines[spine].set_visible(False)
 
-save_figure(fig, 'fig11_kff_sweep.pdf')
+save_figure(fig, 'fig10_kff_sweep.pdf')

@@ -180,4 +180,4 @@ legend_lines = [
 ]
 ax.legend(handles=legend_lines, loc='lower right', fontsize=SMALL_SIZE, framealpha=0.7)
 
-save_figure(fig, 'fig8_avoidance.pdf')
+save_figure(fig, 'fig7_avoidance.pdf')

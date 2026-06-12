@@ -92,4 +92,4 @@ ax.text(3.2, 0.22, 'TEAM=15,NAME=PTSD,CP=21,TIME=01:23',
         fontsize=SMALL_SIZE - 0.5, ha='center', va='center',
         color=NEUTRAL_DARK, fontfamily='monospace', fontweight='bold')
 
-save_figure(fig, 'fig9_lora_sequence.pdf')
+save_figure(fig, 'fig8_lora_sequence.pdf')

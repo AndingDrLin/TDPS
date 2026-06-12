@@ -74,4 +74,4 @@ cbar.set_label('Overall Score', fontsize=BODY_SIZE, color=NEUTRAL_DARK)
 cbar.ax.tick_params(labelsize=SMALL_SIZE)
 
 plt.subplots_adjust(wspace=0.3, hspace=0.35, right=0.90)
-save_figure(fig, 'fig10_coarse_sweep.pdf')
+save_figure(fig, 'fig9_coarse_sweep.pdf')
