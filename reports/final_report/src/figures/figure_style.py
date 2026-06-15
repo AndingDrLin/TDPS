@@ -133,7 +133,7 @@ def draw_box(ax, x, y, w, h, facecolor, edgecolor=None, text='',
 
 
 def draw_arrow(ax, x1, y1, x2, y2, color=None, lw=1.0,
-               style='->', connectionstyle=None):
+               style='->', connectionstyle=None, mutation_scale=12):
     """绘制箭头。
 
     Args:
@@ -143,15 +143,20 @@ def draw_arrow(ax, x1, y1, x2, y2, color=None, lw=1.0,
         lw: 线宽
         style: 箭头样式，'->' 或 '-'
         connectionstyle: 弧线样式，如 'arc3,rad=0.2'
+        mutation_scale: 箭头头部大小（默认 12，标准约 10）
     """
+    from matplotlib.patches import FancyArrowPatch
+
     if color is None:
         color = NEUTRAL_MED
 
-    props = dict(arrowstyle=style, color=color, lw=lw)
+    props = dict(arrowstyle=style, color=color, lw=lw,
+                 mutation_scale=mutation_scale)
     if connectionstyle:
         props['connectionstyle'] = connectionstyle
 
-    ax.annotate('', xy=(x2, y2), xytext=(x1, y1), arrowprops=props)
+    arrow = FancyArrowPatch((x1, y1), (x2, y2), **props)
+    ax.add_patch(arrow)
 
 
 def draw_state_box(ax, x, y, w, h, name, desc='', fc=None, ec=None,
@@ -207,6 +212,6 @@ def save_figure(fig, name):
         name: 文件名（不含路径），如 'fig4_sensor_pipeline.pdf'
     """
     outpath = os.path.join(OUTPUT_DIR, name)
-    fig.savefig(outpath, format='pdf', bbox_inches='tight', dpi=300, pad_inches=0.05)
+    fig.savefig(outpath, format='pdf', bbox_inches='tight', dpi=300, pad_inches=0.12)
     plt.close(fig)
     print(f'[OK] {outpath}')
